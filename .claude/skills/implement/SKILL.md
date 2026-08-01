@@ -1,0 +1,110 @@
+---
+name: implement
+description: Build a specific product-backlog item (P#) from docs/product/BACKLOG.md — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Code-side complement to /research (which runs experiments); writes code + tests only, never the backlog docs.
+---
+
+# Implement — build a product backlog item
+
+Takes one entry (or one milestone of one entry) from
+[docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) to working, verified code
+on a feature branch. This skill **writes code and tests only** — every backlog/doc
+edit goes through its owner: **/ship** owns BACKLOG.md and the architecture docs;
+**/research** owns `docs/research/**`; the spec is human-owned.
+
+`<ID>` = a product id like `P4`, optionally with a milestone (`P3 R1`).
+
+## Steps
+
+### 1. Locate + gate
+
+Each gate below exists because skipping it shipped something broken. They are cheap;
+run all of them.
+
+- **No ID given?** The product `## Next up` block (top of BACKLOG.md) is the ranked,
+  dependency-ready head — propose its first entry.
+- Find the entry: `grep -n -A12 "^### <ID>" docs/product/BACKLOG.md`. Not there →
+  it's an untriaged idea; bounce to **/triage**, don't invent an entry.
+- **CLAIM GATE:** `git show main:docs/product/BACKLOG.md | grep -n "in-progress"`
+  first — **main's version, never the checked-out copy**: in a worktree the local
+  file reflects when you branched, so it can miss a claim another session made since.
+  Target entry already `in-progress` → stop; it's claimed by another session/branch
+  (stale claims are cleared via /checkpoint, not overridden here). Another entry
+  in-progress whose flagged shared assets overlap this one's Scope → stop too; the
+  first claimant builds the shared piece.
+- **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#` or
+  an unanswered research ID (`AE#`/`AD#` not terminal in its backlog) blocks the build
+  — stop and tell the user what's blocking, unless the specific milestone is
+  explicitly marked unblocked.
+- **MILESTONE GATE:** if Scope lists milestones (R0/R1/…), build **one per
+  invocation**. If the user didn't name one, propose the first unshipped one and
+  confirm — don't silently build the whole epic.
+- **INBOUND-POINTER GATE:** the entry does not know everything scoped *into* it.
+  Research amends product scope from the outside — a `won` `AE#`/`AD#` names its
+  deployment surface in `Deploys as:`, and an entry drafted before that close has no
+  idea it exists. So before building, run
+  `grep -n "Deploys as:" -A4 docs/research/backlog/*.md | grep -n "<ID>"` and read
+  every hit: each `won` entry pointing here is scope, whether or not this entry
+  mentions it. **Positive-control the grep** — a proxied `grep "Deploys as:"` has
+  returned 0 against 16 real hits, which would silently empty this gate. This is how
+  a feature ships with a won experiment's delta missing: its own claims all verify,
+  and nothing reads the pointer aimed at it.
+- **PREMISE GATE:** the entry text is a snapshot from drafting time; the code may have
+  moved since. Grep the code symbols the entry names and check every factual claim its
+  Status/Scope makes about the code ("default is 0", "X is undeployed", "Y lacks Z")
+  against the source **before claiming**. A stale premise is a scope-renegotiation
+  trigger *now*, not a footnote to build through: surface the mismatch to the user and
+  get the entry rescoped via /ship first. Follow-up obligations listed in Scope
+  (re-runs, recalibrations, replications) **inherit its premises** — a dead premise
+  silently voids or reshapes them, and if carried verbatim they propagate into the
+  commit message and /land's doc flip as obligations nobody owes.
+
+### 2. Set up
+- **CLEAN-TREE GATE:** `git status` must be clean before branching. Dirty tree =
+  another task's live state — bounce to /checkpoint; don't branch over it. For a
+  deliberately parallel session, take a `git worktree` instead of sharing the tree.
+- Flip the entry to `in-progress` **via /ship, committed on main before branching** —
+  a flip made on your branch is invisible to other sessions, which defeats the claim
+  gate. (/ship edits its files on main only.)
+- Then branch off main: `feat/p<#>-<slug>`.
+- For anything nontrivial, plan first (plan mode / a short written plan naming the
+  files to touch) before editing.
+
+### 3. Build
+- The entry's **Scope is the contract** — build what it says, resist adjacent
+  improvements. If scope turns out wrong mid-build, stop and renegotiate the entry
+  with the user (the rescope note lands in BACKLOG.md via /ship), don't drift.
+- **The project's invariants govern** — don't re-derive them here. *PORTING: list your
+  project's non-negotiable architectural rules in CLAUDE.md and reference them from
+  this line; they belong in one place, not duplicated per skill.*
+- Shared assets flagged in the entry ("shares assets with P3", "build once") are
+  binding: build the shared component once, in the place both consumers can reach.
+- New core behavior gets unit tests next to the existing ones; new UI flows get an
+  end-to-end spec.
+
+### 4. Verify + close
+- Run the full check suite (tests, typecheck, lint). Wrap long runs with `time`.
+- Run **/verify** — drive the affected flow in the real app, not just tests.
+- Commit on the feature branch. Then **/land** merges it into main, re-runs the suite
+  on the merged result, and runs /ship's terminal flip there (`shipped`, or `partial`
+  + which milestone) — doc flips never happen on the branch.
+- Re-derive any "still owed" follow-ups from the **actual diff**, not the entry's
+  Scope text (premise gate, step 1): name in the hand-off to /land only obligations
+  the change as-built really incurs, and say explicitly which scope-listed ones turned
+  out void and why — /ship writes what it's handed.
+- **Before handing off, re-read the inbound pointers** from the gate above against the
+  diff: every `won` entry deploying here either landed in this change (say so, so
+  /research can record it in `Deploys as:`) or did not (say *that* — it's a win left
+  as inventory, and naming it is what stops the next session inheriting the gap). The
+  schema check holds this once the product entry goes terminal; catching it here is
+  cheaper than catching it at close.
+- If the work surfaced a *measurable* follow-up question, route it through **/triage**
+  — don't tack an experiment onto the feature branch.
+
+## Not this skill
+- A research experiment (`AE#`/`AD#`) → **/research**.
+- Merging into main → **/land**.
+- Doc/status edits of any kind → **/ship** (product docs) or **/research** (research docs).
+- Classifying a new idea → **/triage**.
+- Session wrap-up, commits-as-closeout, handoff → **/checkpoint**.
+- A spec/rules change → the spec diff is proposed to the human first (see /ship);
+  don't start building on an unapproved rule.
