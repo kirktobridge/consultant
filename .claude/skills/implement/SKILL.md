@@ -31,10 +31,17 @@ run all of them.
   (stale claims are cleared via /checkpoint, not overridden here). Another entry
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
-- **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#` or
-  an unanswered research ID (`AE#`/`AD#` not terminal in its backlog) blocks the build
+- **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#`, an
+  unanswered research ID (`AE#`/`AD#` not terminal in its backlog), or an **`open`
+  `OD-n`** ([docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)) blocks the build
   — stop and tell the user what's blocking, unless the specific milestone is
   explicitly marked unblocked.
+  **Never build on an unverified figure.** An open OD is an assumption nobody has
+  checked; work resting on it isn't merely risky, it's *misleading* — it ships, looks
+  correct, and stays that way until the assumption is finally tested, taking everything
+  downstream with it. Either verify the OD first (cheap, usually one experiment or one
+  API call) or rescope the entry so it no longer depends on it. The schema check holds
+  this in CI too.
 - **MILESTONE GATE:** if Scope lists milestones (R0/R1/…), build **one per
   invocation**. If the user didn't name one, propose the first unshipped one and
   confirm — don't silently build the whole epic.
@@ -80,6 +87,14 @@ run all of them.
   binding: build the shared component once, in the place both consumers can reach.
 - New core behavior gets unit tests next to the existing ones; new UI flows get an
   end-to-end spec.
+- **Discovered work becomes a new entry immediately — never widen the one in flight.**
+  Mid-build you *will* find adjacent bugs, missing tests, and better designs. Capture
+  each as a fresh backlog draft (one sentence of context is enough), hand it to
+  /triage at the end, and return to the task. This is the concrete mechanism behind
+  "resist adjacent improvements": scope resistance fails when the only alternative to
+  widening is forgetting, so give the finding somewhere to go. If the finding is an
+  unverified assumption the build is now resting on, it's an **OD**, and it may block
+  the very entry you're building — surface it rather than proceeding past it.
 
 ### 4. Verify + close
 - Run the full check suite (tests, typecheck, lint). Wrap long runs with `time`.

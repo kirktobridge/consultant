@@ -14,6 +14,7 @@ for checks. `npm run check:docs` runs the backlog schema + doc-debt checks.
 | [docs/SPEC.md](docs/SPEC.md) | **Source of truth for behavior.** Human-owned — propose diffs, never edit. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, folder layout, key types, the *why*. |
 | [docs/product/BACKLOG.md](docs/product/BACKLOG.md) | **Product/feature backlog** — the pool of shippable work. |
+| [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
 | [docs/research/FRAMEWORK.md](docs/research/FRAMEWORK.md) | **The experiment process** — read before running or recording one. |
 | [.claude/GUIDE.md](.claude/GUIDE.md) | The seven skills and how they hand off. |
 
@@ -51,6 +52,15 @@ it's suspect.
 remember and exit conditions are easy to skip, so the backlog schema check guards
 *both* — open entries carry their fields, and a `won` entry must name where it
 deployed. A won result with no owner is inventory, not value.
+
+**Changing a doc format means changing its checker in the same commit.** The schema is
+documented in the doc, enforced by `scripts/backlog-schema-check.mjs`, and relied on by
+every skill's grep. Those three drift the moment one moves alone. So: to evolve a
+format deliberately, update doc + checker together. **Never loosen the check to paper
+over a malformed entry** — that inverts the tool, turning the thing that catches drift
+into the thing that ratifies it. A failing check is either a bad entry (fix the entry)
+or a genuinely changed convention (change all three); it is never "the check is being
+annoying".
 
 **Every open entry is dated** (`- **Drafted:** YYYY-MM-DD`) — meaning *when its claims
 were last established*. Bumping it after a real re-read is the intended workflow;

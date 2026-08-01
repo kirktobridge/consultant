@@ -53,12 +53,35 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | python3 .claude/edit-guard.
 |---|---|---|
 | `P#` | product backlog IDs | BACKLOG.md, all skills, schema check |
 | `AE#` / `AD#` | research IDs, one namespace per domain | research backlog, schema check |
+| `OD-n` | open decisions (unverified assumptions) | OPEN_DECISIONS.md, schema check |
 | `F#` / `M#` | findings / method lessons | FINDINGS.md |
 | `docs/SPEC.md` | your human-owned source of truth | blocklist, /ship, /implement |
 | `main` | integration branch | /land, /implement, /checkpoint |
 
 Keep namespaces **globally unique across backlogs** — the schema check enforces it,
 and the cross-track pointers (`Deploys as: P42`) are unparseable without it.
+
+## Step 3b — seed the open-decisions register
+
+[docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) is the cheapest high-value thing to
+fill in, and it works on day one — unlike the backlogs, you already know its contents.
+
+Spend twenty minutes listing what your project currently *assumes* and nobody has
+checked: a third-party API's real rate limit or error semantics, a constant someone
+took from a blog post, a scaling limit never actually hit, "users won't do X". Each
+becomes an `OD-n` with a `How to verify:` line.
+
+Two things make it more than a wiki page:
+- an `open` OD **blocks** any entry whose `Depends on:` names it — enforced by the
+  schema check and by /implement's DEPENDS GATE;
+- `/triage groom` sweeps resolutions, so verifying one OD surfaces everything it
+  unblocked. Nothing else in the loop notices.
+
+Keep `refuted` entries as `refuted`. Rewriting one into a `verified` entry describing
+the new truth destroys the most useful signal in the file — that we believed something
+false, and for how long, which is what calibrates trust in everything still `open`.
+
+If your project genuinely has no unverified assumptions, you haven't looked yet.
 
 ## Step 4 — the harness (measurable track only)
 
@@ -147,6 +170,22 @@ proxied greps "proved" no entry was in a given state; nine were.
 **Dating open entries.** Cheap, and it's what makes /implement's premise gate
 *affordable*: re-verify the entries older than their dependencies rather than all of
 them.
+
+**The blocked-on-an-open-OD rule.** It will feel too strict the first time it stops
+you. That's the rule working: an assumption nobody checked is exactly the thing you
+most want to discover *before* building on it, not after. Verify the OD (usually one
+API call or one small experiment) or rescope the entry. Deleting the check because it
+blocked something is how the register becomes decoration.
+
+## Evolving the schema
+
+The format lives in three places — the doc that documents it, the checker that enforces
+it, and every skill's grep that relies on it. **Change all three in the same commit.**
+
+The failure mode to refuse: loosening the check so a malformed entry passes. That
+inverts the tool — the thing that catches drift becomes the thing that ratifies it. A
+red check is either a bad entry (fix the entry) or a real convention change (change all
+three). It is never "the check is being annoying."
 
 ---
 

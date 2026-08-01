@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Classify a raw idea (dev notes, conversation, anywhere) as a measurable experiment vs a product feature and draft the backlog entry — without writing any file. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", or /triage. Hands the draft to /research (research backlog) or /ship (product backlog) to write.
+description: Classify a raw idea (dev notes, conversation, anywhere) as a measurable experiment, a product feature, or an open decision, and draft the backlog entry — without writing any file. Also grooms the backlogs (`/triage groom`) — re-checks blockers, sweeps resolved open decisions, acts on staleness flags. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /research (research backlog) or /ship (product backlog) to write.
 ---
 
 # Triage — idea intake & classification
@@ -38,6 +38,18 @@ This single question routes everything downstream, so run it out loud:
   `Depends on:` names the research ID. This pairing is the system's main idiom — a
   feature that ships on an unvalidated assumption is how you get a shipped default
   nobody can defend.
+- **Neither — it's an assumption, not a question or a feature** → an **open decision**
+  (`OD-n`, [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)). The tell: the
+  idea's real content is *"we're currently assuming X"* about something outside our
+  control — a third-party's behavior, a constant from a doc page, a limit nobody has
+  hit. It isn't an experiment (there's no hypothesis to test, just a fact to look up)
+  and it isn't a feature (nothing ships). Draft an OD entry, and name the entries it
+  blocks — an OD nobody depends on is trivia; an OD with dependents is a gate.
+
+**Blocked-not-rejected:** an idea that's a fine feature but rests on an open OD is
+drafted *and* marked `Depends on: OD-n`, not rejected. The schema check and
+/implement's DEPENDS GATE will hold it until the assumption is verified — which is the
+point. Say so in the output, so the user knows the entry exists but won't be built yet.
 
 **New-track check:** if a research draft opens a new domain or claim-type (it would
 start a new `backlog/*.md`, or need a kind of measurement no existing harness
@@ -65,8 +77,38 @@ first problem, not a caveat — say which, in the entry.
 3. Draft the entry in the destination's template, including where it slots
    (payoff order for research; epic for product).
 4. Present draft + destination to the user; on approval, hand to /research or /ship
-   to write it.
+   to write it. (An OD draft goes to whichever pen the user prefers — the decisions
+   register has no single writer, only an enforced shape.)
+
+## Groom mode (`/triage groom`, "groom the backlog")
+
+The schema check *detects* rot and then waits for someone to care. This mode is the
+someone. It reads, proposes, and writes nothing — same contract as the rest of the
+skill. Run it periodically, and always after an OD resolves.
+
+1. **Re-check every blocked item's blocker.** For each entry with `Depends on:`,
+   resolve each ID's current status. A dependency that has gone terminal since the
+   entry was drafted means this entry is **unblocked** — say so; that's the highest-
+   value output of the pass, because nothing else notices.
+2. **Sweep OD resolutions.** For each OD that flipped to `verified`/`refuted` since
+   the last groom, list every entry naming it. A `refuted` OD is the urgent case:
+   entries resting on it are not merely unblocked, they may be **void or wrong**, and
+   anything already shipped on that assumption needs a fresh look.
+3. **Act on staleness flags.** Run the schema check; for every entry it flags as
+   drafted before a dependency landed, re-read the entry against the code and report
+   one of: *still accurate* (bump `Drafted:` — after a real re-read, never to quiet
+   the check), *needs rescoping* (say how), or *void* (say why).
+4. **Flag stale claims.** An entry `in-progress` with no branch and no recent commits
+   is an abandoned claim — surface it; /checkpoint clears it.
+5. **Propose, never silently apply.** Re-ranking, demoting, and deleting are the
+   user's calls. Say what you'd change and why; let them decide. Priorities that
+   events have overtaken are worth naming explicitly — that's usually why a groom was
+   asked for.
+
+Output is a short report: unblocked, newly-void, stale, and abandoned — each with the
+one action it needs. Nothing is written until the user picks.
 
 ## Not this skill
 - Writing the entry → **/research** (Phase P) or **/ship** (Intake).
 - Deciding *when* to build it → the backlogs are pools; sequencing is the user's call.
+- Verifying an OD → whoever does the work; /research if it needs a measurement.

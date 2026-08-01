@@ -51,6 +51,11 @@ pointed at the wrong path. So:
 4. `## Next up` staleness — the schema check already fails CI on a dangling/terminal
    queue, so a green suite covers it; if a feature shipped this session, confirm /ship
    refreshed the head.
+   **Did an OD resolve this session?** (`git diff main -- docs/OPEN_DECISIONS.md`, or
+   check the register for a `Resolution:` dated today.) If so, name every entry whose
+   `Depends on:` cites it — those are now unblocked, and a `refuted` OD may have
+   *voided* them instead. Nothing else in the loop notices a resolution, so this is
+   where the sweep gets triggered; the deep pass is `/triage groom`.
 5. `git branch --no-merged main` — every unmerged branch should have a HANDOFF section
    saying whether it's ready to land or what blocks it. A branch with no section is an
    unknown — flag it to the user. Landing is **/land**'s job, not this skill's; just

@@ -75,6 +75,19 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
    next dependency-ready entry (payoff-ranked, ≤5, one-line why). The schema check
    fails CI if the queue dangles or lists a terminal ID.
 
+## When the schema check goes red
+
+Two legitimate causes, and one illegitimate response.
+
+- **A malformed entry** → fix the entry. This is the common case.
+- **A convention you're deliberately changing** → update the doc that documents the
+  format, `scripts/backlog-schema-check.mjs`, and any skill grep that relies on it,
+  **in the same commit**. Schema, enforcement, and docs stay in lockstep or they drift
+  apart within a session.
+- **Never loosen the check to make a red entry pass.** That inverts the tool: the thing
+  that catches drift becomes the thing that ratifies it, and every future reader
+  inherits the malformed row as precedent.
+
 ## Keep it lightweight (refuse to over-document)
 - A status flip + one-line note is usually the whole job. Prefer editing an existing
   line over adding a section.

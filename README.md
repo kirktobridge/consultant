@@ -26,40 +26,49 @@ the format in CI. You get structured-data reliability without leaving prose.
 ("nothing else calls this") requires a **positive control** first — an empty result
 from a broken tool is indistinguishable from a true negative.
 
+Grading claims one sentence at a time still leaves the *asserted* ones unindexed, so
+[docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) is the standing register of them —
+assumptions the project rests on that nobody has verified. An `open` one **blocks** the
+work that depends on it, in CI and at /implement's gate. Never build on an unverified
+figure.
+
 ## The loop
 
 ```
-                        ┌──────────┐
-   raw idea ──────────► │ /triage  │  classifies, drafts, writes nothing
-                        └────┬─────┘
-              ┌──────────────┴──────────────┐
-   metric+bar?│ YES                         │ NO
-              ▼                             ▼
-        ┌───────────┐                 ┌─────────────┐
-        │ /research │                 │ /implement  │  code + tests, feature branch
-        │  AE#/AD#  │                 └──────┬──────┘
-        └─────┬─────┘                        ▼
-              │  run → log →           ┌───────────┐
-              │  FINDINGS → close      │  /verify  │  drives the real app (forked)
-              └───────────────┬────────┴─────┬─────┘
-                              ▼
-                         ┌─────────┐
-                         │  /land  │  merge, full suite on merged result (forked)
-                         └────┬────┘
-                              ▼
-                         ┌─────────┐
-                         │  /ship  │  status flips, Next up, architecture *why*
-                         └────┬────┘
-                              ▼
-                       ┌─────────────┐
-                       │ /checkpoint │  dangling-state audit, commits, HANDOFF baton
-                       └─────────────┘
+                          ┌──────────┐
+     raw idea ──────────► │ /triage  │  classifies, drafts, writes nothing
+                          └────┬─────┘
+        ┌──────────────────────┼──────────────────────┐
+ metric+bar?│ YES              │ NO          it's an │ ASSUMPTION
+            ▼                  ▼                      ▼
+      ┌───────────┐      ┌─────────────┐     ┌──────────────────┐
+      │ /research │      │ /implement  │     │ OPEN_DECISIONS   │
+      │  AE#/AD#  │      └──────┬──────┘     │  OD-n — blocks   │
+      └─────┬─────┘             ▼            │  what depends    │
+            │  run → log →  ┌───────────┐    │  on it           │
+            │  FINDINGS →   │  /verify  │    └──────────────────┘
+            │  close        └─────┬─────┘
+            └──────────────┬──────┘
+                           ▼
+                      ┌─────────┐
+                      │  /land  │  merge, full suite on merged result (forked)
+                      └────┬────┘
+                           ▼
+                      ┌─────────┐
+                      │  /ship  │  status flips, Next up, architecture *why*
+                      └────┬────┘
+                           ▼
+                    ┌─────────────┐
+                    │ /checkpoint │  dangling-state audit, commits, HANDOFF baton
+                    └─────────────┘
 ```
 
 The fork at the top is the whole design. *Can this state a success criterion — a metric
-and a bar?* Yes → prove it. No → build it. Ideas that are both get **split**, with the
-product entry's `Depends on:` naming the experiment — which is how a feature stops
-shipping on an assumption nobody measured.
+and a bar?* Yes → prove it. No → build it. *Is it neither — just something we're
+assuming?* → register it, and it blocks whatever rests on it until someone checks.
+Ideas that are both experiment and feature get **split**, with the product entry's
+`Depends on:` naming the experiment — which is how a feature stops shipping on an
+assumption nobody measured.
 
 ## What's in the box
 
@@ -73,6 +82,7 @@ shipping on an assumption nobody measured.
   skills/research/stats.py    Wilson CI + z-test + power (portable as-is)
 docs/
   product/BACKLOG.md          features (P#)              ← written only by /ship
+  OPEN_DECISIONS.md           unverified assumptions (OD-n) — an open one blocks
   research/FRAMEWORK.md       the experiment process (the authority)
   research/backlog/           questions (AE#/AD#)        ← written only by /research
   research/log/               append-only run records

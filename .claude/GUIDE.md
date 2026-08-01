@@ -16,11 +16,18 @@ approve.
 ```
 /triage add a sound when an item is placed
 /triage what if we pruned symmetric first moves
+/triage groom                  ← re-check blockers, sweep resolved ODs, act on staleness
 triage the dev notes
 ```
 
-→ You get: research or product? already tracked? + a ready draft. Approve it and
-/research or /ship writes it in.
+→ You get: research, product, or **open decision**? already tracked? + a ready draft.
+Approve it and /research or /ship writes it in.
+
+**Groom mode** is the other half. The schema check *detects* rot — stale entries,
+dangling queues — and then waits for someone to care. `/triage groom` is that someone:
+it reports what's newly unblocked (usually the most valuable output — nothing else
+notices), what a `refuted` assumption just voided, and what needs re-dating. It
+proposes; you decide.
 
 ### /research — "run the experiment"
 The whole experiment loop for `docs/research/`: pick a backlog entry, run the harness,
@@ -135,6 +142,7 @@ read .claude/HANDOFF.md   (or just: "what's next?")
 |---|---|---|
 | `docs/research/` (backlog, log, FINDINGS) | /research | branch or main |
 | `docs/product/BACKLOG.md`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship | **main only** |
+| `docs/OPEN_DECISIONS.md` | *no single pen* — shape enforced by the schema check | anywhere |
 | `.claude/HANDOFF.md` | /checkpoint (own branch's section only) | local, gitignored |
 | `src/`, `tests/` | /implement | branch |
 | *(nothing — scratchpad scripts only)* | /verify, /triage | — |

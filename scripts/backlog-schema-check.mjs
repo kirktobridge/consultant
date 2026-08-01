@@ -61,6 +61,22 @@ const BACKLOGS = [
   },
 ];
 
+// Open Decisions: load-bearing assumptions. Not a backlog (no `## Next up`, no
+// payoff order) but the same shape rules apply, and entries elsewhere may
+// `Depends on:` them — which is the point.
+const DECISIONS = {
+  file: 'docs/OPEN_DECISIONS.md',
+  idPattern: /^OD-\d+$/,
+  kind: 'decisions',
+  open: new Set(['open']),
+  terminal: new Set(['verified', 'refuted', 'moot']),
+  always: [['Assumption', /\*\*Assumption:\*\*/]],
+  whileOpen: [
+    ['Why it matters', /\*\*Why it matters:\*\*/],
+    ['How to verify', /\*\*How to verify:\*\*/],
+  ],
+};
+
 const FINDINGS = 'docs/research/FINDINGS.md';
 const HEADING = new RegExp(`^###\\s+\\S+\\s+${DASH}\\s+\\S`);
 
@@ -76,8 +92,25 @@ const has = (lines, re) => lines.some((l) => re.test(l));
  */
 function sectionVocab(text) {
   const out = new Set();
-  const m = text.match(/Status vocab[^\n]*(?:\n(?!\n)[^\n]*)*/i);
-  if (m) for (const t of m[0].matchAll(/`([^`]+)`/g)) out.add(t[1].toLowerCase());
+  // Two shapes in the wild, both legitimate:
+  //   inline — `Status vocab: `a` / `b` / `c`.`  (runs to the blank line)
+  //   heading — `## Status vocab` with the list a line or two below
+  // Take the first backtick-bearing run after the marker either way.
+  const m = text.match(/Status vocab\b[\s\S]{0,600}/i);
+  if (!m) return out;
+  // A vocab list may wrap across lines, so consume consecutive token-bearing
+  // lines; stop at the first gap after tokens have started, so an explanatory
+  // table further down doesn't drag in unrelated backticked words.
+  let started = false;
+  for (const line of m[0].split('\n')) {
+    const toks = [...line.matchAll(/`([^`]+)`/g)];
+    if (toks.length === 0) {
+      if (started) break;
+      continue;
+    }
+    started = true;
+    for (const t of toks) out.add(t[1].toLowerCase());
+  }
   return out;
 }
 
@@ -86,7 +119,13 @@ function parse(b) {
   const lines = text.split('\n');
   const entries = [];
   let cur = null;
+  // Docs carry their own entry template inside a fenced block, and a template is
+  // not an entry — parsing one as real produces a phantom duplicate ID and a
+  // cascade of downstream failures. Skip fences everywhere.
+  let inFence = false;
   for (const line of lines) {
+    if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
+    if (inFence) { if (cur) cur.body.push(line); continue; }
     const h = line.match(/^###\s+(\S+)\s+/);
     if (h) {
       if (cur) entries.push(cur);
@@ -124,24 +163,29 @@ const labelled = (body, re) => {
   return out;
 };
 
+// Backlog entries are **Drafted:**; open decisions are **Raised:**. Same idea —
+// when this entry's claims were last established — so one accessor reads both.
 const draftedOn = (body) =>
-  body.find((l) => /\*\*Drafted:\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+  body.find((l) => /\*\*(Drafted|Raised):\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
 
 const terminalDateOf = (body) =>
   body.find((l) => /\*\*(Shipped|Closed|Landed):\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
+  body.find((l) => /\*\*Resolution:\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
   null;
 
 const dependsOn = (body) =>
-  [...labelled(body, /\*\*Depends on:\*\*/).join(' ').matchAll(/\b((?:P|AE|AD)\d+)\b/g)].map(
-    (m) => m[1],
-  );
+  [
+    ...labelled(body, /\*\*Depends on:\*\*/)
+      .join(' ')
+      .matchAll(/\b(OD-\d+|(?:P|AE|AD)\d+)\b/g),
+  ].map((m) => m[1]);
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
 
-const present = BACKLOGS.filter((b) => existsSync(join(ROOT, b.file)));
+const present = [...BACKLOGS, DECISIONS].filter((b) => existsSync(join(ROOT, b.file)));
 const parsed = present.map(parse);
 const byId = new Map(parsed.flatMap((p) => p.entries.map((e) => [e.id, e])));
 const cfgOf = (file) => present.find((b) => b.file === file);
@@ -225,6 +269,35 @@ for (const p of parsed) {
       );
     }
   }
+
+  // — nothing open may depend on an unresolved assumption —
+  // apacenye's rule, imported: "never build on an unverified figure." An entry
+  // resting on an `open` OD is blocked, not merely risky — work built on a false
+  // assumption isn't just wasted, it ships and looks correct until the assumption
+  // is finally tested, taking everything downstream with it. /implement's DEPENDS
+  // GATE refuses these; this is the CI half.
+  for (const e of p.entries) {
+    const isOpen = b.open.has(e.statusToken ?? '');
+    for (const depId of dependsOn(e.body)) {
+      if (!/^OD-/.test(depId)) continue;
+      const od = byId.get(depId);
+      // A dangling reference is wrong at any status: a terminal entry citing a
+      // nonexistent OD is a broken audit trail, not a harmless leftover.
+      if (!od) { fail(`${p.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
+      // The *block* only applies to work that could actually be picked up.
+      if (!isOpen) continue;
+      if (od.statusToken === 'open') {
+        fail(
+          `${p.file}: ${e.id} depends on ${depId}, still \`open\` — an unverified ` +
+            `assumption blocks the work that rests on it. Verify the OD, or rescope ` +
+            `${e.id} so it no longer depends on it.`,
+        );
+      }
+    }
+  }
+
+  // The decisions register is not a queue: no payoff order, no `## Next up`.
+  if (b.kind === 'decisions') continue;
 
   // — `## Next up` never dangles or goes stale —
   if (p.nextUp.length === 0) fail(`${p.file} has no \`## Next up\` IDs`);
