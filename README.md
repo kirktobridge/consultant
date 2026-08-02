@@ -110,7 +110,7 @@ scripts/
   verify-guards.mjs           asserts the enforcement layer is still armed
   grep-checked.mjs            a search whose negative results are worth something
   session-audit.mjs           the decidable half of /checkpoint
-tests/                        141 tests: every check proven to still bite, the loop
+tests/                        143 tests: every check proven to still bite, the loop
                               walked end-to-end on a fake project, and the skills'
                               own instructions held against rot
 evals/                        the prompt half — does reading a SKILL.md cause the
@@ -127,9 +127,9 @@ being prose — that's how L1 stopped being an exhortation and became `grep-chec
 ## Try it
 
 ```bash
-npm test                     # → 141 tests, then the schema + guard checks
+npm test                     # → 143 tests, then the schema + guard checks
 npm run eval -- --dry-run    # → renders every eval prompt, self-checks the graders
-npm run check:docs           # → backlog-schema: OK (5 entries across 2 file(s))
+npm run check:docs           # → backlog-schema: OK (6 entries across 2 file(s))
 npm run audit                # → session-audit: clean … (or the findings, with actions)
 npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 
