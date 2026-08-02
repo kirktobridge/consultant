@@ -116,22 +116,25 @@ The repo ships a minimal [package.json](package.json):
 
 ```jsonc
 "scripts": {
-  "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs",
+  "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs && npm run check:guards",
   "check:docs": "node scripts/backlog-schema-check.mjs --all",
-  "audit": "node scripts/session-audit.mjs"
+  "check:guards": "node scripts/verify-guards.mjs --all",
+  "audit": "node scripts/session-audit.mjs",
+  "install-git-hooks": "ln -sf ../../.claude/hooks/pre-commit .git/hooks/pre-commit"
 }
 ```
 
 Add your project's own tests to the `test` line. Keep `tests/` — it is what stops the
 checks rotting into decoration, and the loop walk in `tests/loop.test.mjs` doubles as
-the executable statement of how the system is meant to behave. `audit` stays out of
-`test` deliberately: it reads session state, where an uncommitted tree is normal.
+the executable statement of how the system is meant to behave.
 
-The PostToolUse hook already runs the same check in-session, the moment an edit touches
-a tracked doc — feeding violations back while the context to fix them is still live.
-CI is the durability half, for edits made outside a session. If your project has no
-Node toolchain, drop the `package.json` and call the script directly; it has no
-dependencies.
+`check:guards` belongs in `test` specifically, and not only in the hook — see *The
+three placements of `verify-guards`* below. `audit` stays out deliberately: it reads
+session state, where an uncommitted tree is normal rather than a failure.
+
+The PostToolUse hooks already run the doc and guard checks in-session, the moment an
+edit touches a tracked file — feeding violations back while the context to fix them is
+still live. CI is the durability half, for edits made outside a session.
 
 ## Step 6 — start your own LESSONS.md
 
