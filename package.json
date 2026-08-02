@@ -1,0 +1,12 @@
+{
+  "name": "skill-suite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A doc-driven working loop: six Claude Code skills plus the documents they read and write.",
+  "scripts": {
+    "check:docs": "node scripts/backlog-schema-check.mjs --all",
+    "audit": "node scripts/session-audit.mjs",
+    "test": "npm run check:docs"
+  }
+}
