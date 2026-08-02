@@ -108,10 +108,16 @@ The repo ships a minimal [package.json](package.json):
 
 ```jsonc
 "scripts": {
+  "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs",
   "check:docs": "node scripts/backlog-schema-check.mjs --all",
-  "test": "<your tests> && npm run check:docs"
+  "audit": "node scripts/session-audit.mjs"
 }
 ```
+
+Add your project's own tests to the `test` line. Keep `tests/` — it is what stops the
+checks rotting into decoration, and the loop walk in `tests/loop.test.mjs` doubles as
+the executable statement of how the system is meant to behave. `audit` stays out of
+`test` deliberately: it reads session state, where an uncommitted tree is normal.
 
 The PostToolUse hook already runs the same check in-session, the moment an edit touches
 a tracked doc — feeding violations back while the context to fix them is still live.

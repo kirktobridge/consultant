@@ -74,7 +74,18 @@ stops matching — a renamed field, a changed heading shape, a regex narrowed on
 character too far — reports success. Green means "found no violations", which is
 indistinguishable from "looked for nothing".
 
-**Rule:** when you change a check, prove it still bites. Feed it input you *know* is
-bad and confirm it fails, before trusting the green run on real input. The entry count
-in the checker's success line exists for this — `OK (n entries across m file(s))` is a
-positive control printed on every run, and a number that quietly drops is the tell.
+**Rule:** *mechanically enforced.* `npm test` feeds every check input that is known bad
+and asserts it fails — see [tests/](../tests/). Proving a check bites was a manual ritual
+for a while, performed once and then thrown away, which is the same failure one level up:
+the proof existed only in a transcript. Two supports:
+
+- **The tests assert the failure *messages*, not just the exit codes.** The wording is
+  the interface skills act on; a violation reworded into something vague keeps every
+  check green while removing the reason anyone obeys it.
+- **The entry count is a positive control printed on every run.**
+  `OK (n entries across m file(s))` — a number that quietly drops means the parser
+  broke, not that drift left.
+
+The corollary for tests themselves: a fixture that renders a *present but meaningless*
+field (`- **Value:** null`) makes a missing-field test pass while proving nothing. The
+test suite is a check, and checks can stop looking too.

@@ -5,8 +5,8 @@
   "type": "module",
   "description": "A doc-driven working loop: six Claude Code skills plus the documents they read and write.",
   "scripts": {
+    "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs",
     "check:docs": "node scripts/backlog-schema-check.mjs --all",
-    "audit": "node scripts/session-audit.mjs",
-    "test": "npm run check:docs"
+    "audit": "node scripts/session-audit.mjs"
   }
 }

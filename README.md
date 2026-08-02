@@ -109,6 +109,8 @@ scripts/
   backlog-schema-check.mjs    the keystone: asserts the docs stay greppable
   grep-checked.mjs            a search whose negative results are worth something
   session-audit.mjs           the decidable half of /checkpoint
+tests/                        90 tests: every check proven to still bite, plus the
+                              whole loop walked end-to-end on a fake project
 PORTING.md                    how to adapt all of this
 ```
 
@@ -121,6 +123,7 @@ being prose — that's how L1 stopped being an exhortation and became `grep-chec
 ## Try it
 
 ```bash
+npm test                     # → 90 tests, then backlog-schema: OK
 npm run check:docs           # → backlog-schema: OK (5 entries across 2 file(s))
 npm run audit                # → session-audit: clean … (or the findings, with actions)
 
