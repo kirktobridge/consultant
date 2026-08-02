@@ -107,6 +107,7 @@ docs/
   dev_notes/OPEN_IDEAS.md     your raw dump              ← human-only, hook-blocked
 scripts/
   backlog-schema-check.mjs    the keystone: asserts the docs stay greppable
+  verify-guards.mjs           asserts the enforcement layer is still armed
   grep-checked.mjs            a search whose negative results are worth something
   session-audit.mjs           the decidable half of /checkpoint
 tests/                        90 tests: every check proven to still bite, plus the
@@ -126,6 +127,7 @@ being prose — that's how L1 stopped being an exhortation and became `grep-chec
 npm test                     # → 90 tests, then backlog-schema: OK
 npm run check:docs           # → backlog-schema: OK (5 entries across 2 file(s))
 npm run audit                # → session-audit: clean … (or the findings, with actions)
+npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 
 # a negative you can trust, vs one you can't — note the exit codes
 node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/   # exit 1: VERIFIED negative

@@ -20,6 +20,12 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/backlog-schema-check.mjs\"",
             "timeout": 15,
             "statusMessage": "Checking backlog schema"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/verify-guards.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Verifying guards are armed"
           }
         ]
       }

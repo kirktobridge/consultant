@@ -179,6 +179,25 @@ in-process (nothing can proxy it) and refuses to report a zero it can't back —
 means *not evidence*, not *none found*. Portable as-is; it has no project-specific
 content. See LESSONS L1.
 
+**The three placements of `verify-guards`.** `.claude/settings.json` is deliberately
+*not* in the edit blocklist — blocking it would stop Claude managing hooks and
+permissions, which is a legitimate thing to want. The cost is that an agent can disarm
+the guard by editing the file that declares it, so the check runs in three places with
+deliberately different reach:
+
+| where | reach | can it be disabled by the edit it catches? |
+|---|---|---|
+| `npm test` / CI | every clone, every run | **no** — lives in package.json |
+| PostToolUse hook | this session, immediately | yes — it is declared in settings.json |
+| `.claude/hooks/pre-commit` | this clone, if installed | yes — `--no-verify`, or never installing it |
+
+Only the first is a guarantee; the other two are fast feedback. A check declared inside
+the thing it guards is not a guard. Do not "simplify" by keeping only the hook.
+
+Pre-commit rather than post-commit, for the same reason: post-commit runs after the
+commit exists, so it can only narrate a state it was too late to prevent. Install with
+`npm run install-git-hooks`.
+
 **The audit as a script, not a checklist.** /checkpoint's five end-of-session checks
 live in `scripts/session-audit.mjs` because they are fully decidable, and because a
 model re-deriving them by hand at the end of a long session is exactly when eyeballing

@@ -1,0 +1,25 @@
+#!/bin/sh
+# Pre-commit: refuse a commit that leaves the enforcement layer disarmed.
+#
+# Install (opt-in, per clone):
+#   ln -sf ../../.claude/hooks/pre-commit .git/hooks/pre-commit
+#
+# THIS IS THE WEAKEST OF THE THREE PLACEMENTS, and it is worth knowing why before
+# relying on it. Git hooks live in .git/hooks/, which is not version controlled, is
+# not installed by `git clone`, and is skipped entirely by `git commit --no-verify`.
+# So this catches *your own* mistakes on *this* machine and nothing else.
+#
+# The copy that actually holds is in `npm test`, which is committed, runs in CI, and
+# cannot be switched off by editing the file it is checking. Pre-commit is the fast
+# local echo of that, not a substitute for it.
+#
+# Pre-commit rather than post-commit on purpose: post-commit runs after the commit
+# exists, so it can only ever narrate a disarmed state it was too late to prevent.
+
+if ! node scripts/verify-guards.mjs --all; then
+  echo ""
+  echo "pre-commit: refusing — this commit would leave the guards disarmed."
+  echo "Fix the config, or if the change is deliberate, update REQUIRED in"
+  echo "scripts/verify-guards.mjs in the same commit."
+  exit 1
+fi

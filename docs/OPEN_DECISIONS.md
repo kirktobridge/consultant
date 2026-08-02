@@ -143,6 +143,24 @@ is readable from this side too. The schema check reads the `Resolves:` half.
   earned a spike rather than staying parked.
 - **Resolution:** —
 
+### OD-3 — Does Claude Code anchor hook matchers against the tool name?
+- **Status:** open
+- **Raised:** 2026-08-02
+- **Assumption:** a hook `matcher` is matched **unanchored** — i.e. the matcher `Edit`
+  would also fire for `MultiEdit`, because the tool name contains it. We do not know
+  this; the docs we have say only that matchers are regexes.
+- **Why it matters:** `scripts/verify-guards.mjs` decides whether a guard still covers
+  every write tool. It currently takes the **conservative** reading and requires
+  anchored coverage, so a matcher of `Edit` is reported as *not* covering `MultiEdit`.
+  If the harness really is unanchored we are merely strict — we demand
+  `Edit|Write|MultiEdit` be spelled out, which is clearer anyway. If we had assumed
+  unanchored and the harness anchors, a narrowed matcher would leave `MultiEdit`
+  genuinely unguarded while the check reported *armed*. Only one of those two errors is
+  recoverable, which is why the assumption is written down rather than picked.
+- **How to verify:** set a throwaway PreToolUse hook with matcher `Edit` that logs the
+  tool name, then trigger a `MultiEdit` and read the log.
+- **Resolution:** —
+
 ### OD-2 — Example resolved decision, showing a refutation
 - **Status:** refuted
 - **Raised:** 2026-08-01
