@@ -5,7 +5,7 @@
      costs tokens on every turn. Link out rather than explain. -->
 
 **Run:** `<start command>`. `<test command>` runs the suite. `<typecheck>` / `<lint>`
-for checks. `npm run check:docs` runs the backlog schema + doc-debt checks.
+for checks. `npm run check:docs` runs the backlog schema check.
 
 ## Canonical docs — read before working
 
@@ -15,14 +15,14 @@ for checks. `npm run check:docs` runs the backlog schema + doc-debt checks.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, folder layout, key types, the *why*. |
 | [docs/product/BACKLOG.md](docs/product/BACKLOG.md) | **Product/feature backlog** — the pool of shippable work. |
 | [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
-| [docs/research/FRAMEWORK.md](docs/research/FRAMEWORK.md) | **The experiment process** — read before running or recording one. |
-| [.claude/GUIDE.md](.claude/GUIDE.md) | The seven skills and how they hand off. |
+| [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
+| [.claude/GUIDE.md](.claude/GUIDE.md) | The six skills and how they hand off. |
 
 ## Doc discipline (avoid the re-align treadmill)
 
 - **Single source of truth per fact:** behavior → SPEC, structure/why → ARCHITECTURE,
-  plan → BUILD_ORDER, measurable experiments → `docs/research/`, product features →
-  `docs/product/BACKLOG.md`. Once code exists, **code + tests own the *what*; docs
+  plan → BUILD_ORDER, features → `docs/product/BACKLOG.md`, unverified assumptions →
+  `docs/OPEN_DECISIONS.md`. Once code exists, **code + tests own the *what*; docs
   keep the *why*.**
 - **ARCHITECTURE code blocks are illustrative sketches** — when they diverge from the
   source, the source wins; don't sync every signature back into the doc.
@@ -33,13 +33,14 @@ for checks. `npm run check:docs` runs the backlog schema + doc-debt checks.
 
 The premise gate guards claims you **read**. These guard claims you **write** — a
 sentence that's wrong on arrival is worse than one that rotted, because nothing signals
-it's suspect.
+it's suspect. The failures that bought these rules are in [docs/LESSONS.md](docs/LESSONS.md).
 
 - **A tool's empty result is not evidence.** "grep found none" ≠ "there are none": a
   proxied, misflagged, or wrong-path search returns empty *exactly* like a true
-  negative. Before promoting a "none found" to a durable claim, run a **positive
-  control** — the same tool against a pattern you know matches. Empty control means
-  your tooling lied, not the repo.
+  negative. Search with `node scripts/grep-checked.mjs --control '<known match>'
+  '<pattern>' <paths>`, which grades its own zero — **exit 1 is a negative you may
+  write down; exit 2 means the search never worked.** Read the exit code, not the
+  absence of output.
 - **Never write an exhaustive inventory into prose.** "X and Y are the last remaining
   Z", "nothing else calls W" — unmaintainable, and nothing can hold them. Write the
   **consequence**, not the inventory. If the inventory matters, it belongs in a check.
@@ -49,9 +50,17 @@ it's suspect.
   your guess as fact.
 
 **Schema checks run on the way *out*, not just in.** Entry conditions are easy to
-remember and exit conditions are easy to skip, so the backlog schema check guards
-*both* — open entries carry their fields, and a `won` entry must name where it
-deployed. A won result with no owner is inventory, not value.
+remember and exit conditions are easy to skip, because by then the work feels done. So
+the schema check guards *both* — open entries carry their fields, and a **spike that
+ships must have written its answer back** into the assumption it was built to settle.
+A finding nobody recorded is inventory, not value.
+
+**An unverified assumption blocks work in proportion to how close that work is.** An
+entry parked in the pool may rest on an `open` OD — that's the intended way to file a
+blocked idea. The same entry in `## Next up` or flipped `in-progress` is a failure: the
+queue means *dependency-ready*, and in-progress means someone is building on it right
+now. Graduating the severity is what keeps the check credible; a check that's
+permanently red teaches people to ignore it.
 
 **Changing a doc format means changing its checker in the same commit.** The schema is
 documented in the doc, enforced by `scripts/backlog-schema-check.mjs`, and relied on by

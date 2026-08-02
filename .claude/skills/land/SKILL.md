@@ -1,6 +1,6 @@
 ---
 name: land
-description: Merge one finished feature branch into main, verify the merged result (full test suite), then run /ship's doc flips on main — the integration step between branch work (/implement, /research) and /checkpoint. Use for "land this branch", "merge to main", "integrate feat/…", or /land.
+description: Merge one finished feature branch into main, verify the merged result (full test suite), then run /ship's doc flips on main — the integration step between branch work (/implement) and /checkpoint. Use for "land this branch", "merge to main", "integrate feat/…", or /land.
 context: fork
 ---
 
@@ -32,15 +32,16 @@ deleted or not, and on failure *exactly* what failed and what state main was lef
    undo the merge (`git reset --merge ORIG_HEAD`), report what failed, and leave main
    untouched — **never leave main broken**.
 4. Run **/ship** on main: terminal status flip, `## Next up` refresh, any BUILD_ORDER /
-   ARCHITECTURE touch-up. For a research branch, check the `AE#`/`AD#` loop is closed
-   (`Status` terminal + `Log:` linked) — that's /research's file; bounce there if it
-   isn't. If the branch changes a shipped default backed by a finding, check that
-   finding's confidence label — landing on a `replication-pending` finding is allowed
-   but must be named in the final report.
+   ARCHITECTURE touch-up. If the branch was a **spike** (`Resolves: OD-n`), /ship also
+   writes the OD's `Resolution:` and flips its status — the answer landing in the code
+   without landing in the register is the exact failure the pairing check exists for.
+   Name the resolution in your final report, and say if it was a **refutation**: that
+   may void other entries rather than unblock them, and the main session needs to know
+   before it picks the next thing up.
 5. Delete the branch (`git branch -d`). Its HANDOFF section is pruned by the next
    /checkpoint (sole writer of HANDOFF), not here.
 
 ## Not this skill
-- Doc edits → **/ship** (invoked as step 4, never replaced). Research docs → **/research**.
+- Doc edits → **/ship** (invoked as step 4, never replaced).
 - Session closeout / writing HANDOFF → **/checkpoint**.
 - Building the feature → **/implement**.

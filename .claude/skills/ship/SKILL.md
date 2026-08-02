@@ -1,6 +1,6 @@
 ---
 name: ship
-description: The sole pen for the product docs — flip product-backlog statuses (claims and terminal), tick the build plan, keep the architecture doc's *why* current, and append approved /triage drafts — minimally, without restating code. Runs on main, usually as /land's last step. Use for "mark X shipped", "we shipped Y, update docs", "add the approved draft to the backlog", "flip P# to in-progress", "/ship". Product-side complement to /research (which handles experiments).
+description: The sole pen for the tracked docs — flip product-backlog statuses (claims and terminal), record open-decision resolutions, tick the build plan, keep the architecture doc's *why* current, and append approved /triage drafts — minimally, without restating code. Runs on main, usually as /land's last step. Use for "mark X shipped", "we shipped Y, update docs", "add the approved draft to the backlog", "flip P# to in-progress", "resolve OD-3", "/ship".
 ---
 
 # Ship — the pen for the product docs
@@ -17,16 +17,21 @@ Don't restate signatures or duplicate what the code already says.
 
 /implement verifies claims it **reads**. This skill is a *pen*, so it owes the same
 standard to claims it **writes** — single-writer settles who edits, not what may be
-asserted. Before committing any factual claim about the code:
+asserted. The scars behind these rules are in
+[docs/LESSONS.md](../../../docs/LESSONS.md). Before committing any factual claim about
+the code:
 
 - **Verify it now, at the standard you'd demand of one you read.** A claim written
   today that's wrong on arrival is worse than one that rotted, because the next
   session has no reason to doubt it.
 - **A tool's empty result is not evidence.** "grep found none" ≠ "there are none" — a
-  proxied/misflagged/wrong-path search returns empty exactly like a true negative.
-  Before writing a negative you can't otherwise support, run a **positive control**:
-  the same tool against a pattern you *know* matches. If the control comes back empty,
-  your tooling lied, not the repo.
+  proxied/misflagged/wrong-path search returns empty exactly like a true negative. Use
+  `node scripts/grep-checked.mjs --control '<pattern you know matches>' '<pattern>' <paths>`
+  rather than a bare grep: it searches in-process (so nothing can proxy it) and grades
+  its own zero. **Exit 1 = a negative you may write down; exit 2 = the search never
+  worked, so the result is not evidence.** Without `--control` it still verifies the
+  files were readable, but labels the negative WEAK — don't promote a WEAK negative
+  into a doc.
 - **Never write an exhaustive inventory into prose** — "X and Y are the last remaining
   Z", "nothing else calls W". These rot on contact and nothing can hold them. Write
   the **consequence** ("this needs an exemption list"), not the inventory. If the
@@ -40,9 +45,13 @@ asserted. Before committing any factual claim about the code:
 **Single-writer contract:** this skill is the sole writer of
 [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md),
 [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md), and
-[docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md). It writes **nothing else** —
-`docs/research/**` belongs to /research; the spec is human-owned (propose diffs, never
-edit).
+[docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md). It writes **nothing else** — the
+spec is human-owned (propose diffs, never edit).
+
+[docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) is the exception: it has **no
+single pen** — an assumption gets settled by whoever hits it — and this skill is simply
+the usual hand doing the writing. What's enforced there is the *shape*, by the schema
+check, not the author.
 
 **Edits land on main only.** Feature branches never carry edits to these three files
 (two parallel branches touching `## Next up` conflict every time). So: the
@@ -59,12 +68,16 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 | What shipped | Doc | Edit |
 |---|---|---|
 | Product feature / UX / UI | [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) | flip entry `Status:` → `shipped`, or `partial` + note which milestone landed. |
-| A deployed research finding | *(not yours)* | **don't edit `docs/research/`** — that's /research's file. Check its `AE#`/`AD#` is closed (`Status` terminal + `Log:` linked); if not, run **/research** to close it. Here, just cross-link the product entry to the `AE#`/`F#`. |
+| A spike landed (`Resolves: OD-n`) | [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) | write the OD's `**Resolution:**` — what was found, how, and the date — and flip its `Status:` to `verified` / `refuted` / `moot`. Then flip the spike entry itself. Both, same commit. |
 | A build phase completed | [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md) | tick / delete the phase (it's disposable). |
 | Structure/architecture changed | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) | update the *why* **only** — not signatures (its code blocks are illustrative sketches; the source wins). |
 | Rules / spec changed | *(human-only)* | **do not edit** the spec — it's human-owned and edit-guard blocks it. Propose the exact diff to the user, and flag that ARCHITECTURE needs its matching update once applied. |
 
-3. **Cross-link** if the shipped item had a research question or dependency.
+3. **Sweep what a resolution unblocked.** If this pass wrote an OD `Resolution:`, name
+   every entry whose `Depends on:` cites it — they just changed state and nothing else
+   notices. A `verified` OD unblocks them; a **`refuted`** one may have *voided* them,
+   which is the case worth stopping over. Report the list; the deep pass is
+   `/triage groom`.
 4. **Verify:** relative links resolve; no stale `proposed`/`deferred`/`partial` left on
    an entry that's now fully shipped. Before writing an "X is still owed" clause into a
    terminal flip, check the obligation against the **diff that actually landed** —
@@ -98,14 +111,18 @@ Two legitimate causes, and one illegitimate response.
 ## Intake (from /triage)
 When /triage hands over an approved **product** draft, append it to
 [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) under the right epic with
-`Status: proposed` and today's `Drafted:` date. No other changes — /triage classifies
-and drafts; this skill is just the pen for the product backlog.
+`Status: proposed` and today's `Drafted:` date. An approved **OD** draft goes to
+[docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) with `Status: open` and
+today's `Raised:` date. No other changes — /triage classifies and drafts; this skill is
+just the pen.
+
+A drafted entry that `Depends on:` an open OD is appended **to the pool, not to
+`## Next up`**. That's not a workaround — the queue means dependency-ready, and this
+one isn't. The schema check enforces the distinction.
 
 ## Not this skill
 - Merging a branch / testing the merged result → **/land** (this skill is its last
   step, not a replacement for it).
-- Running, recording, or **closing** an experiment → **/research** (sole writer of
-  `docs/research/`).
 - Classifying/drafting a new idea → **/triage**.
 - Session wrap-up, commits, handoff → **/checkpoint**.
 - A rules/state change → propose the spec diff to the user (human-owned); update

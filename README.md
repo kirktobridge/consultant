@@ -1,13 +1,19 @@
 # Agent skill suite — a doc-driven working loop
 
-A portable system of **seven Claude Code skills** plus the **documents they read and
-write**, extracted from a project where it ran for months across dozens of features and
-experiments.
+A portable system of **six Claude Code skills** plus the **documents they read and
+write**, extracted from a project where it ran for months across dozens of features.
 
 It solves one problem: **an agent's durable notes drift from reality, silently.** A
 backlog says a feature is unbuilt when it shipped; a claim written from a mistyped grep
-reads as fact three sessions later; a validated result sits undeployed because nothing
-named who owned it. This suite makes those failures either impossible or loud.
+reads as fact three sessions later; a feature ships on a premise nobody ever checked.
+This suite makes those failures either impossible or loud.
+
+> **Variant:** this is the **build-only** branch. The `master` branch carries a larger
+> version with a second, measurable track (`/research`, an experiment framework, an
+> append-only run log, findings graded by confidence) for projects that make claims a
+> test can't catch — performance, ranking, model quality, anything tuned. If that's
+> you, start there instead. Running a measurement track you don't need is worse than
+> not having one, because the next session reads an idle backlog as live.
 
 ## The three ideas
 
@@ -20,16 +26,16 @@ grepping `### <ID>` headings and `**Status:**` lines — never by reading whole 
 That grep is only as trustworthy as the format is uniform, so a schema check asserts
 the format in CI. You get structured-data reliability without leaving prose.
 
-**3. Claims carry their strength.** Findings are already graded (`replicated` /
-`significant` / `directional`). The same rigour applies to prose claims about code:
-*mechanically enforced*, *verified* (say how), or *asserted*. And a negative claim
+**3. Claims carry their strength.** Every durable claim about the code says how strongly
+it's held — *mechanically enforced* (a check holds it), *verified* (checked this
+session, and how), or *asserted* (someone's belief). An asserted claim that reads as
+verified is how the next session inherits your guess as fact. And a negative claim
 ("nothing else calls this") requires a **positive control** first — an empty result
 from a broken tool is indistinguishable from a true negative.
 
 Grading claims one sentence at a time still leaves the *asserted* ones unindexed, so
 [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) is the standing register of them —
-assumptions the project rests on that nobody has verified. An `open` one **blocks** the
-work that depends on it, in CI and at /implement's gate. Never build on an unverified
+assumptions the project rests on that nobody has verified. Never build on an unverified
 figure.
 
 ## The loop
@@ -38,72 +44,96 @@ figure.
                           ┌──────────┐
      raw idea ──────────► │ /triage  │  classifies, drafts, writes nothing
                           └────┬─────┘
-        ┌──────────────────────┼──────────────────────┐
- metric+bar?│ YES              │ NO          it's an │ ASSUMPTION
-            ▼                  ▼                      ▼
-      ┌───────────┐      ┌─────────────┐     ┌──────────────────┐
-      │ /research │      │ /implement  │     │ OPEN_DECISIONS   │
-      │  AE#/AD#  │      └──────┬──────┘     │  OD-n — blocks   │
-      └─────┬─────┘             ▼            │  what depends    │
-            │  run → log →  ┌───────────┐    │  on it           │
-            │  FINDINGS →   │  /verify  │    └──────────────────┘
-            │  close        └─────┬─────┘
-            └──────────────┬──────┘
-                           ▼
-                      ┌─────────┐
-                      │  /land  │  merge, full suite on merged result (forked)
-                      └────┬────┘
-                           ▼
-                      ┌─────────┐
-                      │  /ship  │  status flips, Next up, architecture *why*
-                      └────┬────┘
-                           ▼
-                    ┌─────────────┐
-                    │ /checkpoint │  dangling-state audit, commits, HANDOFF baton
-                    └─────────────┘
+              ┌────────────────┴────────────────┐
+      would we│BUILD it?           are we just  │ASSUMING it?
+              ▼                                 ▼
+       ┌─────────────┐                ┌──────────────────────┐
+       │ /implement  │                │  OPEN_DECISIONS.md   │
+       └──────┬──────┘                │  OD-n — blocks what  │
+              ▼                       │  depends on it, in   │
+        ┌───────────┐                 │  proportion to how   │
+        │  /verify  │                 │  close that work is  │
+        └─────┬─────┘                 └──────────┬───────────┘
+              │                                  │ blocking the queue?
+              │         ┌────────────────────────┘ → spike P#, back to
+              │         │                            /implement
+              ▼         ▼
+          ┌─────────────────┐
+          │      /land      │  merge, full suite on merged result (forked)
+          └────────┬────────┘
+                   ▼
+             ┌─────────┐
+             │  /ship  │  status flips, OD resolutions, Next up, architecture *why*
+             └────┬────┘
+                  ▼
+           ┌─────────────┐
+           │ /checkpoint │  dangling-state audit, commits, HANDOFF baton
+           └─────────────┘
 ```
 
-The fork at the top is the whole design. *Can this state a success criterion — a metric
-and a bar?* Yes → prove it. No → build it. *Is it neither — just something we're
-assuming?* → register it, and it blocks whatever rests on it until someone checks.
-Ideas that are both experiment and feature get **split**, with the product entry's
-`Depends on:` naming the experiment — which is how a feature stops shipping on an
-assumption nobody measured.
+The fork at the top is the whole design. *Would we build this, or are we assuming it?*
+Build it → the backlog. Assuming it → register it, and it blocks whatever rests on it
+until someone checks. Ideas that are both get **split**, with the feature's
+`Depends on:` naming the assumption — which is how a feature stops shipping on a
+premise nobody verified.
+
+**The register is deliberately ownerless.** An assumption gets settled by whoever runs
+into it, when it actually costs something — not by a standing assignee working a list.
+Two of its three payoffs (you can *enumerate* what you're standing on; a `refuted` entry
+tells you how often you're wrong) work even if nothing is ever verified. Only the block
+creates pressure, and it applies that pressure exactly when it matters.
+
+So an open decision escalates to real work — a **spike** `P#`, whose deliverable is the
+answer rather than a feature — only when its dependents reach `## Next up`. An
+assumption blocking something deep in the pool is correctly parked. That bound is what
+keeps the register from becoming a generator of speculative work.
 
 ## What's in the box
 
 ```
 .claude/
-  GUIDE.md              human-facing guide to the seven skills
-  settings.json         hooks: edit-guard (Pre), doc-debt-check (Post)
+  GUIDE.md              human-facing guide to the six skills
+  settings.json         hooks: edit-guard (Pre), schema check (Post)
   edit-guard.py         blocks writes to human-owned files
   edit-blocklist        which files those are            ← edit for your project
-  skills/{triage,research,implement,verify,land,ship,checkpoint}/SKILL.md
-  skills/research/stats.py    Wilson CI + z-test + power (portable as-is)
+  skills/{triage,implement,verify,land,ship,checkpoint}/SKILL.md
 docs/
+  SPEC.md                     what "correct" means       ← human-only, hook-blocked
+  ARCHITECTURE.md             the *why*                  ← written only by /ship
+  BUILD_ORDER.md              the phased plan, disposable
   product/BACKLOG.md          features (P#)              ← written only by /ship
-  OPEN_DECISIONS.md           unverified assumptions (OD-n) — an open one blocks
-  research/FRAMEWORK.md       the experiment process (the authority)
-  research/backlog/           questions (AE#/AD#)        ← written only by /research
-  research/log/               append-only run records
-  research/FINDINGS.md        curated claims (F#) + method lessons (M#)
+  OPEN_DECISIONS.md           unverified assumptions (OD-n) — no single pen
+  LESSONS.md                  the expensive failures, each with the rule it bought
   dev_notes/OPEN_IDEAS.md     your raw dump              ← human-only, hook-blocked
 scripts/
   backlog-schema-check.mjs    the keystone: asserts the docs stay greppable
-  doc-debt-check.mjs          cross-track obligations stay paired
+  grep-checked.mjs            a search whose negative results are worth something
+  session-audit.mjs           the decidable half of /checkpoint
 PORTING.md                    how to adapt all of this
 ```
+
+Three enforcement layers, and which one a rule belongs in is the main design question
+here: a **hook** fires whether or not anyone asked; a **script** is deterministic but
+must be called; a **prompt** costs context every time and is followed probabilistically.
+A rule that's decidable from artifacts *and* whose violation is silent has no business
+being prose — that's how L1 stopped being an exhortation and became `grep-checked`.
 
 ## Try it
 
 ```bash
-node scripts/backlog-schema-check.mjs     # → backlog-schema: OK (4 entries across 2 backlog(s))
-node scripts/doc-debt-check.mjs --all     # → silent, exit 0
-python3 .claude/skills/research/stats.py 340 640
-python3 .claude/skills/research/stats.py --power --bar 52 --effect 54
+npm run check:docs           # → backlog-schema: OK (5 entries across 2 file(s))
+npm run audit                # → session-audit: clean … (or the findings, with actions)
+
+# a negative you can trust, vs one you can't — note the exit codes
+node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/   # exit 1: VERIFIED negative
+node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/nope/  # exit 2: NOT evidence
+
+echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | python3 .claude/edit-guard.py
+                             # → BLOCKED …, exit 2
 ```
 
-The template ships with example entries that pass the checks, so you can see the shape
+The template ships with example entries that pass the checks — including a feature
+blocked on an assumption and the spike that unblocks it — so you can see the shape
 before replacing them.
 
 ## Then read
@@ -112,16 +142,14 @@ before replacing them.
    and why.
 2. **[.claude/GUIDE.md](.claude/GUIDE.md)** — the day-to-day view: what each skill
    does, typical days, the parallel-session rules.
-3. **[docs/research/FRAMEWORK.md](docs/research/FRAMEWORK.md)** — the experiment
-   process, if you're keeping the measurable track.
+3. **[docs/LESSONS.md](docs/LESSONS.md)** — the failures the gates were bought with.
 
 ## Provenance
 
 Extracted from a real project's `.claude/` and `docs/`. The gates read like paranoia
-until you notice each cites the specific failure that bought it — a feature shipped
-missing a won experiment's delta because nothing read the pointer aimed at it; an entry
-built on a premise two other entries had already voided; sweep evidence lost to a
-scratch dir, costing a ~53 CPU-hour re-run of already-published numbers. The method
-lessons in `FINDINGS.md` keep that shape deliberately: **the failure first, the rule
-second.** A rule with its scar attached gets followed; a decontextualized maxim gets
-skipped exactly when it's inconvenient.
+until you notice each cites the specific failure that bought it — an entry built on a
+premise two other entries had already voided; two proxied greps that "proved" no entry
+was in a given state when nine were; a validated result left undeployed because nothing
+named who owned it. [docs/LESSONS.md](docs/LESSONS.md) keeps that shape deliberately:
+**the failure first, the rule second.** A rule with its scar attached gets followed; a
+decontextualized maxim gets skipped exactly when it's inconvenient.

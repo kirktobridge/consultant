@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Build a specific product-backlog item (P#) from docs/product/BACKLOG.md — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Code-side complement to /research (which runs experiments); writes code + tests only, never the backlog docs.
+description: Build a specific product-backlog item (P#) from docs/product/BACKLOG.md — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Writes code + tests only, never the backlog docs.
 ---
 
 # Implement — build a product backlog item
@@ -8,8 +8,8 @@ description: Build a specific product-backlog item (P#) from docs/product/BACKLO
 Takes one entry (or one milestone of one entry) from
 [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) to working, verified code
 on a feature branch. This skill **writes code and tests only** — every backlog/doc
-edit goes through its owner: **/ship** owns BACKLOG.md and the architecture docs;
-**/research** owns `docs/research/**`; the spec is human-owned.
+edit goes through its owner: **/ship** owns BACKLOG.md and the architecture docs; the
+spec is human-owned.
 
 `<ID>` = a product id like `P4`, optionally with a milestone (`P3 R1`).
 
@@ -31,37 +31,41 @@ run all of them.
   (stale claims are cleared via /checkpoint, not overridden here). Another entry
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
-- **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#`, an
-  unanswered research ID (`AE#`/`AD#` not terminal in its backlog), or an **`open`
-  `OD-n`** ([docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)) blocks the build
-  — stop and tell the user what's blocking, unless the specific milestone is
-  explicitly marked unblocked.
+- **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#` or
+  an **`open` `OD-n`**
+  ([docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)) blocks the build — stop
+  and tell the user what's blocking, unless the specific milestone is explicitly marked
+  unblocked.
   **Never build on an unverified figure.** An open OD is an assumption nobody has
   checked; work resting on it isn't merely risky, it's *misleading* — it ships, looks
   correct, and stays that way until the assumption is finally tested, taking everything
-  downstream with it. Either verify the OD first (cheap, usually one experiment or one
-  API call) or rescope the entry so it no longer depends on it. The schema check holds
-  this in CI too.
+  downstream with it. This gate is **unconditional**, unlike the schema check's
+  graduated version: the check tolerates a blocked entry parked in the pool, because
+  parking one costs nothing. You are about to pick it up, which is exactly the moment
+  that stops being true.
+  Three ways forward, and /triage's spike decision picks between them: settle the OD
+  now if it's cheap (one API call, one probe) and write its `Resolution:`; build the
+  spike `P#` that answers it, if one is queued; or rescope this entry so it no longer
+  depends on it. "Proceed carefully" is not on the list.
 - **MILESTONE GATE:** if Scope lists milestones (R0/R1/…), build **one per
   invocation**. If the user didn't name one, propose the first unshipped one and
   confirm — don't silently build the whole epic.
-- **INBOUND-POINTER GATE:** the entry does not know everything scoped *into* it.
-  Research amends product scope from the outside — a `won` `AE#`/`AD#` names its
-  deployment surface in `Deploys as:`, and an entry drafted before that close has no
-  idea it exists. So before building, run
-  `grep -n "Deploys as:" -A4 docs/research/backlog/*.md | grep -n "<ID>"` and read
-  every hit: each `won` entry pointing here is scope, whether or not this entry
-  mentions it. **Positive-control the grep** — a proxied `grep "Deploys as:"` has
-  returned 0 against 16 real hits, which would silently empty this gate. This is how
-  a feature ships with a won experiment's delta missing: its own claims all verify,
-  and nothing reads the pointer aimed at it.
+- **SPIKE GATE:** if this entry carries `**Resolves:** OD-n`, it is a spike — its
+  deliverable is *the answer*, not a feature. Build the smallest thing that settles the
+  assumption, and treat writing the OD's `Resolution:` as part of done (step 4). A
+  spike that ships without the answer written back is the failure LESSONS
+  [L2](../../../docs/LESSONS.md) describes; the schema check fails it, but catching it
+  here is cheaper.
 - **PREMISE GATE:** the entry text is a snapshot from drafting time; the code may have
-  moved since. Grep the code symbols the entry names and check every factual claim its
+  moved since. Search for the code symbols the entry names — with
+  `node scripts/grep-checked.mjs --control '<something you know is in that tree>' …`,
+  because "the symbol is gone" is exactly the negative claim this gate turns into a
+  decision, and a bare grep cannot tell that from a bad path. Check every factual claim its
   Status/Scope makes about the code ("default is 0", "X is undeployed", "Y lacks Z")
   against the source **before claiming**. A stale premise is a scope-renegotiation
   trigger *now*, not a footnote to build through: surface the mismatch to the user and
   get the entry rescoped via /ship first. Follow-up obligations listed in Scope
-  (re-runs, recalibrations, replications) **inherit its premises** — a dead premise
+  ("also migrate X", "revisit Y after") **inherit its premises** — a dead premise
   silently voids or reshapes them, and if carried verbatim they propagate into the
   commit message and /land's doc flip as obligations nobody owes.
 
@@ -106,19 +110,18 @@ run all of them.
   Scope text (premise gate, step 1): name in the hand-off to /land only obligations
   the change as-built really incurs, and say explicitly which scope-listed ones turned
   out void and why — /ship writes what it's handed.
-- **Before handing off, re-read the inbound pointers** from the gate above against the
-  diff: every `won` entry deploying here either landed in this change (say so, so
-  /research can record it in `Deploys as:`) or did not (say *that* — it's a win left
-  as inventory, and naming it is what stops the next session inheriting the gap). The
-  schema check holds this once the product entry goes terminal; catching it here is
-  cheaper than catching it at close.
-- If the work surfaced a *measurable* follow-up question, route it through **/triage**
-  — don't tack an experiment onto the feature branch.
+- **If this was a spike** (`Resolves: OD-n`), the answer is the deliverable: state what
+  you actually found, how you established it, and hand /land the exact text for the
+  OD's `Resolution:`. If the assumption turned out **wrong**, say so plainly and flag
+  it as a refutation — that's the high-value case, and it may void other entries rather
+  than unblock them. Never soften a refutation into "mostly held"; the register's worth
+  depends on that distinction being honest.
+- If the work surfaced a new assumption the build is now resting on, route it through
+  **/triage** as an OD — don't leave it in a commit message.
 
 ## Not this skill
-- A research experiment (`AE#`/`AD#`) → **/research**.
 - Merging into main → **/land**.
-- Doc/status edits of any kind → **/ship** (product docs) or **/research** (research docs).
+- Doc/status edits of any kind → **/ship**.
 - Classifying a new idea → **/triage**.
 - Session wrap-up, commits-as-closeout, handoff → **/checkpoint**.
 - A spec/rules change → the spec diff is proposed to the human first (see /ship);

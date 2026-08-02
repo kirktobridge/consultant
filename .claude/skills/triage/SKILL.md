@@ -1,84 +1,74 @@
 ---
 name: triage
-description: Classify a raw idea (dev notes, conversation, anywhere) as a measurable experiment, a product feature, or an open decision, and draft the backlog entry — without writing any file. Also grooms the backlogs (`/triage groom`) — re-checks blockers, sweeps resolved open decisions, acts on staleness flags. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /research (research backlog) or /ship (product backlog) to write.
+description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature or an open decision, and draft the backlog entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open decisions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
 ---
 
 # Triage — idea intake & classification
 
-Turns raw ideas into correctly-classified, correctly-shaped backlog drafts. This skill
-**writes nothing** — each backlog file has exactly one writer (/research for
-`docs/research/`, /ship for `docs/product/BACKLOG.md`), and triage stays write-less so
-that stays true. Output = classification + draft + which skill should write it.
+Turns raw ideas into correctly-classified, correctly-shaped drafts. This skill **writes
+nothing** — [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) has exactly one
+writer (/ship), and triage stays write-less so that stays true. Output =
+classification + draft + which skill should write it.
 
 ## Sources
 - [docs/dev_notes/OPEN_IDEAS.md](../../../docs/dev_notes/OPEN_IDEAS.md) — the human's
   raw dump. **Read-only** (edit-guard enforces it) and explicitly not a source of
-  truth: ideas in it may already be shipped, deferred, or dead. Always check both
-  backlogs (grep the headings) before drafting — don't re-propose what exists.
-- Ideas raised in conversation, code review, or the fallout of a finding.
+  truth: ideas in it may already be shipped, deferred, or dead. Always check the
+  backlog and the decisions register (grep the headings) before drafting — don't
+  re-propose what exists.
+- Ideas raised in conversation, code review, or the fallout of a build.
 
 ## The classification test
 
-This single question routes everything downstream, so run it out loud:
+One question routes everything:
 
-> **Can this state a pre-registered success criterion — a metric plus a bar?**
+> **Is this something we'd *build*, or something we're currently *assuming*?**
 
-- **Yes** (a rate vs a baseline, a throughput number, a latency ceiling, an accuracy
-  target) → **measurable experiment**. Draft with FRAMEWORK.md's backlog template
-  (Objective / Hypothesis / Method / Success criteria / Power / Cost / Log) with
-  `Status: proposed`. Destination: the right `docs/research/backlog/*.md`, written by
-  **/research** (Phase P).
-- **No** — success is "usability", "feel", "it exists" → **product feature**. Draft
-  with the product shape (Status / Value / Scope / Depends on / Drafted) with
-  `Status: proposed`. Destination: the right epic in
-  [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md), written by **/ship**
-  (Intake).
-- **Both** (a feature resting on an unproven signal) → **split it**: the measurable
-  question becomes a research draft; the delivery becomes a product draft whose
-  `Depends on:` names the research ID. This pairing is the system's main idiom — a
-  feature that ships on an unvalidated assumption is how you get a shipped default
-  nobody can defend.
-- **Neither — it's an assumption, not a question or a feature** → an **open decision**
-  (`OD-n`, [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)). The tell: the
-  idea's real content is *"we're currently assuming X"* about something outside our
-  control — a third-party's behavior, a constant from a doc page, a limit nobody has
-  hit. It isn't an experiment (there's no hypothesis to test, just a fact to look up)
-  and it isn't a feature (nothing ships). Draft an OD entry, and name the entries it
-  blocks — an OD nobody depends on is trivia; an OD with dependents is a gate.
+- **Something to build** → **product feature**. Draft with the product shape (Status /
+  Drafted / Value / Scope / Depends on) with `Status: proposed`. Destination: the right
+  epic in [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md), written by
+  **/ship** (Intake).
+- **Something we're assuming** → an **open decision** (`OD-n`,
+  [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)). The tell: the idea's real
+  content is *"we're currently acting as if X is true"* about something largely outside
+  our control — a third party's behavior, a constant from a doc page, a limit nobody
+  has hit, "users won't do Y". Nothing ships; there's a fact to establish. Draft an OD,
+  and **name the entries it blocks** — an OD nobody depends on is trivia; an OD with
+  dependents is a gate.
+- **Both** (a feature resting on an unchecked assumption) → **split it**: the
+  assumption becomes an OD; the delivery becomes a product draft whose `Depends on:`
+  names it. This pairing is the system's main idiom — it's how a feature stops shipping
+  on a premise nobody checked.
+
+A note on the boundary, because it's the one people get wrong: "we should find out
+whether X" is usually an **OD**, not a feature. If you can't name a concrete check that
+would settle it (`How to verify:`), you don't have an OD either — you have a wish. Say
+so rather than filing it.
 
 **Blocked-not-rejected:** an idea that's a fine feature but rests on an open OD is
-drafted *and* marked `Depends on: OD-n`, not rejected. The schema check and
-/implement's DEPENDS GATE will hold it until the assumption is verified — which is the
-point. Say so in the output, so the user knows the entry exists but won't be built yet.
-
-**New-track check:** if a research draft opens a new domain or claim-type (it would
-start a new `backlog/*.md`, or need a kind of measurement no existing harness
-produces), ask: *what external reference validates this track?* If there's no answer,
-**the anchor infrastructure becomes the first drafted entry** — not a footnote on this
-one. Self-relative measurement drifts: a track can improve against its own past for
-many runs and still be wrong in absolute terms, and only an outside readout catches
-that. Don't let a new track repeat it.
-
-**Scope check:** every research draft names the context it will run in — a `Scope:`
-line (vocabulary in FRAMEWORK.md's `## Scope`; the schema check rejects an open entry
-without one). A *constant* is presumed scope-bound until measured otherwise; a
-*mechanism* is presumed portable but still says so. If the draft's validation corpus
-is one configuration while the question is about another, that mismatch is the draft's
-first problem, not a caveat — say which, in the entry.
+drafted *and* marked `Depends on: OD-n`, not rejected. It sits in the pool legitimately
+— the schema check permits that deliberately. What it forbids is that entry appearing
+in `## Next up` or going `in-progress` while the OD is open. Say this in the output, so
+the user knows the entry exists and where it's allowed to sit.
 
 ## Steps
 1. Restate the idea in one sentence; run the classification test out loud.
-2. Check for an existing entry
-   (`grep -in "<keyword>" docs/research/backlog/*.md docs/product/BACKLOG.md`).
+2. Check for an existing entry:
+   ```
+   node scripts/grep-checked.mjs -i --control 'Status:' '<keyword>' \
+     docs/product/BACKLOG.md docs/OPEN_DECISIONS.md
+   ```
    If one exists, the output is "already tracked as `<ID>` — update it via its owner"
-   — not a duplicate draft. **Positive-control the grep** (see the write gate in
-   /ship): an empty result from a proxied or misdirected search looks exactly like a
-   true negative, and a false negative here creates a duplicate entry.
-3. Draft the entry in the destination's template, including where it slots
-   (payoff order for research; epic for product).
-4. Present draft + destination to the user; on approval, hand to /research or /ship
-   to write it. (An OD draft goes to whichever pen the user prefers — the decisions
-   register has no single writer, only an enforced shape.)
+   — not a duplicate draft. Use the checked search rather than a bare grep: a false
+   negative here creates a duplicate entry, and an empty result from a proxied or
+   misdirected search looks exactly like a true negative (LESSONS
+   [L1](../../../docs/LESSONS.md)). **Exit 2 means you learned nothing** — re-run
+   before concluding the idea is new.
+3. Draft the entry in the destination's template, including where it slots (epic for a
+   feature; nothing to slot for an OD — the register isn't ordered).
+4. Present draft + destination to the user; on approval, hand to **/ship** to write it.
+   (An OD draft also goes to /ship as the pen, though the register has no single
+   writer — only an enforced shape.)
 
 ## Groom mode (`/triage groom`, "groom the backlog")
 
@@ -90,25 +80,66 @@ skill. Run it periodically, and always after an OD resolves.
    resolve each ID's current status. A dependency that has gone terminal since the
    entry was drafted means this entry is **unblocked** — say so; that's the highest-
    value output of the pass, because nothing else notices.
-2. **Sweep OD resolutions.** For each OD that flipped to `verified`/`refuted` since
-   the last groom, list every entry naming it. A `refuted` OD is the urgent case:
-   entries resting on it are not merely unblocked, they may be **void or wrong**, and
-   anything already shipped on that assumption needs a fresh look.
-3. **Act on staleness flags.** Run the schema check; for every entry it flags as
+2. **Sweep OD resolutions.** For each OD that flipped to `verified`/`refuted` since the
+   last groom, list every entry naming it. A `refuted` OD is the urgent case: entries
+   resting on it are not merely unblocked, they may be **void or wrong**, and anything
+   already shipped on that assumption needs a fresh look.
+3. **Spot the assumptions about to bite.** Cross-reference every `open` OD against
+   `## Next up` and the entries just behind it. An OD blocking something at the head of
+   the queue is about to stop work; an OD blocking only entries deep in the pool costs
+   nothing yet. **This is the trigger for the spike decision below** — and nothing else
+   in the loop looks for it, because the schema check only fires once the entry has
+   *already* been queued or claimed.
+4. **Act on staleness flags.** Run the schema check; for every entry it flags as
    drafted before a dependency landed, re-read the entry against the code and report
-   one of: *still accurate* (bump `Drafted:` — after a real re-read, never to quiet
-   the check), *needs rescoping* (say how), or *void* (say why).
-4. **Flag stale claims.** An entry `in-progress` with no branch and no recent commits
+   one of: *still accurate* (bump `Drafted:` — after a real re-read, never to quiet the
+   check), *needs rescoping* (say how), or *void* (say why).
+5. **Flag stale claims.** An entry `in-progress` with no branch and no recent commits
    is an abandoned claim — surface it; /checkpoint clears it.
-5. **Propose, never silently apply.** Re-ranking, demoting, and deleting are the
-   user's calls. Say what you'd change and why; let them decide. Priorities that
-   events have overtaken are worth naming explicitly — that's usually why a groom was
-   asked for.
+6. **Propose, never silently apply.** Re-ranking, demoting, and deleting are the user's
+   calls. Say what you'd change and why; let them decide. Priorities that events have
+   overtaken are worth naming explicitly — that's usually why a groom was asked for.
 
-Output is a short report: unblocked, newly-void, stale, and abandoned — each with the
-one action it needs. Nothing is written until the user picks.
+Output is a short report: unblocked, newly-void, about-to-block, stale, and abandoned —
+each with the one action it needs. Nothing is written until the user picks.
+
+## The spike decision (when an OD is about to block real work)
+
+An OD is a unit of **doubt**, not a unit of work. It has no owner by design: it gets
+settled by whoever runs into it, at the moment it actually costs something. So the
+question is never "who should verify this?" — it's **"is this assumption obstructing
+the queue yet?"**
+
+```
+An open OD blocks something
+  ├─ cheap to settle (one API call, one probe, one grep)?
+  │      → do it now; write **Resolution:**, then sweep what it unblocked
+  ├─ expensive, and its dependents are in / entering `## Next up`?
+  │      → promote: draft a spike P# (below). It's obstructing real work now.
+  └─ expensive, dependents only deep in the pool?
+         → leave it open. It is correctly parked; nothing is blocked in practice,
+           and spiking it now spends real effort on a hypothetical.
+```
+
+That middle branch is the only route to a spike, and the bound is deliberate: it stops
+the register from becoming a generator of speculative work. An assumption is worth
+paying to settle exactly when it's about to stop you.
+
+**Spike draft shape** — an ordinary product entry, with two specifics:
+- `**Value:**` names the entries it unblocks. That satisfies the required Value field
+  honestly: unblocking queued work *is* user-facing value, one step removed. Don't
+  invent a user story for a probe.
+- `**Resolves:** OD-n` — the back-pointer. This is a structured field rather than a
+  sentence because an obligation buried in prose is unenforceable by construction
+  (LESSONS [L2](../../../docs/LESSONS.md)); the schema check pairs the two and fails if
+  the spike ships without the answer being written back.
+
+Say plainly which branch you took and why — "OD-3 is expensive but only P7 depends on
+it, and P7 is nowhere near the queue, so it stays parked" is a complete and correct
+groom output.
 
 ## Not this skill
-- Writing the entry → **/research** (Phase P) or **/ship** (Intake).
-- Deciding *when* to build it → the backlogs are pools; sequencing is the user's call.
-- Verifying an OD → whoever does the work; /research if it needs a measurement.
+- Writing the entry → **/ship** (Intake).
+- Deciding *when* to build it → the backlog is a pool; sequencing is the user's call.
+- Settling an OD → whoever hits the block. If it needs building, it's a spike P# and
+  goes through **/implement** like any other entry.
