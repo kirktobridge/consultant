@@ -1,5 +1,5 @@
 # Claude edit blocklist — one pattern per line.
-# Enforced by .claude/edit-guard.py via a PreToolUse hook on Edit|Write|MultiEdit.
+# Enforced by .claude/edit-guard.mjs via a PreToolUse hook on Edit|Write|MultiEdit.
 #
 # This is what makes "human-owned" real rather than aspirational: a skill told
 # not to edit a file will mostly comply, but a hook always does. Put every doc
@@ -18,7 +18,7 @@
 
 # --- the guard itself (do not remove) ---
 .claude/edit-blocklist
-.claude/edit-guard.py
+.claude/edit-guard.mjs
 
 # --- human-owned sources of truth: EDIT THIS SECTION FOR YOUR PROJECT ---
 # The spec / requirements doc(s) that define correctness. Claude proposes diffs

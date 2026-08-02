@@ -31,6 +31,14 @@ default.
 backlog onto this later: one nobody runs is worse than none, because the next session
 reads it as live.
 
+**Prerequisite: Node 18+ on `PATH`, and nothing else.** Both hooks and all three scripts
+are dependency-free ESM with no build step, so `npm install` is never required and the
+checks run on a fresh clone. The hooks invoke `node` directly, which means this holds
+even if your project is written in something else — a Go or Python codebase still needs
+Node present for the guard and the checks to fire. That is the one thing this suite
+imposes on your stack; if it is unacceptable, the scripts are small enough to port, and
+`tests/` is what tells you whether the port is faithful.
+
 ## Step 1 — the human-owned files (do this first, it's the cheapest win)
 
 Edit [.claude/edit-blocklist](.claude/edit-blocklist): list the docs whose authority is
@@ -44,7 +52,7 @@ Prefer path-qualified patterns. (This bit us while extracting this very template
 Verify the guard is live:
 
 ```bash
-echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | python3 .claude/edit-guard.py; echo "exit=$? (expect 2)"
+echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs; echo "exit=$? (expect 2)"
 ```
 
 ## Step 2 — name your things

@@ -94,7 +94,7 @@ keeps the register from becoming a generator of speculative work.
 .claude/
   GUIDE.md              human-facing guide to the six skills
   settings.json         hooks: edit-guard (Pre), schema check (Post)
-  edit-guard.py         blocks writes to human-owned files
+  edit-guard.mjs        blocks writes to human-owned files
   edit-blocklist        which files those are            ← edit for your project
   skills/{triage,implement,verify,land,ship,checkpoint}/SKILL.md
 docs/
@@ -131,7 +131,7 @@ npm run audit                # → session-audit: clean … (or the findings, wi
 node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/   # exit 1: VERIFIED negative
 node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/nope/  # exit 2: NOT evidence
 
-echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | python3 .claude/edit-guard.py
+echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
                              # → BLOCKED …, exit 2
 ```
 
