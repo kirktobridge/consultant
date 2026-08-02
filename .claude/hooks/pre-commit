@@ -16,10 +16,20 @@
 # Pre-commit rather than post-commit on purpose: post-commit runs after the commit
 # exists, so it can only ever narrate a disarmed state it was too late to prevent.
 
-if ! node scripts/verify-guards.mjs --all; then
+# The FULL suite, not a fast subset. It runs in ~2s with no dependencies, and the
+# tests most worth having here are the cheap ones — the process tests that catch a
+# renamed script leaving four skills' instructions stale. Those cost nothing and are
+# exactly what a commit is likely to break.
+if ! npm test --silent; then
   echo ""
-  echo "pre-commit: refusing — this commit would leave the guards disarmed."
-  echo "Fix the config, or if the change is deliberate, update REQUIRED in"
-  echo "scripts/verify-guards.mjs in the same commit."
+  echo "pre-commit: refusing — the suite is red."
+  echo ""
+  echo "  guards disarmed?  fix the config, or update REQUIRED in"
+  echo "                    scripts/verify-guards.mjs in the same commit."
+  echo "  process test?     a rename left an instruction, link or handoff stale."
+  echo "  schema test?      an entry is malformed, or a convention changed and its"
+  echo "                    checker did not (change doc + checker + skills together)."
+  echo ""
+  echo "To commit anyway: git commit --no-verify  (CI still runs all of this)."
   exit 1
 fi

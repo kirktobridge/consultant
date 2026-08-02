@@ -124,9 +124,24 @@ The repo ships a minimal [package.json](package.json):
 }
 ```
 
-Add your project's own tests to the `test` line. Keep `tests/` — it is what stops the
-checks rotting into decoration, and the loop walk in `tests/loop.test.mjs` doubles as
-the executable statement of how the system is meant to behave.
+Add your project's own tests to the `test` line, and run the lot before every commit:
+
+```bash
+npm run install-git-hooks    # symlinks .claude/hooks/pre-commit into .git/hooks/
+```
+
+Keep `tests/` — it is what stops the checks rotting into decoration. Two of its files
+carry most of that weight and are worth understanding before you trim anything:
+
+- **`loop.test.mjs`** walks a fake project through the whole process — file a blocked
+  draft, fail to queue it, spike the assumption, resolve, re-read, build, ship, refresh
+  — asserting what is legal at each step. It is the executable statement of how the
+  system behaves, and it catches what per-rule tests structurally cannot: interactions.
+- **`process.test.mjs`** holds the *skills' instructions*, which are prose and rot the
+  moment a file moves. Every command a skill tells you to run must exist, every handoff
+  must name a real skill, every link must resolve, and the single-writer map must agree
+  with the skills it describes. This one exists because two renames silently invalidated
+  instructions in four skills while this suite was being built.
 
 `check:guards` belongs in `test` specifically, and not only in the hook — see *The
 three placements of `verify-guards`* below. `audit` stays out deliberately: it reads
