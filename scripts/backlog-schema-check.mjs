@@ -1,16 +1,15 @@
 // Backlog schema check — the keystone of the whole system.
 //
-// The skills orient off the backlogs by *grepping* only `### <ID>` headings and
+// The skills orient off the backlog by *grepping* only `### <ID>` headings and
 // `**Status:**` lines — never by reading whole files, which would cost a fortune
 // in tokens and still go stale. That grep is only as trustworthy as the format is
 // uniform. This script asserts the format, so retrieval is mechanically reliable:
 // the benefit of a structured dataset without leaving markdown.
 //
-// It only *reads* the docs. The single-writer contract (BACKLOG.md ← /ship,
-// research/** ← /research) is untouched; drift it surfaces is fixed by that
-// file's owner.
+// It only *reads* the docs. The single-writer contract (BACKLOG.md ← /ship) is
+// untouched; drift it surfaces is fixed by that file's owner.
 //
-// The two halves worth understanding before you edit anything:
+// The three things worth understanding before you edit anything:
 //
 //   ENTRY conditions (open entries carry their fields) are easy to remember and
 //   get enforced socially anyway. EXIT conditions (a terminal entry discharged
@@ -21,8 +20,17 @@
 //   can exist. Failing on the first hit hides the rest — and in the original
 //   project the very case a check was built for got masked by an unrelated hit.
 //
-// Run: node scripts/backlog-schema-check.mjs   (exit 1 on any violation)
-// Wire it into your test command so CI holds it.
+//   A check that stopped looking passes exactly like a check that found nothing
+//   (LESSONS L3). The entry count in the success line is a positive control
+//   printed on every run; if you change a parser, feed it known-bad input and
+//   confirm it still fails before trusting a green run.
+//
+// Modes:
+//   node scripts/backlog-schema-check.mjs           check everything (CI / manual)
+//   node scripts/backlog-schema-check.mjs --all     same, explicit
+//   (PostToolUse hook)                              reads hook JSON on stdin; exits
+//                                                   0 fast unless the edited file is
+//                                                   watched, else checks and exits 2
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,28 +49,15 @@ const BACKLOGS = [
     open: new Set(['proposed', 'in-progress', 'partial']),
     terminal: new Set(['shipped', 'deferred', 'abandoned']),
     // Fields every entry carries, and fields only *open* entries carry.
+    // NB: product `Scope` means "what's in, what's out" — the unit /implement
+    // builds against. Don't confuse it with a measurement's context.
     always: [['Value', /\*\*Value:\*\*/]],
     whileOpen: [['Scope', /\*\*Scope\b/]],
-  },
-  {
-    file: 'docs/research/backlog/experiments.md',
-    idPattern: /^(AE|AD)\d+$/,
-    kind: 'research',
-    open: new Set(['proposed', 'active']),
-    terminal: new Set(['won', 'no-win', 'abandoned', 'deferred', 'played-out']),
-    always: [],
-    whileOpen: [
-      ['Objective', /\*\*Objective\b/],
-      ['Hypothesis', /\*\*Hypothesis\b/],
-      ['Method', /\*\*Method\b/],
-      ['Success criteria', /\*\*Success criteria\b/],
-      ['Cost', /\*\*Cost\b/],
-    ],
   },
 ];
 
 // Open Decisions: load-bearing assumptions. Not a backlog (no `## Next up`, no
-// payoff order) but the same shape rules apply, and entries elsewhere may
+// payoff order) but the same shape rules apply, and backlog entries may
 // `Depends on:` them — which is the point.
 const DECISIONS = {
   file: 'docs/OPEN_DECISIONS.md',
@@ -77,8 +72,41 @@ const DECISIONS = {
   ],
 };
 
-const FINDINGS = 'docs/research/FINDINGS.md';
 const HEADING = new RegExp(`^###\\s+\\S+\\s+${DASH}\\s+\\S`);
+
+/** Files whose edit should trigger the in-session (hook) run. */
+const WATCHED = [BACKLOGS[0].file, DECISIONS.file];
+
+// ── Mode ─────────────────────────────────────────────────────────────────────
+//
+// Decided *before* any file is read. A hook fires on every Edit/Write in the
+// session, the vast majority of which touch nothing we track — those must cost
+// nothing and must never fail, even if a tracked doc is mid-rename or absent.
+
+const argv = process.argv.slice(2);
+const explicit = argv.includes('--all');
+let hookMode = false;
+let run = explicit || process.stdin.isTTY === true;
+
+if (!run) {
+  let stdin = '';
+  try { stdin = readFileSync(0, 'utf8'); } catch { /* nothing piped */ }
+  if (stdin.trim() === '') {
+    run = true; // no payload, not a TTY (e.g. `… | cat`) — behave like a normal run
+  } else {
+    hookMode = true;
+    let file = '';
+    try {
+      const payload = JSON.parse(stdin);
+      file = payload?.tool_input?.file_path ?? payload?.tool_response?.filePath ?? '';
+    } catch {
+      /* unparseable → treat as a no-op, never block an unrelated edit */
+    }
+    run = WATCHED.some((w) => file.replaceAll('\\', '/').endsWith(w));
+  }
+}
+
+if (!run) process.exit(0);
 
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
@@ -150,7 +178,7 @@ function parseNextUp(lines) {
   for (const l of lines) {
     if (/^##\s+Next up/i.test(l)) { inBlock = true; continue; }
     if (inBlock && /^##\s/.test(l)) break;
-    if (inBlock) for (const m of l.matchAll(/\*\*((?:P|AE|AD)\d+)\*\*/g)) out.push(m[1]);
+    if (inBlock) for (const m of l.matchAll(/\*\*(P\d+)\*\*/g)) out.push(m[1]);
   }
   return [...new Set(out)];
 }
@@ -173,12 +201,19 @@ const terminalDateOf = (body) =>
   body.find((l) => /\*\*Resolution:\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
   null;
 
-const dependsOn = (body) =>
-  [
-    ...labelled(body, /\*\*Depends on:\*\*/)
-      .join(' ')
-      .matchAll(/\b(OD-\d+|(?:P|AE|AD)\d+)\b/g),
-  ].map((m) => m[1]);
+// Deduped: a labelled block runs over its continuation lines, so prose that names
+// the same ID more than once ("depends on OD-1 … until OD-1 resolves") would
+// otherwise raise one violation per mention. Inflating the count is not harmless —
+// the count is the positive control that a parser still works (LESSONS L3), so it
+// has to mean what it says.
+const idsIn = (body, re) => [
+  ...new Set(
+    [...labelled(body, re).join(' ').matchAll(/\b(OD-\d+|P\d+)\b/g)].map((m) => m[1]),
+  ),
+];
+
+const dependsOn = (body) => idsIn(body, /\*\*Depends on:\*\*/);
+const resolvesOf = (body) => idsIn(body, /\*\*Resolves:\*\*/).filter((id) => /^OD-/.test(id));
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
@@ -189,6 +224,12 @@ const present = [...BACKLOGS, DECISIONS].filter((b) => existsSync(join(ROOT, b.f
 const parsed = present.map(parse);
 const byId = new Map(parsed.flatMap((p) => p.entries.map((e) => [e.id, e])));
 const cfgOf = (file) => present.find((b) => b.file === file);
+const cfgOfEntry = (e) => cfgOf(parsed.find((q) => q.entries.includes(e))?.file);
+const isTerminal = (e) => !!e && !!cfgOfEntry(e)?.terminal.has(e.statusToken ?? '');
+
+// Every ID named anywhere in a `## Next up` queue. The queue is documented as the
+// *dependency-ready* head, which is what gives OD blocking its severity tiers below.
+const queued = new Set(parsed.flatMap((p) => p.nextUp));
 
 for (const p of parsed) {
   const b = cfgOf(p.file);
@@ -220,7 +261,7 @@ for (const p of parsed) {
   }
 
   // — required fields: always-fields on every entry, open-fields while open —
-  // Terminal entries legitimately compress to a status + a log link.
+  // Terminal entries legitimately compress to a status + a one-line outcome.
   for (const e of p.entries) {
     for (const [label, re] of b.always) {
       if (!has(e.body, re)) fail(`${p.file}: ${e.id} missing **${label}**`);
@@ -257,9 +298,7 @@ for (const p of parsed) {
     if (!drafted) continue; // the check above owns that failure
     for (const depId of dependsOn(e.body)) {
       const dep = byId.get(depId);
-      if (!dep) continue;
-      const depCfg = cfgOf(parsed.find((q) => q.entries.includes(dep))?.file);
-      if (!depCfg?.terminal.has(dep.statusToken ?? '')) continue;
+      if (!dep || !isTerminal(dep)) continue;
       const landed = terminalDateOf(dep.body);
       if (!landed || landed <= drafted) continue;
       fail(
@@ -270,27 +309,73 @@ for (const p of parsed) {
     }
   }
 
-  // — nothing open may depend on an unresolved assumption —
-  // apacenye's rule, imported: "never build on an unverified figure." An entry
-  // resting on an `open` OD is blocked, not merely risky — work built on a false
-  // assumption isn't just wasted, it ships and looks correct until the assumption
-  // is finally tested, taking everything downstream with it. /implement's DEPENDS
-  // GATE refuses these; this is the CI half.
+  // — nothing near the front of the queue may rest on an unverified assumption —
+  //
+  // "Never build on an unverified figure." Work built on a false assumption isn't
+  // just wasted, it *ships and looks correct* until the assumption is finally
+  // tested, taking everything downstream with it.
+  //
+  // But severity tracks how close the dependent is to actually being built, and
+  // the earlier all-or-nothing version got this wrong: it failed any `proposed`
+  // entry resting on an open OD — including one parked deep in the pool, which is
+  // exactly the "blocked-not-rejected" draft /triage is instructed to write. A
+  // correctly-drafted entry could never be committed green, and a check that's
+  // permanently red teaches people to ignore it.
+  //
+  //   proposed, not queued  → pass. Correctly parked; the block costs nothing yet.
+  //   in `## Next up`       → fail. The queue is documented as the *dependency-
+  //                           ready* head; an entry resting on an open assumption
+  //                           is not dependency-ready, so the queue is lying.
+  //   in-progress/partial   → fail. Someone is building on sand right now.
+  //
+  // /implement's DEPENDS GATE stays unconditional — it acts on work being picked
+  // up, which is already in a failing tier by the time it runs.
   for (const e of p.entries) {
-    const isOpen = b.open.has(e.statusToken ?? '');
     for (const depId of dependsOn(e.body)) {
       if (!/^OD-/.test(depId)) continue;
       const od = byId.get(depId);
       // A dangling reference is wrong at any status: a terminal entry citing a
       // nonexistent OD is a broken audit trail, not a harmless leftover.
       if (!od) { fail(`${p.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
-      // The *block* only applies to work that could actually be picked up.
-      if (!isOpen) continue;
-      if (od.statusToken === 'open') {
+      if (od.statusToken !== 'open') continue;
+      const claimed = e.statusToken === 'in-progress' || e.statusToken === 'partial';
+      if (!claimed && !queued.has(e.id)) continue; // parked in the pool — fine
+      fail(
+        `${p.file}: ${e.id} is ${claimed ? `\`${e.statusToken}\`` : 'in `## Next up`'} but ` +
+          `depends on ${depId}, still \`open\`. ${claimed
+            ? 'Work in flight is resting on an unverified assumption'
+            : 'The queue is the dependency-ready head, and this entry is not ready'}` +
+          ` — verify ${depId}, promote it to a spike, or ${claimed ? 'rescope' : 'demote'} ${e.id}.`,
+      );
+    }
+  }
+
+  // — a spike and the assumption it answers move together —
+  //
+  // The one cross-file obligation in the suite, and the reason it's a structured
+  // field rather than a sentence (LESSONS L2): an obligation recorded on one side
+  // of a boundary with nothing accountable on the other never fails loudly, it
+  // just quietly doesn't happen. `Resolves: OD-n` is greppable and pairable;
+  // "we should settle this eventually" is neither.
+  for (const e of p.entries) {
+    for (const odId of resolvesOf(e.body)) {
+      const od = byId.get(odId);
+      if (!od) { fail(`${p.file}: ${e.id} resolves ${odId}, which has no entry`); continue; }
+      // Live spike pointing at an already-settled assumption: either the spike is
+      // obsolete, or something resolved the OD out from under it.
+      if (b.open.has(e.statusToken ?? '') && od.statusToken !== 'open') {
         fail(
-          `${p.file}: ${e.id} depends on ${depId}, still \`open\` — an unverified ` +
-            `assumption blocks the work that rests on it. Verify the OD, or rescope ` +
-            `${e.id} so it no longer depends on it.`,
+          `${p.file}: open ${e.id} resolves ${odId}, but ${odId} is already ` +
+            `\`${od.statusToken}\` — the spike is obsolete (close it) or it answers a ` +
+            `different question (repoint **Resolves:**).`,
+        );
+      }
+      // Spike shipped, assumption still open: the answer never made it back.
+      if (isTerminal(e) && e.statusToken === 'shipped' && od.statusToken === 'open') {
+        fail(
+          `${p.file}: ${e.id} shipped and resolves ${odId}, but ${odId} is still \`open\` — ` +
+            `write what the spike found into its **Resolution:**, then sweep the entries ` +
+            `that were blocked on it. A finding nobody wrote down is inventory.`,
         );
       }
     }
@@ -308,97 +393,23 @@ for (const p of parsed) {
       fail(`${p.file}: Next-up ${id} is terminal ("${e.statusToken}") — refresh the queue`);
     }
   }
-
-  if (b.kind !== 'research') continue;
-
-  // — every `won` entry names where it deployed (the CLOSE side) —
-  // A won result with no owner is inventory, not value. The intent is easy to
-  // bury in prose ("ship the knob eventually"), where nothing can grep it and
-  // nobody is accountable. A structured field is checkable; a sentence is not.
-  for (const e of p.entries) {
-    if (e.statusToken !== 'won') continue;
-    if (!has(e.body, /\*\*Deploys as:\*\*/)) {
-      fail(
-        `${p.file}: won ${e.id} has no **Deploys as:** — name the product P#, the ` +
-          `retune-in-place task, or "no deployment surface"`,
-      );
-    }
-  }
-
-  // — a `won` entry whose deployment target already shipped —
-  // The direction that actually burns you. The staleness check above reads an
-  // entry's own `Depends on:` and looks *backward*; it fires only on a dependency
-  // the entry names. But research amends product scope from the *outside*: a won
-  // experiment names a product entry that was drafted first and never mentions it.
-  // So the product item gets built, verified and landed with the experiment's
-  // delta missing, and every gate passes, because nothing read the pointer aimed
-  // at it.
-  //
-  // The escape hatch is a LEADING marker on the `Deploys as:` line, not the word
-  // "shipped" loose in the prose. Written the loose way first, the original check
-  // exempted the very entry it was built for — whose block happened to call some
-  // *other* constant "already the shipped value". A keyword anywhere in a
-  // paragraph cannot express "this result landed"; a marker in a fixed position
-  // can.
-  const loose = [];
-  for (const e of p.entries) {
-    if (e.statusToken !== 'won') continue;
-    const block = labelled(e.body, /\*\*Deploys as:\*\*/);
-    if (block.length === 0) continue; // presence check above owns that
-    if (/\*\*Deploys as:\*\*\s*(shipped|landed|deployed)\b/i.test(block[0])) continue;
-    for (const pid of new Set([...block.join(' ').matchAll(/\bP\d+\b/g)].map((m) => m[0]))) {
-      const target = byId.get(pid);
-      const tCfg = cfgOf(parsed.find((q) => q.entries.includes(target))?.file);
-      if (!target || !tCfg?.terminal.has(target.statusToken ?? '')) continue;
-      loose.push(`${e.id} → ${pid} (${target.statusToken})`);
-    }
-  }
-  if (loose.length) {
-    fail(
-      `${p.file}: a \`won\` result points at an already-terminal product entry, and its ` +
-        `**Deploys as:** never says it shipped: ${loose.join('; ')}. Either the result ` +
-        `landed (record that in **Deploys as:**) or the product entry shipped without it ` +
-        `and the win is inventory. Check against the code — the answer is usually one ` +
-        `grep, and only a human can tell the two apart.`,
-    );
-  }
 }
 
-// — IDs are globally unique across all backlogs —
+// — IDs are globally unique across the tracked docs —
 const all = parsed.flatMap((p) => p.entries.map((e) => e.id));
 const dupes = [...new Set(all.filter((id, i) => all.indexOf(id) !== i))];
-if (dupes.length) fail(`duplicate IDs across backlogs: ${dupes.join(', ')}`);
-
-// — findings carry their scope tag —
-// PORTING: this enforces that a claim states the context it was measured in, so a
-// constant tuned under one configuration is never silently read as universal.
-// Set SCOPE_TAGGED_FROM to the first finding number the rule binds from; earlier
-// ones are grandfathered (the rule usually exists *because* they didn't say).
-const SCOPE_TAGGED_FROM = 1;
-const SCOPE_VOCAB = ['default', 'variant-a', 'variant-b', 'both', 'mechanism'];
-if (existsSync(join(ROOT, FINDINGS))) {
-  const tag = new RegExp(`\\*\\*\\((${SCOPE_VOCAB.join('|')})\\)\\*\\*`, 'i');
-  const text = read(FINDINGS).split('\n');
-  let cur = null;
-  const findings = [];
-  for (const l of text) {
-    const h = l.match(/^###\s+F(\d+)\b/);
-    if (h) { if (cur) findings.push(cur); cur = { n: +h[1], body: [] }; }
-    else if (cur) cur.body.push(l);
-  }
-  if (cur) findings.push(cur);
-  for (const f of findings) {
-    if (f.n < SCOPE_TAGGED_FROM) continue;
-    if (!f.body.some((l) => tag.test(l))) {
-      fail(`${FINDINGS}: F${f.n} has no scope tag — add one of **(${SCOPE_VOCAB.join(')** / **(')})**`);
-    }
-  }
-}
+if (dupes.length) fail(`duplicate IDs across files: ${dupes.join(', ')}`);
 
 // ── Report ───────────────────────────────────────────────────────────────────
+//
+// Exit 2 in hook mode — that's what feeds the message back into the session while
+// the context needed to fix it is still live. Exit 1 elsewhere, for CI.
 
 if (problems.length) {
   console.error(`backlog-schema: ${problems.length} violation(s):\n- ${problems.join('\n- ')}`);
-  process.exit(1);
+  process.exit(hookMode ? 2 : 1);
 }
-console.log(`backlog-schema: OK (${all.length} entries across ${parsed.length} backlog(s))`);
+// The count is a positive control, printed every run: a checker that quietly stops
+// parsing reports success exactly like a clean tree (LESSONS L3). A number that
+// drops without files being deleted means the parser broke, not that drift left.
+if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${parsed.length} file(s))`);

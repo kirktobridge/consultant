@@ -17,9 +17,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/doc-debt-check.mjs\"",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/backlog-schema-check.mjs\"",
             "timeout": 15,
-            "statusMessage": "Checking doc-debt consistency"
+            "statusMessage": "Checking backlog schema"
           }
         ]
       }
