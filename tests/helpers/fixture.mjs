@@ -104,6 +104,26 @@ const renderOD = (d) =>
     .filter(Boolean)
     .join('\n');
 
+// Rendered as text, not just written to disk: the eval harness feeds these exact
+// documents to a model as context. One renderer means the state a model reasons about
+// and the state the checker validates can never drift apart — which matters, because a
+// disagreement between them would make an eval failure impossible to attribute.
+
+export const renderBacklog = ({ backlog = [P('P1')], nextUp = ['P1'] } = {}) =>
+  `# Product backlog\n\n` +
+  'Status vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n\n' +
+  `## Next up\n\n` +
+  (nextUp.length ? nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') : '_(empty)_') +
+  `\n\n---\n\n## Epic: Foundations\n\n` +
+  backlog.map(renderP).join('\n\n') +
+  '\n';
+
+export const renderDecisions = (decisions = []) =>
+  `# Open Decisions\n\n` +
+  'Status vocab: `open` / `verified` / `refuted` / `moot`.\n\n---\n\n## Register\n\n' +
+  decisions.map(renderOD).join('\n\n') +
+  '\n';
+
 /**
  * Write a project. `nextUp` is a list of P ids; pass [] deliberately to test the
  * empty-queue failure. Vocab lines are included verbatim because the checker reads
@@ -113,28 +133,9 @@ const renderOD = (d) =>
 export function project({ backlog = [P('P1')], decisions = [], nextUp = ['P1'] } = {}) {
   const dir = tempDir();
   mkdirSync(join(dir, 'docs', 'product'), { recursive: true });
-
-  const queue = nextUp.length
-    ? nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n')
-    : '_(empty)_';
-
-  writeFileSync(
-    join(dir, 'docs', 'product', 'BACKLOG.md'),
-    `# Product backlog\n\n` +
-      'Status vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n\n' +
-      `## Next up\n\n${queue}\n\n---\n\n## Epic: Foundations\n\n` +
-      backlog.map(renderP).join('\n\n') +
-      '\n',
-  );
-
+  writeFileSync(join(dir, 'docs', 'product', 'BACKLOG.md'), renderBacklog({ backlog, nextUp }));
   if (decisions.length) {
-    writeFileSync(
-      join(dir, 'docs', 'OPEN_DECISIONS.md'),
-      `# Open Decisions\n\n` +
-        'Status vocab: `open` / `verified` / `refuted` / `moot`.\n\n---\n\n## Register\n\n' +
-        decisions.map(renderOD).join('\n\n') +
-        '\n',
-    );
+    writeFileSync(join(dir, 'docs', 'OPEN_DECISIONS.md'), renderDecisions(decisions));
   }
   return dir;
 }

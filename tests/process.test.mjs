@@ -18,6 +18,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
 import { REPO } from './helpers/fixture.mjs';
 
@@ -185,6 +186,32 @@ describe('links resolve', () => {
     for (const [, , href] of rows) {
       assert.ok(existsSync(join(REPO, href)), `CLAUDE.md points at missing ${href}`);
     }
+  });
+});
+
+describe('the evals stay evals', () => {
+  test('`npm test` never runs the eval', () => {
+    // The whole reason evals live outside the test suite: a probabilistic measurement
+    // wired into a commit gate fails for reasons unrelated to the change, and gets
+    // switched off — taking the real tests with it.
+    assert.doesNotMatch(pkg.scripts.test, /eval/, 'npm test must not invoke the eval');
+    assert.ok(pkg.scripts.eval, 'the eval should still be runnable on its own');
+  });
+
+  test('the only dependency is dev-only — the checks run on a fresh clone', () => {
+    assert.equal(pkg.dependencies, undefined, 'no runtime dependencies');
+    assert.deepEqual(Object.keys(pkg.devDependencies ?? {}), ['@anthropic-ai/sdk']);
+  });
+
+  test('every eval case still renders and its grader still discriminates', () => {
+    // Runs the dry run, which needs no API key. This is what makes a renamed skill
+    // break CI rather than surfacing the first time someone pays to run the eval.
+    const r = spawnSync(process.execPath, [join(REPO, 'evals', 'run.mjs'), '--dry-run'], {
+      cwd: REPO,
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /every grader accepts the right answer and rejects the wrong one/);
   });
 });
 

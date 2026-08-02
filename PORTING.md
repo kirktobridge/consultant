@@ -143,6 +143,13 @@ carry most of that weight and are worth understanding before you trim anything:
   with the skills it describes. This one exists because two renames silently invalidated
   instructions in four skills while this suite was being built.
 
+What `tests/` structurally cannot cover is the ~640 lines of **prose** in the skills,
+because whether prose causes the right decision is a property of a model. That is
+[`evals/`](evals/README.md) — `npm run eval`, opt-in, and deliberately **not** in
+`npm test`: a probabilistic measurement wired into a commit gate fails for reasons
+unrelated to the change and gets switched off, taking the real tests with it. It is also
+the only thing here that needs `npm install`; everything else runs on a fresh clone.
+
 `check:guards` belongs in `test` specifically, and not only in the hook — see *The
 three placements of `verify-guards`* below. `audit` stays out deliberately: it reads
 session state, where an uncommitted tree is normal rather than a failure.

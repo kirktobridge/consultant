@@ -9,6 +9,10 @@
     "check:docs": "node scripts/backlog-schema-check.mjs --all",
     "check:guards": "node scripts/verify-guards.mjs --all",
     "audit": "node scripts/session-audit.mjs",
-    "install-git-hooks": "ln -sf ../../.claude/hooks/pre-commit .git/hooks/pre-commit && echo 'pre-commit installed'"
+    "eval": "node evals/run.mjs",
+    "install-git-hooks": "ln -sf ../../.claude/hooks/pre-commit .git/hooks/pre-commit"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.70.0"
   }
 }
