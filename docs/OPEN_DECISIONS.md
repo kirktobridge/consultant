@@ -130,19 +130,6 @@ is readable from this side too. The schema check reads the `Resolves:` half.
 
 ## Register
 
-### OD-1 — Example open decision (delete once you have real ones)
-- **Status:** open
-- **Raised:** 2026-08-01
-- **Assumption:** the third-party rate limit is 100 req/min, per a doc page that
-  doesn't say when it was last updated.
-- **Why it matters:** the batching design in P2 is sized to it. If the real limit is
-  lower we get throttled in production; if much higher we over-engineered.
-- **How to verify:** run the client against staging until it 429s, record the actual
-  ceiling and the reset window.
-- **Spiked as:** P3 — expensive to settle, and P2 is near the head of the queue, so it
-  earned a spike rather than staying parked.
-- **Resolution:** —
-
 ### OD-3 — Does Claude Code anchor hook matchers against the tool name?
 - **Status:** open
 - **Raised:** 2026-08-02
@@ -178,13 +165,16 @@ is readable from this side too. The schema check reads the `Resolves:` half.
   the two rates. A gap wider than the noise floor at that N settles it.
 - **Resolution:** —
 
-### OD-2 — Example resolved decision, showing a refutation
-- **Status:** refuted
-- **Raised:** 2026-08-01
-- **Assumption:** timestamps from the upstream feed are UTC.
-- **Why it matters:** every stored record's ordering depends on it.
-- **How to verify:** compare a known event's feed timestamp against wall clock.
-- **Resolution:** 2026-08-01 — **wrong.** They are venue-local with no offset field,
-  which silently mis-ordered anything spanning a DST change. Fixed in the ingest layer;
-  the constant lives in one place now. Kept as `refuted` rather than rewritten,
-  because "we shipped on this for a while" is the useful part of the record.
+### OD-5 — Are agent-produced effort estimates good enough to prioritize with?
+- **Status:** open
+- **Raised:** 2026-08-03
+- **Assumption:** an agent can size a backlog entry closely enough that value-vs-effort
+  ranking beats ranking on value alone.
+- **Why it matters:** the obvious fix for the missing prioritization tradeoff is a
+  `Size:` field on every entry. If the estimates are noise, that field is worse than
+  nothing — it makes ranking *look* informed while adding a third claimant to the
+  entry-shape surface P4 and P5 already share.
+- **How to verify:** carry a predicted size on entries for the next ~8 builds, compare
+  each against actual session cost and wall time, and check whether the ordering the
+  estimates imply differs from value-only ordering by more than their error.
+- **Resolution:** —

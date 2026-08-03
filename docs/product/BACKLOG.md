@@ -30,59 +30,113 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P1** — the first real entry. Replace this whole block as soon as you have two or
-   three genuine candidates; a queue of one is a queue that will go stale unnoticed.
-2. **P3** — the spike that unblocks P2.
+1. **P4** — acceptance criteria + the acceptance handshake. Highest payoff: it's the
+   only entry that closes the loop back to the product owner.
+2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+   touches, so it goes second by preference rather than by dependency.
+3. **P6** — split "merged" from "released". Independent of the other two; available to
+   a parallel session at any time.
+4. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
+   because nothing else waits on it.
 
-Note what is *absent*: P2 is blocked on an open OD, so it is deliberately not queued
-here despite being the higher-value item. The spike that unblocks it is queued instead.
+Note what is *absent*: P7 is the higher-payoff idea of the two remaining, and is
+deliberately not queued — it depends on P4 and P6, so the queue would be claiming a
+readiness it doesn't have. (Named in plain text on purpose: a **bolded** ID in this
+block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
 ---
 
-## Epic: Foundations
+## Epic: Product-owner interface
 
 <!-- Group entries under `## Epic:` headings that match how you think about the
      product. The schema check doesn't care about epic names — it cares that every
      `### <ID> — Title` heading is well-formed and every open entry carries its
      fields. -->
 
-### P1 — Example product entry (delete once you have real ones)
+### P4 — Acceptance criteria, and the acceptance handshake
 - **Status:** proposed
-- **Drafted:** 2026-08-01
-- **Value:** why a user is better off. One or two sentences, in user terms — not
-  "refactor X" but "the thing a person can now do". If you can't write this line, the
-  entry isn't ready.
-- **Scope:** what's in, what's explicitly out. If the work is big, break it into
-  milestones (R0/R1/R2) — /implement builds **one milestone per invocation**, so
-  milestones are the unit of a session's work.
-  - R0: the smallest shippable slice.
-  - R1: the next one.
-- **Depends on:** — (a `P#`, an `AE#`/`AD#`, or nothing. /implement's DEPENDS GATE
-  reads this and refuses to build on an unshipped dependency.)
-- **Notes:** anything a future reader needs that the code won't say.
-
-### P2 — Second example, blocked on an assumption
-- **Status:** proposed
-- **Drafted:** 2026-08-01
-- **Value:** demonstrates the split idiom — a feature whose delivery rests on something
-  nobody has checked. The assumption lives in the register as OD-1; this half is the
-  delivery.
-- **Scope:** the batching behavior, once the real rate limit is known.
-- **Depends on:** OD-1 — **open**, so this entry is *blocked-not-rejected*. It stays in
-  the pool legitimately; what it may not do is enter `## Next up` or go `in-progress`
-  until OD-1 resolves. If OD-1 is `refuted`, re-read this entry before building — a
-  refutation can void an entry rather than unblock it.
-
-### P3 — Third example, a spike
-- **Status:** proposed
-- **Drafted:** 2026-08-01
-- **Value:** unblocks P2. A spike's deliverable is *the answer*, not a feature, so its
-  Value names what it frees rather than inventing a user story for a probe.
-- **Scope:** the smallest thing that settles the question — a throwaway client that
-  hammers staging until it 429s, and the number written down. Explicitly out: any of
-  the batching work itself, which is P2.
-- **Resolves:** OD-1
+- **Drafted:** 2026-08-03
+- **Value:** you say what "right" means before the build, in your own words, and the
+  loop closes by reporting against those words. Today it closes without you: the agent
+  infers intent from its own diff, and /land flips `shipped` without you saying yes.
+- **Scope:**
+  - R0: an `**Accept:**` field in the entry shape — 2–4 observable checks. Required on
+    open entries by `scripts/backlog-schema-check.mjs`; drafted by /triage; preserved
+    verbatim by /ship's intake. Doc + checker + every skill grep move in one commit.
+  - R1: /implement treats Accept as part of the contract alongside Scope; /verify drives
+    *those criteria* rather than deriving the flow from `git diff`, and reports
+    per-criterion observed / not-observed.
+  - R2: the handshake — /land reports per criterion and stops short of the terminal
+    flip; `shipped` becomes a flip the user authorizes.
+  - Out: any criteria-authoring UI, and criteria for defects (that's P5).
 - **Depends on:** —
-- **Notes:** this exists because OD-1 is expensive to settle *and* P2 is near the head
-  of the queue. An equally-open assumption blocking only some entry deep in the pool
-  gets no spike — it's correctly parked. See `/triage`'s spike decision.
+- **Notes:** shares the entry-shape/schema-check surface with **P5** — first claimant
+  builds the checker change, the second extends it. One risk, held as *asserted*: a
+  required field can degrade into ceremony (Value restated as a bullet list). Not filed
+  as an OD deliberately — no check settles it before the field exists, and an OD
+  settleable only post-build would park this entry outside `## Next up` permanently,
+  inverting the register. R0 instead ships an eval case measuring whether the augmented
+  /triage prose yields observable criteria.
+
+### P5 — Defects as a third intake class
+- **Status:** proposed
+- **Drafted:** 2026-08-03
+- **Value:** you report "this is broken" and it lands with repro and severity intact,
+  instead of being dressed as a feature with an invented `Value:` line. Urgent breakage
+  can jump the queue without corrupting what the queue means.
+- **Scope:**
+  - R0: a `D#` id class with its own shape (Status / Reported / Repro / Severity /
+    Depends on; no `Value:` required). /triage's classification test gains a third
+    branch — build it / assuming it / **it's broken**. Schema check learns the shape.
+  - R1: queue semantics — severity above a bar bypasses `## Next up` ordering rather
+    than being ranked into it; /implement accepts a `D#`, and its DEPENDS GATE still
+    applies.
+  - Out: anything resembling a bug tracker — no external sync, no duplicate detection.
+- **Depends on:** —
+- **Notes:** one shape decision to settle at build time — a distinct `D#` heading
+  (recommended: greps stay separable, and `Value:`-not-required becomes enforceable by
+  id class) versus `P#` with a `Kind:` field. Shares the schema-check surface with P4.
+
+### P6 — Split "merged" from "released"
+- **Status:** proposed
+- **Drafted:** 2026-08-03
+- **Value:** the backlog stops saying `shipped` about something no user can reach.
+  Today `shipped` means merged; the event you actually care about — it's live — has no
+  representation at all.
+- **Scope:**
+  - R0: status vocab gains `released` downstream of `shipped`, with both meanings
+    stated here; checker and /ship's flip table updated in the same commit.
+  - R1: a `/release` skill holding the project's real deploy procedure as a PORTING
+    slot (the idiom is /verify's launch recipe), plus the version recorded on the entry.
+  - Out: rollback automation, CI wiring, changelog generation.
+- **Depends on:** —
+- **Notes:** must degrade gracefully for projects with no deploy step — `released` stays
+  an optional terminal state, never one the audit nags for, or the check loses
+  credibility in exactly the projects that ported it fastest.
+
+### P7 — A status view for the product owner
+- **Status:** proposed
+- **Drafted:** 2026-08-03
+- **Value:** you can ask "where are we?" and get an answer without reading markdown —
+  what landed, what's in flight and since when, what's blocked and on what. Today the
+  only continuity artifact is HANDOFF, which is agent session-state, gitignored, and
+  scoped per branch.
+- **Scope:** a read-only `/status` that composes what already exists (backlog statuses,
+  OD blocks, `npm run audit`, git) into a short report addressed to the product owner
+  rather than to the next session. Out: any new tracked file — if it needs storage,
+  it's the wrong design.
+- **Depends on:** P4, P6 — both unshipped, so this entry is *blocked-not-rejected*. It
+  reports on acceptance state and released-vs-merged, neither of which exists yet; it
+  stays in the pool legitimately and may not enter `## Next up` until they land.
+
+### P8 — A review step in the loop
+- **Status:** proposed
+- **Drafted:** 2026-08-03
+- **Value:** code quality gets a defined moment instead of falling through the gap
+  between the suite's skills. /verify punts it to "a code-review skill", and the suite
+  ships no such skill — so nothing reviews the diff today.
+- **Scope:** wire the harness's existing `/code-review` (and `/security-review` where
+  the diff warrants) into a named point between /implement step 4 and /land, with the
+  rule for when it is skippable. Out: writing a reviewer — this is placement, not
+  construction.
+- **Depends on:** —

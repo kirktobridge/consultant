@@ -132,7 +132,7 @@ being prose — that's how L1 stopped being an exhortation and became `grep-chec
 ```bash
 npm test                     # → the suite, then the schema + guard checks
 npm run eval -- --dry-run    # → renders every eval prompt, self-checks the graders
-npm run check:docs           # → backlog-schema: OK (7 entries across 2 file(s))
+npm run check:docs           # → backlog-schema: OK (8 entries across 2 file(s))
 npm run audit                # → session-audit: clean … (or the findings, with actions)
 npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 
@@ -144,9 +144,11 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
                              # → BLOCKED …, exit 2
 ```
 
-The template ships with example entries that pass the checks — including a feature
-blocked on an assumption and the spike that unblocks it — so you can see the shape
-before replacing them.
+The tracked docs carry this repo's own live entries rather than placeholders, so what
+you see is the shape in use — replace them with yours. The idioms a fresh backlog won't
+show you (a feature blocked on an assumption, the spike that unblocks it) are specified
+in [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md)'s entry template and exercised by
+the tests, which is where they're held rather than merely illustrated.
 
 ## Then read
 
