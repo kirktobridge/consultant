@@ -52,7 +52,20 @@ const BACKLOGS = [
     // NB: product `Scope` means "what's in, what's out" — the unit /implement
     // builds against. Don't confuse it with a measurement's context.
     always: [['Value', /\*\*Value:\*\*/]],
-    whileOpen: [['Scope', /\*\*Scope\b/]],
+    // NB the `Accept` probe is anchored to a field line (`- **Accept:**`) where the
+    // others are not. It has to be: an entry *about* the field mentions `**Accept:**`
+    // in its own Scope prose, and an unanchored probe reads that as the field being
+    // present — the entry then passes while carrying no criteria at all. Anchoring
+    // also keeps `labelled` from locking onto the prose line and counting the wrong
+    // block's bullets.
+    whileOpen: [['Scope', /\*\*Scope\b/], ['Accept', /^\s*-\s+\*\*Accept\b/]],
+    // `Accept:` is the product owner's definition of done, written before the build.
+    // Counted rather than merely present, because the failure mode this field has is
+    // not absence — it's degrading into ceremony, a restatement of Value as one
+    // unfalsifiable sentence. A bound forces the author to enumerate *separable*
+    // checks; a lower bound of 1 would accept "it works" and a high ceiling would
+    // accept a spec dump nobody drives.
+    criteria: { label: 'Accept', re: /^\s*-\s+\*\*Accept\b/, min: 2, max: 4 },
   },
 ];
 
@@ -191,6 +204,11 @@ const labelled = (body, re) => {
   return out;
 };
 
+// Sub-bullets of a labelled block, which is how an enumerable field (`Accept:`) is
+// distinguished from a prose one. Only the label's own continuation lines are
+// considered, so the next field's bullets can never be counted as this field's.
+const subBullets = (body, re) => labelled(body, re).slice(1).filter((l) => /^\s+[-*]\s+\S/.test(l));
+
 // Backlog entries are **Drafted:**; open decisions are **Raised:**. Same idea —
 // when this entry's claims were last established — so one accessor reads both.
 const draftedOn = (body) =>
@@ -269,6 +287,26 @@ for (const p of parsed) {
     if (!b.open.has(e.statusToken ?? '')) continue;
     for (const [label, re] of b.whileOpen) {
       if (!has(e.body, re)) fail(`${p.file}: open ${e.id} missing **${label}**`);
+    }
+  }
+
+  // — an enumerable field is actually enumerated —
+  // Presence is checked above; this checks the field says something a person could
+  // *drive*. Runs only where the field is present, so a missing one raises exactly
+  // one violation rather than two saying the same thing.
+  if (b.criteria) {
+    const { label, re, min, max } = b.criteria;
+    for (const e of p.entries) {
+      if (!b.open.has(e.statusToken ?? '')) continue;
+      if (!has(e.body, re)) continue; // the required-fields check owns that failure
+      const n = subBullets(e.body, re).length;
+      if (n < min || n > max) {
+        fail(
+          `${p.file}: open ${e.id} has ${n} **${label}** criteri${n === 1 ? 'on' : 'a'}, ` +
+            `expected ${min}–${max} — each on its own sub-bullet, each one someone could ` +
+            `observe passing or failing.`,
+        );
+      }
     }
   }
 

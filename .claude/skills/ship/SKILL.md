@@ -111,7 +111,16 @@ Two legitimate causes, and one illegitimate response.
 ## Intake (from /triage)
 When /triage hands over an approved **product** draft, append it to
 [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) under the right epic with
-`Status: proposed` and today's `Drafted:` date. An approved **OD** draft goes to
+`Status: proposed` and today's `Drafted:` date.
+
+**Copy `Accept:` verbatim.** It is the one field in the shape whose author is the
+product owner rather than an agent, and the loop closes by reporting against those exact
+words — so tightening the wording, merging two criteria, or "clarifying" one is not an
+improvement, it is quietly editing the definition of done. Same standing as the spec:
+if a criterion looks wrong, say so and let the user rewrite it. The schema check holds
+the count (2–4 sub-bullets), never the meaning.
+
+An approved **OD** draft goes to
 [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) with `Status: open` and
 today's `Raised:` date. No other changes — /triage classifies and drafts; this skill is
 just the pen.
