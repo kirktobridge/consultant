@@ -15,6 +15,12 @@ structure → [../ARCHITECTURE.md](../ARCHITECTURE.md).
 Status vocab: `proposed` / `in-progress` (being built this session/branch) / `partial`
 (some milestones shipped) / `shipped` / `deferred` / `abandoned`.
 
+Every open entry carries **`Accept:`** — 2–4 sub-bullets, each one thing someone could
+watch pass or fail. `Scope:` is what gets built; `Accept:` is how the product owner
+would know it was built right, in their words. The schema check enforces the *count*
+(so the field can't degrade into one unfalsifiable sentence), never the wording — /ship
+copies it verbatim, and a criterion that looks wrong is the user's to rewrite.
+
 An entry may sit here `proposed` while it `Depends on:` an **open** `OD-n` — that's how
 a blocked idea gets filed rather than lost. It may **not** appear in `## Next up` or go
 `in-progress` in that state; the schema check enforces the line.
@@ -69,6 +75,14 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   - R2: the handshake — /land reports per criterion and stops short of the terminal
     flip; `shipped` becomes a flip the user authorizes.
   - Out: any criteria-authoring UI, and criteria for defects (that's P5).
+- **Accept:**
+  - An open entry with no `Accept:` is rejected by `npm run check:docs`, and the
+    message names the field.
+  - An `Accept:` that is one unfalsifiable sentence is rejected too — presence alone
+    doesn't pass.
+  - At close, /implement reports each criterion as observed or not-observed, rather
+    than summarising the diff.
+  - No entry reaches `shipped` without me saying so.
 - **Depends on:** —
 - **Notes:** shares the entry-shape/schema-check surface with **P5** — first claimant
   builds the checker change, the second extends it. One risk, held as *asserted*: a
@@ -92,6 +106,12 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
     than being ranked into it; /implement accepts a `D#`, and its DEPENDS GATE still
     applies.
   - Out: anything resembling a bug tracker — no external sync, no duplicate detection.
+- **Accept:**
+  - Reporting "this is broken" produces a `D#` entry keeping my repro steps and a
+    severity, with no invented `Value:` line.
+  - A `D#` above the severity bar gets picked up next without being ranked into
+    `## Next up`.
+  - /implement accepts a `D#` id, and still refuses one blocked by an open OD.
 - **Depends on:** —
 - **Notes:** one shape decision to settle at build time — a distinct `D#` heading
   (recommended: greps stay separable, and `Value:`-not-required becomes enforceable by
@@ -109,6 +129,12 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   - R1: a `/release` skill holding the project's real deploy procedure as a PORTING
     slot (the idiom is /verify's launch recipe), plus the version recorded on the entry.
   - Out: rollback automation, CI wiring, changelog generation.
+- **Accept:**
+  - An entry that is merged but not deployed reads `shipped`, and no entry reads
+    `released` until it is actually reachable.
+  - `/release` flips it to `released` and records which version went out.
+  - A project with no deploy step passes the doc check with nothing ever `released`,
+    and is never nagged about it.
 - **Depends on:** —
 - **Notes:** must degrade gracefully for projects with no deploy step — `released` stays
   an optional terminal state, never one the audit nags for, or the check loses
@@ -125,6 +151,11 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   OD blocks, `npm run audit`, git) into a short report addressed to the product owner
   rather than to the next session. Out: any new tracked file — if it needs storage,
   it's the wrong design.
+- **Accept:**
+  - I can ask "where are we?" and get the answer without opening a markdown file.
+  - It names what is in flight and how long it has been there.
+  - It names what is blocked and which assumption is blocking it.
+  - Running it leaves every tracked file unchanged.
 - **Depends on:** P4, P6 — both unshipped, so this entry is *blocked-not-rejected*. It
   reports on acceptance state and released-vs-merged, neither of which exists yet; it
   stays in the pool legitimately and may not enter `## Next up` until they land.
@@ -139,4 +170,8 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   the diff warrants) into a named point between /implement step 4 and /land, with the
   rule for when it is skippable. Out: writing a reviewer — this is placement, not
   construction.
+- **Accept:**
+  - The loop has one named point where the diff gets reviewed, and /implement's
+    close-out points at it.
+  - The rule for skipping it names a condition I could check, not a judgement call.
 - **Depends on:** —

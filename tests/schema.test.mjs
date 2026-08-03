@@ -58,12 +58,75 @@ describe('required fields', () => {
     passes(project({ backlog: [P('P1'), P('P9', { status: 'shipped', scope: null })] }));
   });
 
+  test('an OPEN entry with no Accept fails', () => {
+    fails(project({ backlog: [P('P1', { accept: null })] }), /open P1 missing \*\*Accept\*\*/);
+  });
+
+  test('a TERMINAL entry with no Accept passes — terminal entries may compress', () => {
+    passes(project({ backlog: [P('P1'), P('P9', { status: 'shipped', accept: null })] }));
+  });
+
   test('an open entry with no Drafted date fails', () => {
     fails(project({ backlog: [P('P1', { drafted: null })] }), /no \*\*Drafted:\*\*/);
   });
 
   test('a future-dated entry fails', () => {
     fails(project({ backlog: [P('P1', { drafted: daysAhead(30) })] }), /drafted in the future/);
+  });
+});
+
+// The field's failure mode is not absence — it's degrading into ceremony: one
+// unfalsifiable sentence restating Value. Presence alone would pass that. These
+// pin the bound that makes the field mean something.
+describe('Accept criteria are counted, not just present', () => {
+  const accept = (n) => Array.from({ length: n }, (_, i) => `observable check ${i + 1}.`);
+
+  test('one criterion fails, and the message says the range', () => {
+    const o = fails(project({ backlog: [P('P1', { accept: accept(1) })] }), /1 \*\*Accept\*\* criterion/);
+    assert.match(o, /expected 2–4/);
+  });
+
+  test('five criteria fail', () => {
+    fails(project({ backlog: [P('P1', { accept: accept(5) })] }), /5 \*\*Accept\*\* criteria/);
+  });
+
+  test('two and four both pass — the bounds are inclusive', () => {
+    passes(project({ backlog: [P('P1', { accept: accept(2) })] }));
+    passes(project({ backlog: [P('P1', { accept: accept(4) })] }));
+  });
+
+  test('the label with nothing under it fails', () => {
+    fails(project({ backlog: [P('P1', { accept: [] })] }), /0 \*\*Accept\*\* criteria/);
+  });
+
+  test('one unfalsifiable sentence on the label line fails — the ceremony case', () => {
+    const dir = project({ backlog: [P('P1', { accept: [] })] });
+    patch(dir, 'docs/product/BACKLOG.md', '- **Accept:**', '- **Accept:** it works.');
+    fails(dir, /0 \*\*Accept\*\* criteria/);
+  });
+
+  // Found by the field's own backlog entry: an entry whose Scope *describes* the
+  // Accept field mentions `**Accept:**` in prose, and an unanchored probe read that
+  // as the field being present — so the one entry most about acceptance criteria
+  // shipped without any.
+  test('the field name in prose is not the field — the probe is anchored', () => {
+    const dir = project({ backlog: [P('P1', { accept: null, scope: 'add an `**Accept:**` field.' })] });
+    fails(dir, /open P1 missing \*\*Accept\*\*/);
+  });
+
+  test('a missing Accept raises one violation, not two', () => {
+    const o = fails(project({ backlog: [P('P1', { accept: null })] }));
+    assert.match(o, /backlog-schema: 1 violation/);
+  });
+
+  test('a TERMINAL entry is not counted — only open entries carry the contract', () => {
+    passes(project({ backlog: [P('P1'), P('P9', { status: 'shipped', accept: accept(1) })] }));
+  });
+
+  test("a following field's bullets are not counted as Accept's", () => {
+    const dir = project({ backlog: [P('P1', { accept: accept(2) })] });
+    patch(dir, 'docs/product/BACKLOG.md', '- **Depends on:** —', '- **Depends on:**\n  - nothing\n  - really');
+    passes(dir);
   });
 });
 

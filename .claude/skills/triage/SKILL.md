@@ -25,9 +25,10 @@ One question routes everything:
 > **Is this something we'd *build*, or something we're currently *assuming*?**
 
 - **Something to build** → **product feature**. Draft with the product shape (Status /
-  Drafted / Value / Scope / Depends on) with `Status: proposed`. Destination: the right
-  epic in [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md), written by
-  **/ship** (Intake).
+  Drafted / Value / Scope / **Accept** / Depends on) with `Status: proposed`.
+  Destination: the right epic in
+  [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md), written by **/ship**
+  (Intake).
 - **Something we're assuming** → an **open decision** (`OD-n`,
   [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)). The tell: the idea's real
   content is *"we're currently acting as if X is true"* about something largely outside
@@ -39,6 +40,32 @@ One question routes everything:
   assumption becomes an OD; the delivery becomes a product draft whose `Depends on:`
   names it. This pairing is the system's main idiom — it's how a feature stops shipping
   on a premise nobody checked.
+
+## Drafting `Accept:` — what "right" means, before the build
+
+Every open product entry carries **`Accept:`**: 2–4 sub-bullets, each one thing someone
+could watch pass or fail. The schema check counts them, so a draft without them is not
+filable.
+
+These are the **product owner's** words, not a restatement of Scope. Scope says what
+gets built; Accept says how you'd know it was built right — and the two come apart more
+often than they look like they would. Ask for them in the user's terms and write down
+what you're told; where the user hasn't said, propose criteria and let them correct you.
+That correction is the whole point of the field.
+
+A criterion is **observable** when you could hand it to someone with no knowledge of the
+diff and they'd reach the same verdict. Two tests, both cheap:
+
+- **Name the check, not the quality.** "the field is required" → *what would you run?*
+  "an entry saved without it is rejected, and the message names the field."
+- **Could it fail?** If no realistic build could miss it, it isn't a criterion. "it
+  works", "the user is happy", "the code is clean" — none of these can come back false,
+  which is why the count check exists.
+
+The failure this field degrades into is **ceremony**: Value chopped into a bullet list,
+present, counted, and worthless. When the honest answer is "the criteria are just
+Scope restated", say so to the user and ask what they'd actually check — don't fill the
+field to satisfy the checker.
 
 A note on the boundary, because it's the one people get wrong: "we should find out
 whether X" is usually an **OD**, not a feature. If you can't name a concrete check that

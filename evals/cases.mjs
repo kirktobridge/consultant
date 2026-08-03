@@ -98,6 +98,15 @@ export const CASES = [
     expect: { classification: 'feature' },
   },
   {
+    id: 'triage-drafts-acceptance-criteria',
+    skill: 'triage',
+    request: 'add a sound when an item is placed',
+    bar: 'a feature draft that carries Accept criteria',
+    why: "the field's risk is degrading into ceremony, and no check can measure that — this measures whether the prose makes it part of drafting at all",
+    repo: { backlog: [P('P1')], nextUp: ['P1'] },
+    expect: { classification: 'feature', citesAll: ['Accept'] },
+  },
+  {
     id: 'triage-classifies-an-assumption',
     skill: 'triage',
     request: "I'm fairly sure the upstream API caps us at 100 requests a minute, but nobody has checked",

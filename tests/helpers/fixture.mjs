@@ -49,6 +49,9 @@ export function P(id, over = {}) {
     drafted: '2026-08-01',
     value: 'a user can do the thing.',
     scope: 'in: the thing. out: everything else.',
+    // An array, not a string: the checker counts criteria, so a test that wants a
+    // bad count has to express it as a count. `accept: null` omits the field.
+    accept: ['the thing is visible in the UI.', 'doing it twice is idempotent.'],
     dependsOn: [],
     resolves: null,
     shipped: null,
@@ -77,6 +80,12 @@ export function OD(id, over = {}) {
 // failure L3 warns about, produced by the test rather than the check.
 const line = (label, v) => (v == null ? null : `- **${label}:** ${v}`);
 
+// A labelled block whose value is a list of sub-bullets. Same null contract as
+// `line`: null omits the field entirely, and an empty array renders the label with
+// nothing under it — which is a real state the checker has to reject, not a bug here.
+const block = (label, items) =>
+  items == null ? null : [`- **${label}:**`, ...items.map((i) => `  - ${i}`)].join('\n');
+
 const renderP = (e) =>
   [
     `### ${e.id} — ${e.title}`,
@@ -84,6 +93,7 @@ const renderP = (e) =>
     line('Drafted', e.drafted),
     line('Value', e.value),
     line('Scope', e.scope),
+    block('Accept', e.accept),
     line('Depends on', e.dependsOn.length ? e.dependsOn.join(', ') : '—'),
     line('Resolves', e.resolves),
     line('Shipped', e.shipped),
