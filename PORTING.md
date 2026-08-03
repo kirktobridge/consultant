@@ -31,9 +31,9 @@ default.
 backlog onto this later: one nobody runs is worse than none, because the next session
 reads it as live.
 
-**Prerequisite: Node 18+ on `PATH`, and nothing else.** Both hooks and all three scripts
-are dependency-free ESM with no build step, so `npm install` is never required and the
-checks run on a fresh clone. The hooks invoke `node` directly, which means this holds
+**Prerequisite: Node 18+ on `PATH`, and nothing else.** The hooks, the scripts, the
+tests and the eval harness are all dependency-free ESM with no build step, so
+`npm install` is never required and everything runs on a fresh clone. The hooks invoke `node` directly, which means this holds
 even if your project is written in something else — a Go or Python codebase still needs
 Node present for the guard and the checks to fire. That is the one thing this suite
 imposes on your stack; if it is unacceptable, the scripts are small enough to port, and
@@ -147,8 +147,14 @@ What `tests/` structurally cannot cover is the ~640 lines of **prose** in the sk
 because whether prose causes the right decision is a property of a model. That is
 [`evals/`](evals/README.md) — `npm run eval`, opt-in, and deliberately **not** in
 `npm test`: a probabilistic measurement wired into a commit gate fails for reasons
-unrelated to the change and gets switched off, taking the real tests with it. It is also
-the only thing here that needs `npm install`; everything else runs on a fresh clone.
+unrelated to the change and gets switched off, taking the real tests with it.
+
+It answers with **subagents from the session you are already in** — no API key, no SDK,
+so the repo still installs nothing at all. The cost of that choice is that `run.mjs`
+can't spawn them itself: `npm run eval` writes one prompt file per case, the session
+runs one subagent per file and saves each reply, and `npm run eval -- --grade <dir>`
+scores them. Keep the emitted prompt **unedited** when you hand it over; it is the
+artifact under test.
 
 `check:guards` belongs in `test` specifically, and not only in the hook — see *The
 three placements of `verify-guards`* below. `audit` stays out deliberately: it reads

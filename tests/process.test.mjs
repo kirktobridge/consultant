@@ -17,10 +17,10 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
-import { REPO } from './helpers/fixture.mjs';
+import { REPO, tempDir } from './helpers/fixture.mjs';
 
 // ── Corpus ───────────────────────────────────────────────────────────────────
 
@@ -227,20 +227,91 @@ describe('the evals stay evals', () => {
     assert.ok(pkg.scripts.eval, 'the eval should still be runnable on its own');
   });
 
-  test('the only dependency is dev-only — the checks run on a fresh clone', () => {
+  test('the repo has no dependencies at all — everything runs on a fresh clone', () => {
+    // The eval answers come from subagents in the session, not from an API client, so
+    // there is nothing left to install. If a dependency ever reappears here, `npm test`
+    // and both hooks stop working on a clone until someone runs `npm install` — and
+    // the failure looks like a broken check rather than a missing step.
     assert.equal(pkg.dependencies, undefined, 'no runtime dependencies');
-    assert.deepEqual(Object.keys(pkg.devDependencies ?? {}), ['@anthropic-ai/sdk']);
+    assert.equal(pkg.devDependencies, undefined, 'no dev dependencies either');
   });
 
   test('every eval case still renders and its grader still discriminates', () => {
-    // Runs the dry run, which needs no API key. This is what makes a renamed skill
-    // break CI rather than surfacing the first time someone pays to run the eval.
+    // Runs the dry run, which spawns nothing. This is what makes a renamed skill break
+    // CI rather than surfacing the first time someone spends a session on the eval.
     const r = spawnSync(process.execPath, [join(REPO, 'evals', 'run.mjs'), '--dry-run'], {
       cwd: REPO,
       encoding: 'utf8',
     });
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
     assert.match(r.stdout, /every grader accepts the right answer and rejects the wrong one/);
+  });
+
+  describe('the emit → reply → grade round trip', () => {
+    // The transport is now two commands with a session's work in between, which means
+    // the handoff itself — prompt files out, reply files in — is a thing that can break
+    // silently. These run the real script on a real directory; no model is involved.
+    const eval_ = (...args) =>
+      spawnSync(process.execPath, [join(REPO, 'evals', 'run.mjs'), ...args], { cwd: REPO, encoding: 'utf8' });
+
+    const emitted = () => {
+      const dir = tempDir();
+      const r = eval_('--case', 'depends-gate', '--reps', '1', '--out', dir);
+      assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      return dir;
+    };
+    const reply = (dir, key, body) => writeFileSync(join(dir, 'replies', `${key}.txt`), body);
+    const json = (o) => `Some reasoning.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
+    const REFUSE = 'depends-gate-refuses-blocked-entry.0';
+    const PROCEED = 'depends-gate-allows-unblocked-entry.0';
+
+    test('emits one prompt per case-rep, and the prompt carries the real SKILL.md', () => {
+      const dir = emitted();
+      assert.deepEqual(readdirSync(join(dir, 'prompts')).sort(), [`${PROCEED}.md`, `${REFUSE}.md`]);
+      const prompt = readFileSync(join(dir, 'prompts', `${REFUSE}.md`), 'utf8');
+      const skill = readFileSync(join(REPO, '.claude', 'skills', 'implement', 'SKILL.md'), 'utf8');
+      assert.ok(prompt.includes(skill), 'the prompt must contain SKILL.md verbatim, not a paraphrase');
+      assert.match(prompt, /Use no tools/, 'a subagent that reads the real repo answers a different question');
+    });
+
+    test('grades right answers up and wrong answers down', () => {
+      const dir = emitted();
+      reply(dir, REFUSE, json({ action: 'refuse', classification: 'not-applicable', cites: ['OD-1'], reason: 'x' }));
+      reply(dir, PROCEED, json({ action: 'proceed', classification: 'not-applicable', cites: ['P1'], reason: 'x' }));
+      assert.equal(eval_('--grade', dir).status, 0);
+
+      // The same run with the answers swapped must not pass, or the grader is decoration.
+      reply(dir, REFUSE, json({ action: 'proceed', classification: 'not-applicable', cites: [], reason: 'x' }));
+      const bad = eval_('--grade', dir);
+      assert.equal(bad.status, 1);
+      assert.match(bad.stdout, /below the bar/);
+    });
+
+    test('an unparseable reply fails; it is never skipped', () => {
+      const dir = emitted();
+      reply(dir, REFUSE, 'I refuse, because OD-1 is open.'); // right call, no JSON block
+      reply(dir, PROCEED, json({ action: 'proceed', classification: 'not-applicable', cites: ['P1'], reason: 'x' }));
+      const r = eval_('--grade', dir);
+      assert.equal(r.status, 1);
+      assert.match(r.stdout, /no parseable JSON block/);
+      assert.match(r.stdout, /0\/1/, 'an unparseable rep must count against the rate, not vanish from it');
+    });
+
+    test('a missing or stray reply refuses to report a rate at all', () => {
+      // Both directions of the same failure: a denominator that silently disagrees with
+      // the run. Dropping unanswered reps would raise the pass rate — LESSONS L3.
+      const dir = emitted();
+      reply(dir, REFUSE, json({ action: 'refuse', classification: 'not-applicable', cites: ['OD-1'], reason: 'x' }));
+      const missing = eval_('--grade', dir);
+      assert.equal(missing.status, 2);
+      assert.match(missing.stderr, /replies are missing/);
+
+      reply(dir, PROCEED, json({ action: 'proceed', classification: 'not-applicable', cites: ['P1'], reason: 'x' }));
+      writeFileSync(join(dir, 'replies', 'not-a-case.txt'), 'hello');
+      const stray = eval_('--grade', dir);
+      assert.equal(stray.status, 2);
+      assert.match(stray.stderr, /match no prompt in the manifest/);
+    });
   });
 });
 

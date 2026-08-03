@@ -8,3 +8,8 @@
 .claude/settings.local.json
 
 node_modules/
+
+# One eval run: rendered prompts and the subagents' replies. Reproducible from
+# cases.mjs at any time, and a measurement of a model rather than a fact about the
+# repo — committing runs would turn `git log` into a results table nobody reads.
+evals/runs/

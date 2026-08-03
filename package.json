@@ -11,8 +11,5 @@
     "audit": "node scripts/session-audit.mjs",
     "eval": "node evals/run.mjs",
     "install-git-hooks": "ln -sf ../../.claude/hooks/pre-commit .git/hooks/pre-commit"
-  },
-  "devDependencies": {
-    "@anthropic-ai/sdk": "^0.70.0"
   }
 }

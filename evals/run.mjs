@@ -11,8 +11,22 @@
 //   at 90% without anything being broken. Wiring that into `npm test` produces a
 //   flaky check that gets disabled within a week, taking the real tests with it.
 //
-// So: `npm run eval`, never `npm test`. It is opt-in, it is the only thing in this
-// repo that needs a dependency and an API key, and it never gates a commit.
+// So: `npm run eval`, never `npm test`. It is opt-in, it costs session time rather
+// than being free, and it never gates a commit.
+//
+// ── Transport: subagents, not an API ───────────────────────────────────────────
+// The answers come from subagents spawned by the Claude Code session you are already
+// in — no API key, no SDK, no dependency. That makes this script a *renderer and a
+// grader* rather than a client: a Node process cannot spawn a subagent, so the run is
+// two commands with the session's work in between.
+//
+//   --emit    writes one prompt file per case-rep, plus a manifest
+//   (session spawns one subagent per prompt, saves each reply)
+//   --grade   parses the replies and scores them against the same graders
+//
+// The cost of dropping the API: no `output_config.format`, so the structured decision
+// is a convention (one fenced ```json block) rather than a guarantee. A malformed
+// reply grades as a failure, never as a silent pass.
 //
 // ── An honest limit ────────────────────────────────────────────────────────────
 // Grading a pass *rate* rigorously — how many repetitions, what counts as a real
@@ -29,14 +43,14 @@
 // verdict — and its drift would be indistinguishable from the drift being measured.
 //
 // Usage:
-//   npm run eval                      all cases, 3 reps each
+//   npm run eval -- --dry-run         render prompts + self-check grading, spawns nothing
+//   npm run eval                      emit prompts for every case, 3 reps each
 //   npm run eval -- --case depends    only cases whose id contains "depends"
-//   npm run eval -- --reps 10         more repetitions
-//   npm run eval -- --dry-run         render prompts + self-check grading, no API calls
-//   npm run eval -- --effort high     pin a different effort level
+//   npm run eval -- --reps 1          fewer repetitions (each one costs a subagent)
+//   npm run eval -- --grade <dir>     score the replies collected in <dir>
 
-import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { join, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASES } from './cases.mjs';
 import { renderBacklog, renderDecisions } from '../tests/helpers/fixture.mjs';
@@ -54,8 +68,11 @@ const opts = {
   dryRun: argv.includes('--dry-run'),
   reps: Number(flag('reps', 3)),
   filter: flag('case', null),
-  effort: flag('effort', 'medium'),
-  model: flag('model', 'claude-opus-5'),
+  grade: flag('grade', null),
+  outDir: flag('out', null),
+  // Free-text record of *what answered* — model, effort, agent type. The harness
+  // cannot know it (the session picks it), so it is written down rather than guessed.
+  note: flag('note', 'subagents'),
 };
 
 // The bar, pre-registered here rather than chosen after seeing results. A rule the
@@ -72,9 +89,14 @@ const skillText = (name) => {
 };
 
 /**
- * The system prompt is the real SKILL.md, unedited, plus the shared discipline the
- * skills assume is in context. Paraphrasing the skill here would make the eval
+ * The skill half of the prompt: the real SKILL.md, unedited, plus the shared discipline
+ * the skills assume is in context. Paraphrasing the skill here would make the eval
  * measure the paraphrase.
+ *
+ * A subagent has no system prompt of its own to set, so this arrives as user-turn text.
+ * That is a real fidelity gap versus a session, where SKILL.md is injected as
+ * instructions — it is the price of not using the API, and it is why a low score is a
+ * reason to *look* at the prompt rather than proof the prompt is bad.
  */
 function systemFor(c) {
   return [
@@ -106,15 +128,77 @@ function userFor(c) {
     '',
     `The user says: "${c.request}"`,
     '',
-    'Decide what to do, following the skill exactly. Report your decision in the',
-    'required structured form. In `cites`, list every identifier your decision turns',
-    'on — backlog IDs, open-decision IDs, document names, and the words "spike" or',
-    '"control" if the skill\'s rule about either applies here.',
+    'Decide what to do, following the skill exactly. In `cites`, list every identifier',
+    'your decision turns on — backlog IDs, open-decision IDs, document names, and the',
+    'words "spike" or "control" if the skill\'s rule about either applies here.',
   );
   return parts.join('\n');
 }
 
-/** One flat schema across all cases; each case asserts only the fields it cares about. */
+/**
+ * What one subagent is handed. Everything the decision may depend on is inline, and the
+ * agent is told not to look anything up: the real repo on disk is a *different* state
+ * from the fixture, so a single Read would silently swap the situation under test.
+ */
+function promptFor(c) {
+  return [
+    systemFor(c),
+    '',
+    '---',
+    '',
+    '# Your task',
+    '',
+    'Answer as the skill above instructs. Two hard constraints, because this is a',
+    'measurement rather than a session:',
+    '',
+    '1. **Use no tools.** Do not read, search, or list files. The repository state you',
+    '   are deciding about is reproduced in full below; the files on disk are a',
+    '   different project and reading them would answer a different question.',
+    '2. **Do not perform the work.** Report only the decision the skill produces.',
+    '',
+    userFor(c),
+    '',
+    '---',
+    '',
+    '# Required reply format',
+    '',
+    'End your reply with exactly one fenced JSON block and nothing after it:',
+    '',
+    '```json',
+    JSON.stringify(
+      {
+        action: 'proceed | refuse | clarify',
+        classification: 'feature | open-decision | both | not-applicable',
+        cites: ['every identifier the decision turns on'],
+        reason: 'one or two sentences',
+      },
+      null,
+      2,
+    ),
+    '```',
+    '',
+    fieldNotes(),
+  ].join('\n');
+}
+
+/** The enum semantics that `output_config.format` used to carry as schema descriptions. */
+function fieldNotes() {
+  const p = DECISION_SCHEMA.properties;
+  return [
+    'Field meanings:',
+    `- action — ${p.action.description}`,
+    `- classification — ${p.classification.description}`,
+    `- cites — ${p.cites.description}`,
+  ].join('\n');
+}
+
+/**
+ * One flat shape across all cases; each case asserts only the fields it cares about.
+ *
+ * Kept as a JSON Schema object even though nothing validates against it now: it is the
+ * single definition the prompt's example block and the field notes are both generated
+ * from, so the contract cannot drift between what we ask for and what we grade.
+ */
 const DECISION_SCHEMA = {
   type: 'object',
   properties: {
@@ -230,90 +314,153 @@ function dryRun(cases) {
   return bad === 0 ? 0 : 1;
 }
 
-// ── Live run ─────────────────────────────────────────────────────────────────
+// ── Emit: write the prompts a session will hand to subagents ─────────────────
 
-async function liveRun(cases) {
-  let Anthropic;
-  try {
-    ({ default: Anthropic } = await import('@anthropic-ai/sdk'));
-  } catch {
+const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+function emit(cases) {
+  const dir = opts.outDir ? resolve(opts.outDir) : join(REPO, 'evals', 'runs', stamp());
+  mkdirSync(join(dir, 'prompts'), { recursive: true });
+  mkdirSync(join(dir, 'replies'), { recursive: true });
+
+  const items = [];
+  for (const c of cases) {
+    const prompt = promptFor(c);
+    for (let rep = 0; rep < opts.reps; rep++) {
+      const key = `${c.id}.${rep}`;
+      writeFileSync(join(dir, 'prompts', `${key}.md`), prompt);
+      items.push({ key, id: c.id, skill: c.skill, rep, bar: c.bar });
+    }
+  }
+  writeFileSync(
+    join(dir, 'manifest.json'),
+    JSON.stringify({ createdAt: new Date().toISOString(), bar: BAR, reps: opts.reps, items }, null, 2),
+  );
+
+  const rel = relative(process.cwd(), dir) || dir;
+  console.log(`  wrote ${items.length} prompt(s) to ${join(rel, 'prompts')}\n`);
+  console.log(`Next, in the session — one subagent per prompt file, each run independently:
+
+  1. Read ${join(rel, 'prompts')}/<key>.md and pass its **entire contents** to a
+     subagent as the prompt. Do not summarise it and do not add framing: the file is
+     the thing being measured.
+  2. Save that subagent's reply verbatim to ${join(rel, 'replies')}/<key>.txt
+  3. When every reply is saved:  npm run eval -- --grade ${rel}
+
+Reps of the same case must be independent subagents — the same agent answering twice
+measures its own consistency, not the prompt. Nothing here reads the repo: the agents
+are told to use no tools, because the fixture state in the prompt is not the state on
+disk.`);
+  return 0;
+}
+
+// ── Grade: score the replies ─────────────────────────────────────────────────
+
+/**
+ * Pull the decision out of a free-text reply. Without `output_config.format` there is
+ * no guarantee of shape, so this is deliberately forgiving about *wrapping* and
+ * completely unforgiving about *content*: a reply we cannot parse is a failure with a
+ * reason attached, never a skip. A skipped rep would quietly raise the pass rate,
+ * which is the exact shape of LESSONS L3.
+ */
+export function parseDecision(text) {
+  const fences = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const candidates = [...fences.reverse(), text];
+  for (const raw of candidates) {
+    try {
+      const v = JSON.parse(raw.trim());
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return null;
+}
+
+const REPLY_EXTS = ['.txt', '.md', '.json', ''];
+
+function gradeRun(dir) {
+  const root = resolve(dir);
+  const manifestPath = join(root, 'manifest.json');
+  if (!existsSync(manifestPath)) {
+    console.error(`evals: no manifest at ${manifestPath}. Run \`npm run eval\` first to emit a run.`);
+    return 2;
+  }
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const bar = argv.includes('--bar') ? BAR : manifest.bar;
+  const byId = new Map(CASES.map((c) => [c.id, c]));
+
+  const missing = [];
+  const byCase = new Map();
+
+  for (const item of manifest.items) {
+    const c = byId.get(item.id);
+    if (!c) {
+      console.error(`evals: reply for "${item.id}", which is no longer a case — cases.mjs changed mid-run.`);
+      return 2;
+    }
+    const path = REPLY_EXTS.map((ext) => join(root, 'replies', item.key + ext)).find((p) => existsSync(p));
+    if (!byCase.has(c.id)) byCase.set(c.id, { c, outcomes: [] });
+    if (!path) {
+      missing.push(item.key);
+      continue;
+    }
+    const text = readFileSync(path, 'utf8');
+    const decision = parseDecision(text);
+    byCase.get(c.id).outcomes.push(
+      decision
+        ? grade(c, decision)
+        : { pass: false, fails: [`no parseable JSON block in the reply (${text.trim().slice(0, 80)}…)`] },
+    );
+  }
+
+  // Stray replies with no manifest entry mean the run and the directory disagree; the
+  // count would be reported against the wrong denominator, so refuse rather than guess.
+  const known = new Set(manifest.items.flatMap((i) => REPLY_EXTS.map((e) => i.key + e)));
+  const stray = readdirSync(join(root, 'replies')).filter((f) => !known.has(f));
+  if (stray.length) {
+    console.error(`evals: ${stray.length} reply file(s) match no prompt in the manifest: ${stray.join(', ')}`);
+    return 2;
+  }
+
+  if (missing.length) {
     console.error(
-      'evals: @anthropic-ai/sdk is not installed.\n' +
-        '  npm install --save-dev @anthropic-ai/sdk\n\n' +
-        'This is the only dependency in the repo, and it is dev-only: the checks, the\n' +
-        'hooks and `npm test` stay dependency-free. Use --dry-run to exercise the\n' +
-        'harness without it.',
+      `evals: ${missing.length} of ${manifest.items.length} replies are missing — an incomplete run is not a\n` +
+        `measurement, because dropping the unanswered reps raises the rate. Missing:\n  ` +
+        missing.join('\n  '),
     );
     return 2;
   }
 
-  const client = new Anthropic(); // resolves ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN / `ant auth login` profile
-  const results = [];
+  const results = [...byCase.values()].map(({ c, outcomes }) => ({
+    c,
+    outcomes,
+    passed: outcomes.filter((o) => o.pass).length,
+    of: outcomes.length,
+  }));
 
-  for (const c of cases) {
-    const system = systemFor(c);
-    const user = userFor(c);
-    const outcomes = [];
-
-    for (let rep = 0; rep < opts.reps; rep++) {
-      try {
-        const response = await client.beta.messages.create({
-          model: opts.model,
-          max_tokens: 16000,
-          // Opus 5 can decline a request; `fallbacks: "default"` re-runs it server-side
-          // on Anthropic's recommended substitute rather than surfacing the refusal.
-          betas: ['server-side-fallback-2026-07-01'],
-          fallbacks: 'default',
-          output_config: {
-            effort: opts.effort,
-            format: { type: 'json_schema', schema: DECISION_SCHEMA },
-          },
-          system,
-          messages: [{ role: 'user', content: user }],
-        });
-
-        if (response.stop_reason === 'refusal') {
-          outcomes.push({ pass: false, fails: ['request was refused by safety classifiers'] });
-          continue;
-        }
-        const text = response.content.find((b) => b.type === 'text')?.text ?? '';
-        let decision;
-        try {
-          decision = JSON.parse(text);
-        } catch {
-          outcomes.push({ pass: false, fails: [`unparseable response: ${text.slice(0, 120)}`] });
-          continue;
-        }
-        outcomes.push(grade(c, decision));
-      } catch (err) {
-        outcomes.push({ pass: false, fails: [`API error: ${err.message}`] });
-      }
-    }
-
-    const passed = outcomes.filter((o) => o.pass).length;
-    results.push({ c, passed, of: outcomes.length, outcomes });
-    const rate = passed / outcomes.length;
-    const mark = rate >= BAR ? '✔' : '✖';
-    console.log(`  ${mark} ${c.id}  ${passed}/${outcomes.length}  — ${c.bar}`);
-    for (const o of outcomes.filter((x) => !x.pass).slice(0, 2)) {
+  for (const r of results) {
+    const mark = r.passed / r.of >= bar ? '✔' : '✖';
+    console.log(`  ${mark} ${r.c.id}  ${r.passed}/${r.of}  — ${r.c.bar}`);
+    for (const o of r.outcomes.filter((x) => !x.pass).slice(0, 2)) {
       console.log(`        ${o.fails.join('; ')}`);
     }
   }
 
   const total = results.reduce((n, r) => n + r.passed, 0);
   const of = results.reduce((n, r) => n + r.of, 0);
-  const below = results.filter((r) => r.passed / r.of < BAR);
+  const below = results.filter((r) => r.passed / r.of < bar);
 
   console.log(
-    `\neval: ${total}/${of} (${((total / of) * 100).toFixed(0)}%) at effort=${opts.effort}, ` +
-      `model=${opts.model}, reps=${opts.reps}, pre-registered bar=${BAR}`,
+    `\neval: ${total}/${of} (${((total / of) * 100).toFixed(0)}%) from ${opts.note}, ` +
+      `reps=${manifest.reps}, pre-registered bar=${bar}`,
   );
   if (below.length) {
     console.log(`\n${below.length} case(s) below the bar — the prompt, not the model, is the thing to fix:`);
     for (const r of below) console.log(`  ${r.c.id}: ${r.c.why}`);
   }
   console.log(
-    `\nA rate from ${opts.reps} reps is directional. Treat a drop as a reason to look, ` +
+    `\nA rate from ${manifest.reps} rep(s) is directional. Treat a drop as a reason to look, ` +
       `not as evidence a prompt edit worked — see the note at the top of this file.`,
   );
   return below.length ? 1 : 0;
@@ -321,12 +468,14 @@ async function liveRun(cases) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+if (opts.grade) process.exit(gradeRun(opts.grade));
+
 const selected = opts.filter ? CASES.filter((c) => c.id.includes(opts.filter)) : CASES;
 if (selected.length === 0) {
   console.error(`evals: no case matches "${opts.filter}". Known ids:\n  ${CASES.map((c) => c.id).join('\n  ')}`);
   process.exit(2);
 }
 console.log(
-  `evals: ${selected.length} case(s)${opts.dryRun ? ' (dry run — no API calls)' : `, ${opts.reps} rep(s) each`}\n`,
+  `evals: ${selected.length} case(s)${opts.dryRun ? ' (dry run — nothing is spawned)' : `, ${opts.reps} rep(s) each`}\n`,
 );
-process.exit(opts.dryRun ? dryRun(selected) : await liveRun(selected));
+process.exit(opts.dryRun ? dryRun(selected) : emit(selected));
