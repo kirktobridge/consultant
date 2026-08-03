@@ -36,8 +36,10 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P4** — acceptance criteria + the acceptance handshake. Highest payoff: it's the
-   only entry that closes the loop back to the product owner.
+1. **P4** — R0 landed (the `Accept:` field); **R1 is what's next** — /implement and
+   /verify consuming those criteria, then R2's handshake. Still the highest payoff: the
+   only entry that closes the loop back to the product owner, and R0 alone doesn't
+   close it.
 2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
    touches, so it goes second by preference rather than by dependency.
 3. **P6** — split "merged" from "released". Independent of the other two; available to
@@ -60,15 +62,16 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
      fields. -->
 
 ### P4 — Acceptance criteria, and the acceptance handshake
-- **Status:** in-progress
+- **Status:** partial
 - **Drafted:** 2026-08-03
 - **Value:** you say what "right" means before the build, in your own words, and the
   loop closes by reporting against those words. Today it closes without you: the agent
   infers intent from its own diff, and /land flips `shipped` without you saying yes.
 - **Scope:**
-  - R0: an `**Accept:**` field in the entry shape — 2–4 observable checks. Required on
-    open entries by `scripts/backlog-schema-check.mjs`; drafted by /triage; preserved
-    verbatim by /ship's intake. Doc + checker + every skill grep move in one commit.
+  - R0 — **landed 2026-08-03**: an `**Accept:**` field in the entry shape — 2–4
+    observable checks. Required on open entries by `scripts/backlog-schema-check.mjs`;
+    drafted by /triage; preserved verbatim by /ship's intake. Doc + checker + every
+    skill grep move in one commit.
   - R1: /implement treats Accept as part of the contract alongside Scope; /verify drives
     *those criteria* rather than deriving the flow from `git diff`, and reports
     per-criterion observed / not-observed.
@@ -84,13 +87,19 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
     than summarising the diff.
   - No entry reaches `shipped` without me saying so.
 - **Depends on:** —
-- **Notes:** shares the entry-shape/schema-check surface with **P5** — first claimant
-  builds the checker change, the second extends it. One risk, held as *asserted*: a
-  required field can degrade into ceremony (Value restated as a bullet list). Not filed
-  as an OD deliberately — no check settles it before the field exists, and an OD
-  settleable only post-build would park this entry outside `## Next up` permanently,
-  inverting the register. R0 instead ships an eval case measuring whether the augmented
-  /triage prose yields observable criteria.
+- **Notes:** R0 landed as the first claimant of the entry-shape/schema-check surface, so
+  **P5** now *extends* that checker rather than building it. R1 and R2 are unbuilt: the
+  field exists and is enforced, but nothing yet *consumes* it — /implement and /verify
+  still work from Scope and the diff, and /land still flips `shipped` without the user
+  saying yes. **The `Accept:` criteria now sitting on P4–P8 were drafted by the agent
+  alongside the field, not spoken by the product owner** — they are proposals awaiting
+  your correction, which is exactly the review this field exists to invite; treat them
+  as *asserted* until you've rewritten or ratified them. The standing risk, still
+  *asserted*: a required field can degrade into ceremony (Value restated as a bullet
+  list). Not filed as an OD deliberately — no check settles it before the field exists,
+  and an OD settleable only post-build would park this entry outside `## Next up`
+  permanently, inverting the register. R0 instead ships an eval case measuring whether
+  the augmented /triage prose yields observable criteria.
 
 ### P5 — Defects as a third intake class
 - **Status:** proposed
@@ -156,9 +165,11 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   - It names what is in flight and how long it has been there.
   - It names what is blocked and which assumption is blocking it.
   - Running it leaves every tracked file unchanged.
-- **Depends on:** P4, P6 — both unshipped, so this entry is *blocked-not-rejected*. It
-  reports on acceptance state and released-vs-merged, neither of which exists yet; it
-  stays in the pool legitimately and may not enter `## Next up` until they land.
+- **Depends on:** P4, P6 — neither terminal, so this entry is *blocked-not-rejected*. It
+  reports on acceptance state and released-vs-merged. P4's R0 gave the criteria a place
+  to live, but nothing records whether one was *met* until P4 R1/R2; released-vs-merged
+  doesn't exist at all. It stays in the pool legitimately and may not enter `## Next up`
+  until they land.
 
 ### P8 — A review step in the loop
 - **Status:** proposed
