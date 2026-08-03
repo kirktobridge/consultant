@@ -40,11 +40,15 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
    /verify consuming those criteria, then R2's handshake. Still the highest payoff: the
    only entry that closes the loop back to the product owner, and R0 alone doesn't
    close it.
-2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
-   touches, so it goes second by preference rather than by dependency.
-3. **P6** — split "merged" from "released". Independent of the other two; available to
+2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
+   timing: both of those write documentation prose *about* new field names, which is
+   the exact input that makes P9's silent failure live. Cheap, and cheaper now than
+   after.
+3. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+   touches, so it goes third by preference rather than by dependency.
+4. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
-4. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
+5. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
    because nothing else waits on it.
 
 Note what is *absent*: P7 is the higher-payoff idea of the two remaining, and is
@@ -186,3 +190,58 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
     close-out points at it.
   - The rule for skipping it names a condition I could check, not a judgement call.
 - **Depends on:** —
+
+---
+
+## Epic: The checking machinery
+
+The suite's own tooling — the checks the skills orient off. Work here is not
+user-facing, but a silent failure in it is invisible everywhere else.
+
+### P9 — Anchor the field probes, and decide about non-entry headings
+- **Status:** proposed
+- **Drafted:** 2026-08-03
+- **Value:** two silent-failure classes leave the keystone check. An entry that
+  *describes* a field stops being read as *carrying* it, and a prose section
+  heading stops being handled by accident. Both fail green today, which is the
+  worst way for a check to be wrong.
+- **Scope:**
+  - Anchor every field probe and accessor to a field line, using the idiom
+    `Accept` already uses (`/^\s*-\s+\*\*Label\b/`). Both tracked docs, presence
+    probes and the `labelled`-driven accessors alike.
+  - Derive that list from the config rather than restating it here, and test it
+    by walking the probes — so a probe added later is covered without anyone
+    remembering to.
+  - Make "this is a section heading" an explicit decision rather than a
+    by-product of the ID-capture regex needing whitespace after the ID.
+    Recognise any `###` line, then separate a section header from an entry with
+    a broken heading, and say which.
+  - Out: changing the entry format, and which fields are required. This is how
+    fields and entries are *found*, not what they are.
+- **Accept:**
+  - An entry whose prose names `**Depends on:** OD-n` still has its real
+    dependency read, and is still blocked by that OD if it is open.
+  - An entry that names a required field in prose but does not carry it is
+    rejected — for every field, in both tracked docs.
+  - A section heading is skipped whether it is one word or several, and is never
+    reported as a malformed entry.
+  - A genuinely malformed entry heading (an ID with no em-dash) is still
+    reported — the parser must not go quiet to achieve the above.
+- **Depends on:** —
+- **Notes:** found mid-build during P4 R0, which fixed the `Accept` probe only
+  and left a test as the idiom. Severity is not uniform — rank `Depends on:`
+  first: it drives the OD-blocking gate, and `labelled` takes the *first* match,
+  so prose above the real field wins. `Resolves:` is second (the spike↔OD
+  pairing). The design to preserve is **parse loosely, validate strictly**: the
+  parser accepts anything heading-shaped so a typo'd heading gets *caught*
+  rather than skipped. Tightening the parse would widen the hole, not close it.
+  Verified 2026-08-03 that skipping one-word headings is a side effect, not a
+  decision — no test and no comment holds it.
+  **This entry demonstrates its own bug.** The first `Accept:` criterion above
+  names `**Depends on:**` in prose, so `labelled` locks onto that line and never
+  reads this entry's real `Depends on:` field. It is harmless only by
+  coincidence — `OD-n` has a letter where the ID pattern wants a digit, and the
+  real field is empty anyway — so nothing fails today. Verified 2026-08-03 by
+  running `labelled` against this entry's body. Do not "fix" the criterion to
+  make the demonstration go away; fix the probe, and keep this entry as the
+  regression case.
