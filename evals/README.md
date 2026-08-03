@@ -12,10 +12,17 @@ runs:
 |---|---|---|
 | Deterministic | yes | no |
 | Gates a commit | yes (pre-commit hook) | **never** |
-| Costs | nothing | a subagent per case-rep |
+| Runs unattended | yes | no — the session is the transport |
+| Costs | local CPU | one subagent per case-rep, against your session's token budget |
 | Needs an API key | no | no |
 | Needs `npm install` | no | no |
 | A red result means | something is broken | something is *worth looking at* |
+
+**On cost:** subagents are not free, they are just not *separately billed*. The full 12
+cases at the default 3 reps is 36 subagent invocations; one smoke-test case ran ~25k
+tokens. What the subagent transport actually removed is the API key, the SDK, and the
+second bill — not the expense. Budget a run, and prefer `--reps 1` while iterating on a
+prompt.
 
 Wiring a probabilistic measurement into a commit gate produces a check that fails for
 reasons unrelated to the change, and gets disabled within a week — taking the real

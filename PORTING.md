@@ -156,6 +156,12 @@ runs one subagent per file and saves each reply, and `npm run eval -- --grade <d
 scores them. Keep the emitted prompt **unedited** when you hand it over; it is the
 artifact under test.
 
+That procedure is the **/eval** skill — the seventh, and the one that is *not* part of
+the loop. Keep it if you expect to edit the skills' prose; delete
+`.claude/skills/eval/` and `evals/` together if you don't, and don't leave one without
+the other. Subagents cost your session's token budget, so a full sweep is worth
+scoping before you start rather than after.
+
 `check:guards` belongs in `test` specifically, and not only in the hook — see *The
 three placements of `verify-guards`* below. `audit` stays out deliberately: it reads
 session state, where an uncommitted tree is normal rather than a failure.

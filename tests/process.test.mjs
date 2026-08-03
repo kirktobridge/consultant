@@ -52,12 +52,31 @@ const pkg = JSON.parse(read(join(REPO, 'package.json')));
 /** Strip fenced code blocks — a template inside a fence is illustrative, not a claim. */
 const unfenced = (t) => t.replace(/```[\s\S]*?```/g, '');
 
+/** The loop. /eval is maintenance for this repo's own prose and is deliberately not one. */
+const LOOP_SKILLS = ['triage', 'implement', 'verify', 'land', 'ship', 'checkpoint'];
+
 describe('the corpus is what we think it is', () => {
-  test('six skills, and the docs that describe them agree', () => {
-    assert.equal(SKILLS.length, 6, `skills on disk: ${SKILLS.join(', ')}`);
+  test('six loop skills, and the docs that describe them agree', () => {
+    assert.deepEqual(SKILLS.filter((s) => s !== 'eval').sort(), [...LOOP_SKILLS].sort());
     for (const doc of ['README.md', '.claude/GUIDE.md', 'CLAUDE.md']) {
       const t = read(join(REPO, doc));
-      assert.match(t, /\b[Ss]ix skills\b/, `${doc} must state the real skill count`);
+      assert.match(t, /\b[Ss]ix (loop )?skills\b/, `${doc} must state the real skill count`);
+    }
+  });
+
+  test('/eval is outside the loop, and the loop docs do not route work through it', () => {
+    // The distinction is the point: the six carry a feature from idea to shipped, and a
+    // reader who meets /eval as a seventh step will look for where it fits and find
+    // nothing. It measures this repo's prose; it never touches a backlog entry.
+    assert.ok(SKILLS.includes('eval'), 'the eval skill should exist');
+    const evalSkill = read(join(SKILL_DIR, 'eval', 'SKILL.md'));
+    assert.match(evalSkill, /not a step in the build loop/i, 'the skill must say it is off-loop');
+    for (const s of LOOP_SKILLS) {
+      assert.doesNotMatch(
+        unfenced(read(join(SKILL_DIR, s, 'SKILL.md'))),
+        /\/eval\b/,
+        `/${s} hands off to /eval — the loop must not depend on a measurement`,
+      );
     }
   });
 
@@ -135,7 +154,7 @@ describe('every skill handoff points at a skill that exists', () => {
     const bad = [];
     for (const doc of ['README.md', '.claude/GUIDE.md', 'CLAUDE.md', 'PORTING.md']) {
       const t = read(join(REPO, doc));
-      for (const m of t.matchAll(/\/(triage|implement|verify|land|ship|checkpoint|research)\b/g)) {
+      for (const m of t.matchAll(/\/(triage|implement|verify|land|ship|checkpoint|eval|research)\b/g)) {
         const name = m[1];
         if (SKILLS.includes(name)) continue;
         // /research is deliberately named as the thing the master variant has.

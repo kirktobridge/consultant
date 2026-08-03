@@ -7,6 +7,10 @@
 **Run:** `<start command>`. `<test command>` runs the suite. `<typecheck>` / `<lint>`
 for checks. `npm run check:docs` runs the backlog schema check.
 
+`npm run eval` measures the skills' *prose*, and **you** are its transport rather than a
+shell: it writes prompt files, one subagent answers each, `--grade` scores them. Drive it
+with **/eval**, never by improvising — opt-in, and never a commit gate.
+
 ## Canonical docs — read before working
 
 | Doc | What it is |
@@ -16,7 +20,7 @@ for checks. `npm run check:docs` runs the backlog schema check.
 | [docs/product/BACKLOG.md](docs/product/BACKLOG.md) | **Product/feature backlog** — the pool of shippable work. |
 | [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
-| [.claude/GUIDE.md](.claude/GUIDE.md) | The six skills and how they hand off. |
+| [.claude/GUIDE.md](.claude/GUIDE.md) | The six loop skills, how they hand off, and the checks behind them. |
 
 ## Doc discipline (avoid the re-align treadmill)
 

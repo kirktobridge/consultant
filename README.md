@@ -1,7 +1,8 @@
 # Agent skill suite — a doc-driven working loop
 
-A portable system of **six Claude Code skills** plus the **documents they read and
-write**, extracted from a project where it ran for months across dozens of features.
+A portable system of **six loop skills** plus the **documents they read and write**,
+extracted from a project where it ran for months across dozens of features. (A seventh,
+`/eval`, is maintenance for the suite's own prose — off the loop by design.)
 
 It solves one problem: **an agent's durable notes drift from reality, silently.** A
 backlog says a feature is unbuilt when it shipped; a claim written from a mistyped grep
@@ -92,11 +93,12 @@ keeps the register from becoming a generator of speculative work.
 
 ```
 .claude/
-  GUIDE.md              human-facing guide to the six skills
+  GUIDE.md              human-facing guide to the six loop skills, and the checks
   settings.json         hooks: edit-guard (Pre), schema check (Post)
   edit-guard.mjs        blocks writes to human-owned files
   edit-blocklist        which files those are            ← edit for your project
   skills/{triage,implement,verify,land,ship,checkpoint}/SKILL.md
+  skills/eval/SKILL.md  off-loop: drives evals/ with subagents
 docs/
   SPEC.md                     what "correct" means       ← human-only, hook-blocked
   ARCHITECTURE.md             the *why*                  ← written only by /ship
@@ -130,7 +132,7 @@ being prose — that's how L1 stopped being an exhortation and became `grep-chec
 ```bash
 npm test                     # → the suite, then the schema + guard checks
 npm run eval -- --dry-run    # → renders every eval prompt, self-checks the graders
-npm run check:docs           # → backlog-schema: OK (6 entries across 2 file(s))
+npm run check:docs           # → backlog-schema: OK (7 entries across 2 file(s))
 npm run audit                # → session-audit: clean … (or the findings, with actions)
 npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 

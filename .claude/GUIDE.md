@@ -7,6 +7,9 @@ ends the same way: **land** the branch on main → **ship** the docs → **check
 session. Each tracking file has exactly one skill that writes it, so nothing goes stale
 or gets double-edited.
 
+There is a seventh, **/eval**, that is deliberately *not* part of that loop: it measures
+whether these skills' own prose still works. See [The checks](#the-checks-behind-the-skills).
+
 ## The skills
 
 ### /triage — "I have an idea"
@@ -96,6 +99,52 @@ The audit is a script, not a checklist in the skill, because all five checks are
 decidable from git + the docs — and end-of-session is exactly when eyeballing a grep
 goes wrong. The skill owns the *response*; the script owns the *computation*.
 
+## The checks behind the skills
+
+The skills are prose, and prose is followed probabilistically. These are the parts that
+aren't — they run whether or not anyone remembers them.
+
+| Command | What it holds | When it runs |
+|---|---|---|
+| `npm test` | every check proven to still bite, the loop walked end-to-end, the skills' own instructions held against rot | pre-commit hook, and CI |
+| `npm run check:docs` | the docs stay greppable — the schema every skill's grep depends on | in-session (PostToolUse hook) + `npm test` |
+| `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
+| `npm run audit` | the decidable half of /checkpoint — dangling claims, unswept resolutions, branches with no baton | /checkpoint |
+| `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |
+
+Nothing installs: Node 18+ and nothing else.
+
+### /eval — running it
+
+`npm run eval` is the only one you can't just fire and read. It measures a model, so
+**the session is the transport**: the command writes one prompt file per case, an agent
+runs **one subagent per file** and saves each reply verbatim, then
+`npm run eval -- --grade <dir>` scores them mechanically.
+
+That procedure is the **/eval** skill — the seventh, off-loop one. It exists because the
+steps are executed by an agent rather than a shell, and instructions an agent has to be
+told about are instructions that get skipped.
+
+```
+/eval                          ← proposes a scope, then drives it
+/eval --case depends --reps 1  ← iterating on one gate's wording
+did my prompt edit help?
+```
+
+Three ways to get a number that looks real and means nothing — the harness catches the
+last one, you have to hold the first two:
+
+- **Paraphrasing or trimming the emitted prompt.** It is the artifact under test; hand
+  it over whole.
+- **Reusing one subagent across reps.** That measures one agent's consistency, not the
+  prompt. Reps are independent agents or they aren't reps.
+- **Losing a reply.** Dropping unanswered reps silently raises the pass rate, so
+  `--grade` refuses to report at all until every reply is present.
+
+It never gates a commit: a probabilistic measurement wired into a commit gate fails for
+unrelated reasons and gets switched off, taking the real tests with it. Details and the
+honest limits are in [evals/README.md](../evals/README.md).
+
 ## Typical days
 
 **Feature idea → shipped:**
@@ -143,7 +192,7 @@ read .claude/HANDOFF.md   (or just: "what's next?")
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
 | `.claude/HANDOFF.md` | /checkpoint (own branch's section only) | local, gitignored |
 | `src/`, `tests/` | /implement | branch |
-| *(nothing — scratchpad scripts only)* | /verify, /triage | — |
+| *(nothing tracked — scratchpad scripts, gitignored eval runs)* | /verify, /triage, /eval | — |
 | `docs/SPEC.md`, `docs/dev_notes/` | **you** (human-only, hook-enforced) | — |
 
 ## Why single-writer
