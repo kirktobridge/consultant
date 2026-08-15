@@ -366,79 +366,131 @@ describe('the enforcement layer survives a fresh clone', () => {
     // core.hooksPath runs these files directly. A hook committed 644 is silently
     // skipped by git — no error, no output, just an enforcement layer that is not there.
     const dir = join(REPO, '.claude', 'hooks');
-    const notExec = readdirSync(dir).filter((n) => (statSync(join(dir, n)).mode & 0o111) === 0);
+    const notExec = readdirSync(dir)
+      .filter((n) => !n.endsWith('.md')) // the directory's own README is documentation
+      .filter((n) => (statSync(join(dir, n)).mode & 0o111) === 0);
     assert.deepEqual(notExec, [], 'a hook without the executable bit is skipped in silence');
   });
 
-  describe('the pre-commit hook chains a personal hook', () => {
-    // core.hooksPath redirects git's whole hook lookup, so a personal .git/hooks/pre-commit
-    // is skipped with no error at all. The hook chains .local to give that back — and the
-    // chain is three lines with a genuine trap in them, so it is tested rather than eyeballed.
+  describe('personal hooks survive core.hooksPath', () => {
+    // core.hooksPath redirects git's ENTIRE hook lookup — not just the names this repo
+    // claims. Verified by hand: a personal .git/hooks/pre-commit AND an unrelated
+    // post-commit both ran before the setting and neither ran after, with no error and
+    // no output either time. Every hook here chains `<name>.local` to give that back.
     //
-    // `npm` is stubbed on PATH: running the real hook would recurse into `npm test`, i.e.
-    // into this file. What is under test is the chaining, not the suite it gates on.
-    const HOOK = join(REPO, '.claude', 'hooks', 'pre-commit');
+    // `npm` is stubbed on PATH throughout: running the real pre-commit would recurse
+    // into `npm test`, i.e. into this file. The chaining is what is under test, not the
+    // suite it gates on.
+    const HOOK_DIR = join(REPO, '.claude', 'hooks');
+    const hookFiles = () => readdirSync(HOOK_DIR).filter((n) => !n.endsWith('.md') && n !== '_chain');
 
-    function runHook(localHookBody) {
+    /** Run a committed hook in a throwaway repo, optionally with a personal hook present. */
+    function runHook(name, { local, localMode = 0o755, args = [], stdin = '' } = {}) {
       const dir = tempDir();
       gitInit(dir);
       const bin = join(dir, 'stub-bin');
       mkdirSync(bin);
       writeFileSync(join(bin, 'npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-      if (localHookBody !== undefined) {
+      if (local !== undefined) {
         const hooks = join(dir, '.git', 'hooks');
         mkdirSync(hooks, { recursive: true });
-        writeFileSync(join(hooks, 'pre-commit.local'), localHookBody, { mode: 0o755 });
+        writeFileSync(join(hooks, `${name}.local`), local, { mode: localMode });
       }
-      const r = spawnSync('/bin/sh', [HOOK], {
+      const r = spawnSync('/bin/sh', [join(HOOK_DIR, name), ...args], {
         cwd: dir,
+        input: stdin,
         encoding: 'utf8',
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
       });
       return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
     }
 
-    test('with no personal hook, it exits 0', () => {
-      // THE TRAP: `[ -x "$LOCAL" ] && exec "$LOCAL"` as the final line makes the failed
-      // test the exit status, so having no personal hook would reject every commit.
-      // Nobody would notice until a clone without one tried to commit.
-      assert.equal(runHook().code, 0, 'a clone with no personal hook must still commit');
+    test('every hook exits 0 when there is no personal hook to chain', () => {
+      // THE TRAP, and the reason this is a test rather than a code review note:
+      // `[ -x "$LOCAL" ] && exec "$LOCAL"` as a final line makes the FAILED test the
+      // exit status. Every clone without a personal hook would then have every commit
+      // rejected — by the hooks installed to help it.
+      const bad = hookFiles().filter((n) => runHook(n).code !== 0);
+      assert.deepEqual(bad, [], 'a hook rejects when nothing is chained');
     });
 
-    test('a personal hook runs', () => {
-      const r = runHook('#!/bin/sh\necho PERSONAL_RAN\n');
-      assert.equal(r.code, 0);
-      assert.match(r.stdout, /PERSONAL_RAN/, 'the personal hook should have been executed');
+    test('every hook runs its personal counterpart', () => {
+      const silent = hookFiles().filter(
+        (n) => !/RAN/.test(runHook(n, { local: '#!/bin/sh\necho RAN\n' }).stdout),
+      );
+      assert.deepEqual(silent, [], 'a hook does not chain to its .local counterpart');
     });
 
-    test("a personal hook's rejection is what the commit sees", () => {
-      // The point of `exec`: without it the chained hook's exit code is swallowed and a
-      // hook that means to block would appear to pass — worse than not chaining at all.
-      assert.equal(runHook('#!/bin/sh\nexit 3\n').code, 3, "the local hook's verdict must win");
+    test("every hook lets the personal hook's rejection through", () => {
+      // The point of `exec`. Called rather than exec'd, the chained hook's exit code is
+      // swallowed and a hook that means to block silently appears to pass.
+      const swallowed = hookFiles().filter((n) => runHook(n, { local: '#!/bin/sh\nexit 3\n' }).code !== 3);
+      assert.deepEqual(swallowed, [], "a hook swallows the personal hook's verdict");
     });
 
     test('a non-executable personal hook is ignored, not fatal', () => {
-      const dir = tempDir();
-      gitInit(dir);
-      const bin = join(dir, 'stub-bin');
-      mkdirSync(bin);
-      writeFileSync(join(bin, 'npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-      mkdirSync(join(dir, '.git', 'hooks'), { recursive: true });
-      writeFileSync(join(dir, '.git', 'hooks', 'pre-commit.local'), 'not executable', { mode: 0o644 });
-      const r = spawnSync('/bin/sh', [HOOK], {
-        cwd: dir,
-        encoding: 'utf8',
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
-      });
-      assert.equal(r.status, 0, 'a chmod slip must not wedge every commit');
+      // A chmod slip must not wedge every commit in the repo.
+      assert.equal(runHook('pre-commit', { local: '#!/bin/sh\nexit 1\n', localMode: 0o644 }).code, 0);
     });
 
-    test('the hook documents the .local name it looks for', () => {
-      // The convention is only discoverable from this comment; someone whose hook stopped
-      // running has no other thread to pull, since the failure produces no output at all.
-      const src = read(HOOK);
-      assert.match(src, /pre-commit\.local/, 'the hook must name the file it chains');
-      assert.match(src, /git rev-parse --git-common-dir/, 'worktree-correct path resolution');
+    test('stdin reaches the personal hook untouched', () => {
+      // pre-push and post-rewrite carry their real payload on stdin. A single `read` in
+      // the dispatcher would eat the line the personal hook needs and leave it hanging.
+      const r = runHook('pre-push', {
+        local: '#!/bin/sh\nread line\necho "GOT:$line"\n',
+        stdin: 'refs/heads/main abc123\n',
+      });
+      assert.match(r.stdout, /GOT:refs\/heads\/main abc123/, 'the dispatcher consumed stdin');
+    });
+
+    test('hook arguments reach the personal hook', () => {
+      // commit-msg gets the message path; post-checkout gets three refs. Dropping "$@"
+      // leaves the chained hook operating on nothing, which mostly looks like success.
+      const r = runHook('commit-msg', { local: '#!/bin/sh\necho "ARGS:$*"\n', args: ['.git/COMMIT_EDITMSG'] });
+      assert.match(r.stdout, /ARGS:\.git\/COMMIT_EDITMSG/, 'arguments were dropped');
+    });
+
+    test('every stub delegates under its own name', () => {
+      // A copy-pasted stub naming the hook it was copied from would chain the WRONG
+      // personal hook — the one failure here that produces plausible-looking output.
+      const wrong = [];
+      for (const n of hookFiles()) {
+        if (n === 'pre-commit') continue; // carries suite logic; asserted separately below
+        const src = read(join(HOOK_DIR, n));
+        if (!src.includes(`/_chain" ${n} "$@"`)) wrong.push(n);
+      }
+      assert.deepEqual(wrong, [], 'a stub delegates under a name that is not its own');
+    });
+
+    test('pre-commit still gates on the suite before chaining', () => {
+      const src = read(join(HOOK_DIR, 'pre-commit'));
+      assert.match(src, /npm test/, 'pre-commit must still run the suite');
+      assert.ok(
+        src.indexOf('npm test') < src.indexOf('_chain'),
+        'the suite gate must run before the handoff, so the cheap failure comes first',
+      );
+    });
+
+    test('hooks that change git behavior by merely existing are NOT stubbed', () => {
+      // push-to-checkout: "This hook is to be used to override the default behaviour"
+      // (git's manual). A do-nothing stub tells git the checkout was handled while doing
+      // nothing — so stubbing it would BREAK pushes rather than pass them through. This
+      // is the one entry in this directory that must stay absent.
+      for (const n of ['push-to-checkout', 'proc-receive']) {
+        assert.ok(!existsSync(join(HOOK_DIR, n)), `${n} must not be stubbed — existence changes git's behavior`);
+      }
+    });
+
+    test('the README documents the boundary, and _chain is what enforces it', () => {
+      // The excluded set is only discoverable here: the symptom of a missing stub is a
+      // hook that quietly stops running, which produces nothing to search for.
+      const readme = read(join(HOOK_DIR, 'README.md'));
+      for (const n of ['push-to-checkout', 'reference-transaction', 'fsmonitor-watchman']) {
+        assert.match(readme, new RegExp(n), `README must say why ${n} is not stubbed`);
+      }
+      const chain = read(join(HOOK_DIR, '_chain'));
+      assert.match(chain, /git rev-parse --git-common-dir/, 'worktree-correct path resolution');
+      assert.match(chain, /\.local/, '_chain must name the convention it looks for');
     });
   });
 

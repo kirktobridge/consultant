@@ -1,0 +1,9 @@
+#!/bin/sh
+# sendemail-validate — this suite ships no sendemail-validate logic of its own.
+#
+# It exists so that YOUR hook still runs. core.hooksPath redirects git's entire hook
+# lookup to this directory, so without this file a personal .git/hooks/sendemail-validate is
+# skipped in silence — no error, no output, nothing to grep for.
+#
+# Put yours at .git/hooks/sendemail-validate.local and make it executable. See _chain.
+exec "$(dirname "$0")/_chain" sendemail-validate "$@"

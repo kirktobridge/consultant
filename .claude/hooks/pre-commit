@@ -24,8 +24,8 @@
 # .local name is the one thing here that cannot be silently ignored, because this file
 # is what goes looking for it.
 #
-# Hooks of OTHER names are not covered by this and stay dead while core.hooksPath is
-# set — a personal post-commit or pre-push needs its own file in THIS directory.
+# The same holds for every other hook name — see README.md in this directory for which
+# are covered, which deliberately are not, and why.
 
 # The FULL suite, not a fast subset. It runs in ~2s with no dependencies, and the
 # tests most worth having here are the cheap ones — the process tests that catch a
@@ -46,19 +46,7 @@ if ! npm test --silent; then
 fi
 
 # Hand off to your personal hook, if you have one. The suite's gate runs first so the
-# common failure is the cheap one; `exec` then replaces this process, which is what
-# gives your hook the real verdict on the commit rather than an exit code this script
-# would otherwise swallow.
-#
-# --git-common-dir, not --git-dir: in a worktree those differ, and personal hooks
-# belong to the checkout as a whole rather than to one branch's worktree.
-#
-# NOTE the explicit `exit 0`. Written as a bare `[ -x "$LOCAL" ] && exec "$LOCAL"` on
-# the last line, the test failing makes the FAILED TEST the script's exit status — so
-# having no personal hook would reject every commit. The obvious one-liner is a bug.
-LOCAL="$(git rev-parse --git-common-dir)/hooks/pre-commit.local"
-if [ -x "$LOCAL" ]; then
-  exec "$LOCAL" "$@"
-fi
-
-exit 0
+# common failure is the cheap one. Every hook in this directory ends this way; the
+# reasoning about exec, stdin and exit codes lives in _chain rather than being copied
+# fifteen times.
+exec "$(dirname "$0")/_chain" pre-commit "$@"

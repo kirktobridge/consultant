@@ -1,0 +1,9 @@
+#!/bin/sh
+# post-rewrite — this suite ships no post-rewrite logic of its own.
+#
+# It exists so that YOUR hook still runs. core.hooksPath redirects git's entire hook
+# lookup to this directory, so without this file a personal .git/hooks/post-rewrite is
+# skipped in silence — no error, no output, nothing to grep for.
+#
+# Put yours at .git/hooks/post-rewrite.local and make it executable. See _chain.
+exec "$(dirname "$0")/_chain" post-rewrite "$@"

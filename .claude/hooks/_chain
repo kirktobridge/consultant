@@ -1,0 +1,49 @@
+#!/bin/sh
+# _chain — hand a git hook off to your personal copy of the same name.
+#
+# Setting core.hooksPath redirects git's ENTIRE hook lookup to this directory. It does
+# not merge with .git/hooks/ and it does not fall back to it: a hook you had at
+# .git/hooks/post-commit stops running the moment this suite is installed, with no
+# error, no warning, and no output to search for. That is the failure this exists to
+# undo — every hook in this directory ends by calling _chain, so your own hook still
+# runs under the name `<hook>.local`.
+#
+# Usage, from a hook in this directory:
+#     exec "$(dirname "$0")/_chain" <hook-name> "$@"
+#
+# The name is passed explicitly rather than derived from $0. Deriving it would work
+# today and break the moment a hook is invoked through a symlink or a copied path, and
+# a chaining bug is invisible by construction: the symptom is a hook not running.
+#
+# THIS SCRIPT MUST NEVER READ STDIN. pre-push, post-rewrite and friends receive their
+# real payload on stdin, and a single `read` here would consume the line the personal
+# hook needs and leave it hanging on an empty pipe. `exec` hands the descriptor over
+# untouched — that is the whole reason for exec rather than a call-and-exit.
+#
+# Leading underscore because it is not a git hook name. Git looks for exact names, so
+# an extra file in this directory is inert.
+
+set -u
+
+NAME="${1:?_chain: internal error — no hook name given}"
+shift
+
+# --git-common-dir, not --git-dir: in a worktree those differ, and personal hooks
+# belong to the checkout as a whole rather than to one branch's worktree.
+COMMON="$(git rev-parse --git-common-dir 2>/dev/null)" || exit 0
+[ -n "$COMMON" ] || exit 0
+
+LOCAL="$COMMON/hooks/$NAME.local"
+
+if [ -x "$LOCAL" ]; then
+  # exec, so the personal hook's exit status IS the hook's exit status. Called rather
+  # than exec'd, a hook that means to reject would have its verdict swallowed here and
+  # would appear to pass — worse than never chaining at all.
+  exec "$LOCAL" "$@"
+fi
+
+# Nothing to chain. The explicit success matters: written as a bare
+# `[ -x "$LOCAL" ] && exec "$LOCAL"` on the last line, the FAILED test becomes this
+# script's exit status, so every clone without a personal hook would have every commit
+# rejected. The obvious one-liner is a bug.
+exit 0

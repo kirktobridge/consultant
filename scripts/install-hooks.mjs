@@ -24,8 +24,8 @@
 // depend on any of this.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, readdirSync, lstatSync, readlinkSync } from 'node:fs';
+import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,6 +42,60 @@ const HOOKS_DIR = '.claude/hooks';
 function skip(why) {
   console.log(`install-hooks: skipped — ${why}`);
   process.exit(0);
+}
+
+/**
+ * Name the personal hooks that arming this suite just switched off.
+ *
+ * This is the one thing the user cannot discover for themselves. Every other failure
+ * mode here announces itself; a hook that stops being looked for produces no error, no
+ * output and no log line — the symptom is that something quietly stopped happening,
+ * which is close to unsearchable. So the install is the only moment we can say it.
+ *
+ * Reports; never moves anything. Renaming files inside someone's .git as a side effect
+ * of `npm install` would be a worse surprise than the one being reported.
+ */
+function reportOrphanedHooks() {
+  const common = git('rev-parse', '--git-common-dir');
+  if (!common.ok || !common.out) return;
+  const dir = join(isAbsolute(common.out) ? common.out : join(ROOT, common.out), 'hooks');
+  if (!existsSync(dir)) return;
+
+  const orphans = [];
+  let legacyLink = false;
+
+  for (const name of readdirSync(dir)) {
+    // .sample ships with git and is inert. .local is the chained name — the fixed state.
+    if (name.endsWith('.sample') || name.endsWith('.local')) continue;
+    const p = join(dir, name);
+    let st;
+    try { st = lstatSync(p); } catch { continue; }
+
+    // A symlink into this suite is our own earlier install, now superseded and inert.
+    // Reporting it as a personal hook would send someone chasing their own tail.
+    if (st.isSymbolicLink()) {
+      let target = '';
+      try { target = readlinkSync(p); } catch { /* dangling */ }
+      if (target.replaceAll('\\', '/').includes(HOOKS_DIR)) { legacyLink = true; continue; }
+    }
+    if (!st.isDirectory() && (st.mode & 0o111) !== 0) orphans.push(name);
+  }
+
+  if (orphans.length) {
+    console.log(
+      `\ninstall-hooks: ${orphans.length} personal hook(s) in .git/hooks/ are NO LONGER RUNNING.\n` +
+        `  core.hooksPath redirects git's entire hook lookup, so these are now skipped in\n` +
+        `  silence. Rename each to <name>.local and this suite's hooks will chain to it:\n\n` +
+        orphans.map((n) => `      mv .git/hooks/${n} .git/hooks/${n}.local`).join('\n') +
+        `\n\n  Not moved for you — that is your directory. See ${HOOKS_DIR}/README.md.`,
+    );
+  }
+  if (legacyLink) {
+    console.log(
+      `\ninstall-hooks: .git/hooks/ still holds a symlink from an older install of this\n` +
+        `  suite. It is inert now (core.hooksPath wins) and safe to delete.`,
+    );
+  }
 }
 
 const inRepo = git('rev-parse', '--is-inside-work-tree');
@@ -69,6 +123,9 @@ if (current.ok && current.out && current.out !== HOOKS_DIR) {
 
 if (current.ok && current.out === HOOKS_DIR) {
   console.log(`install-hooks: already armed (core.hooksPath = ${HOOKS_DIR}).`);
+  // Still report: a personal hook can be dropped in long after the suite was armed,
+  // and that is exactly when nobody is expecting it to be ignored.
+  reportOrphanedHooks();
   process.exit(0);
 }
 
@@ -78,5 +135,6 @@ if (!set.ok) skip('git config would not write (read-only or unusual clone).');
 console.log(
   `install-hooks: armed — core.hooksPath = ${HOOKS_DIR}.\n` +
     `  The committed hooks are now the live hooks; edits take effect with no reinstall.\n` +
-    `  Note this makes git ignore .git/hooks/ entirely, including any personal hooks there.`,
+    `  Personal hooks keep working under .git/hooks/<name>.local — see ${HOOKS_DIR}/README.md.`,
 );
+reportOrphanedHooks();
