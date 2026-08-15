@@ -1,17 +1,18 @@
 #!/bin/sh
 # Pre-commit: refuse a commit that leaves the enforcement layer disarmed.
 #
-# Install (opt-in, per clone):
-#   ln -sf ../../.claude/hooks/pre-commit .git/hooks/pre-commit
+# Install: automatic. `npm install` runs scripts/install-hooks.mjs via npm's `prepare`,
+# which sets core.hooksPath to this directory — so this committed file IS the live hook
+# and editing it takes effect immediately. To arm a clone by hand: npm run install-git-hooks
 #
-# THIS IS THE WEAKEST OF THE THREE PLACEMENTS, and it is worth knowing why before
-# relying on it. Git hooks live in .git/hooks/, which is not version controlled, is
-# not installed by `git clone`, and is skipped entirely by `git commit --no-verify`.
-# So this catches *your own* mistakes on *this* machine and nothing else.
+# THIS IS STILL THE WEAKEST OF THE THREE PLACEMENTS, and it is worth knowing why before
+# relying on it. core.hooksPath is local git config, which no commit can carry, so this
+# is armed only where someone ran an install; and `git commit --no-verify` skips it
+# regardless. So it catches *your own* mistakes on *this* machine and nothing else.
 #
-# The copy that actually holds is in `npm test`, which is committed, runs in CI, and
-# cannot be switched off by editing the file it is checking. Pre-commit is the fast
-# local echo of that, not a substitute for it.
+# The copy that actually holds is `npm test` in .github/workflows/test.yml — committed,
+# run on someone else's machine, and not switchable off by editing the files it checks.
+# Pre-commit is the fast local echo of that, not a substitute for it.
 #
 # Pre-commit rather than post-commit on purpose: post-commit runs after the commit
 # exists, so it can only ever narrate a disarmed state it was too late to prevent.

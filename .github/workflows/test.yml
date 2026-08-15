@@ -1,0 +1,36 @@
+# The copy of the enforcement layer that actually holds.
+#
+# Every other placement is bypassable by the person being checked: the PostToolUse
+# hooks are declared in the settings.json they guard, and the pre-commit hook is a
+# per-clone git config that `--no-verify` skips. This one runs on someone else's
+# machine, from a committed file, on a ref that is already pushed. It is the reason
+# the other placements are allowed to be convenient.
+#
+# `npm test` here is the whole suite: unit tests, the backlog schema check, and the
+# guard check. Deliberately NOT the eval — that measures prose with a model, is
+# non-deterministic, and gating merges on it would teach people to ignore red.
+
+name: test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # No dependencies, so there is nothing to install and nothing to cache. This
+      # runs `prepare` (the hook installer), which is harmless here and worth
+      # exercising: if it ever starts throwing, CI is where we want to find out,
+      # not in a contributor's first `npm install`.
+      - run: npm install --no-audit --no-fund
+
+      - run: npm test

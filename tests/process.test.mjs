@@ -334,6 +334,53 @@ describe('the evals stay evals', () => {
   });
 });
 
+describe('the enforcement layer survives a fresh clone', () => {
+  // Committing a hook is not shipping a hook. Git reads `.git/hooks/`, which no clone
+  // populates and no commit can reach, so the failure mode this guards is a checkout
+  // where the enforcement layer is present as text and absent as behavior — worse than
+  // having no hook at all, because the file is right there and reads as if it ran.
+  //
+  // None of this needs a model or a network: it is all decidable from the repo.
+
+  test('`npm install` arms the hooks by itself', () => {
+    // `prepare` is the only lifecycle script that runs on the plain `npm install` a
+    // clone already does. Losing it turns arming back into a manual step nobody knows
+    // to take, and the loss looks like an innocuous package.json tidy in a diff.
+    assert.ok(pkg.scripts?.prepare, 'package.json must have a `prepare` script');
+    assert.match(pkg.scripts.prepare, /install-hooks/, '`prepare` must run the hook installer');
+    assert.ok(existsSync(join(REPO, 'scripts', 'install-hooks.mjs')), 'the installer must exist');
+  });
+
+  test('the installer never fails an install', () => {
+    // A hook installer that can exit non-zero breaks `npm install` in tarballs, in
+    // sandboxes without git, and on CI runners — trading a missing convenience for a
+    // broken package. Run it for real; it is idempotent and this repo is a work tree.
+    const r = spawnSync(process.execPath, [join(REPO, 'scripts', 'install-hooks.mjs')], {
+      cwd: REPO,
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, `installer exited ${r.status}: ${r.stdout}\n${r.stderr}`);
+  });
+
+  test('every committed hook is executable', () => {
+    // core.hooksPath runs these files directly. A hook committed 644 is silently
+    // skipped by git — no error, no output, just an enforcement layer that is not there.
+    const dir = join(REPO, '.claude', 'hooks');
+    const notExec = readdirSync(dir).filter((n) => (statSync(join(dir, n)).mode & 0o111) === 0);
+    assert.deepEqual(notExec, [], 'a hook without the executable bit is skipped in silence');
+  });
+
+  test('the CI workflow that the docs promise exists, and runs the suite', () => {
+    // Several files tell the reader "CI still runs all of this" — an invitation to
+    // --no-verify. That sentence must not be able to outlive the workflow it describes.
+    const wf = join(REPO, '.github', 'workflows', 'test.yml');
+    assert.ok(existsSync(wf), 'the docs promise CI; the workflow must exist');
+    const yml = read(wf);
+    assert.match(yml, /^\s*-\s*run:\s*npm test\s*$/m, 'CI must run the full suite');
+    assert.doesNotMatch(yml, /npm run eval/, 'CI must never gate on the eval');
+  });
+});
+
 describe('the single-writer map agrees with the skills', () => {
   const guide = read(join(REPO, '.claude', 'GUIDE.md'));
   const mapSection = guide.slice(guide.indexOf('## Who writes what'), guide.indexOf('## Why single-writer'));
