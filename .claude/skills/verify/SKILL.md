@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Drive the real running app to observe a change working end-to-end — launch it, exercise the affected flow with a throwaway script, and report what was actually observed. Use after any nontrivial product-code change ("verify this", "does it actually work", /verify), and as the launch recipe when asked to run or screenshot the app (/run). Not a substitute for the test suite — it observes behavior the suite doesn't assert.
+description: Drive the real running app to observe a change working end-to-end — launch it, drive the backlog entry's Accept criteria with a throwaway script, and report each criterion as observed / not observed / not exercised. Use after any nontrivial product-code change ("verify this", "does it actually work", /verify), and as the launch recipe when asked to run or screenshot the app (/run). Not a substitute for the test suite — it observes behavior the suite doesn't assert.
 context: fork
 ---
 
@@ -8,12 +8,30 @@ context: fork
 
 The test suite proves the assertions we already wrote; this skill proves the change
 actually behaves as intended, by driving the affected flow in the running app and
-observing the result. Runs **forked** — derive what changed from `git diff`/`git log`
-(don't rely on conversation state) and end with a compact report: what flow you drove,
-what you observed, artifacts captured, and any console/server errors verbatim.
+observing the result. Runs **forked**, so it rebuilds its context from the repo, never
+from conversation state.
 
-Skip (say so, don't fake it) when the diff touches only tests, docs, or config with no
-runtime surface. Anything under `src/` has one.
+**What to drive comes from the entry's `Accept:`, not the diff.** Take the backlog ID
+from the argument (`/verify P4`), or else from the branch name (`feat/p<#>-…`), and
+read the whole entry:
+`awk '/^##/{p = $1 == "###" && $2 == "<ID>"} p' docs/product/BACKLOG.md`. Its
+`Accept:` criteria are the flows — each is something the product owner said they could
+watch pass or fail, so drive *that*, in their terms. The diff (`git diff`/`git log`)
+plays a supporting role: it tells you where a criterion's flow lives, and what else the
+change touched that might have broken. It never decides what "working" means — a flow
+derived from the diff can only confirm the change does what the change does.
+
+No ID resolvable (an ad-hoc fix, not a backlog entry) → fall back to deriving the flow
+from the diff, and say in the report that there were no criteria to drive.
+
+End with a compact report: **each criterion, verbatim, as observed / not observed / not
+exercised** (a later milestone owns it), with the evidence or what was seen instead;
+then artifacts captured and any console/server errors verbatim.
+
+Skip the *driving* (say so, don't fake it) when the diff touches only tests, docs, or
+config with no runtime surface — anything under `src/` has one. The criteria are still
+listed, each as *not observed — no runtime surface to drive*; a skipped run never
+reports a criterion as observed.
 
 ## Why this exists as a separate step
 
@@ -68,8 +86,10 @@ of requests.
 
 ## What "verified" means
 
-Report **observed** facts only:
-- the new behavior visibly happened (artifact or asserted state),
+Report **observed** facts only, per criterion:
+- the behavior each `Accept:` criterion names visibly happened (artifact or asserted
+  state) — a criterion you didn't drive is *not exercised*, never observed by
+  inference from a neighbouring one,
 - the old behavior is gone, if the change removed one,
 - logs and console are clean.
 
