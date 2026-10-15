@@ -155,7 +155,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 
 ### P7 — A status view for the product owner
 - **Status:** proposed
-- **Drafted:** 2026-08-03
+- **Drafted:** 2026-10-15
 - **Value:** you can ask "where are we?" and get an answer without reading markdown —
   what landed, what's in flight and since when, what's blocked and on what. Today the
   only continuity artifact is HANDOFF, which is agent session-state, gitignored, and
@@ -163,13 +163,16 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 - **Scope:** a read-only `/status` that composes what already exists (backlog statuses,
   OD blocks, `npm run audit`, git) into a short report addressed to the product owner
   rather than to the next session. Out: any new tracked file — if it needs storage,
-  it's the wrong design.
+  it's the wrong design. Renders from P11's graph JSON, both as the text report and as
+  one self-contained HTML page, generated and never edited by hand, stamped with the
+  commit it was built from.
 - **Accept:**
-  - I can ask "where are we?" and get the answer without opening a markdown file.
+  - I can open one page that shows what's ready, what's waiting on me, and why each
+    blocked item is blocked, without opening a markdown file.
   - It names what is in flight and how long it has been there.
   - It names what is blocked and which assumption is blocking it.
   - Running it leaves every tracked file unchanged.
-- **Depends on:** P4, P6 — neither terminal, so this entry is *blocked-not-rejected*. It
+- **Depends on:** P4, P6, P11 — none terminal, so this entry is *blocked-not-rejected*. It
   reports on acceptance state and released-vs-merged. P4's R0 gave the criteria a place
   to live, but nothing records whether one was *met* until P4 R1/R2; released-vs-merged
   doesn't exist at all. It stays in the pool legitimately and may not enter `## Next up`
@@ -245,6 +248,23 @@ user-facing, but a silent failure in it is invisible everywhere else.
   running `labelled` against this entry's body. Do not "fix" the criterion to
   make the demonstration go away; fix the probe, and keep this entry as the
   regression case.
+
+### P11 — The dependency graph as a JSON contract
+- **Status:** proposed
+- **Drafted:** 2026-10-15
+- **Value:** what blocks what is computable from the entries' dependency fields, but
+  nothing computes it; groom and any status view would re-derive it by hand. A fixed
+  JSON shape lets one renderer serve every repo running the suite, whatever language
+  its checker is in.
+- **Scope:** port photocull's `--graph` / `--graph --json` mode to the schema check
+  (ranked unblocked items, chains, prose blockers; entries, edges with their field,
+  prose blockers), the same JSON shape pinned by a test, and the Feeds/Waiting-on
+  consistency rule. Out: rendering; that is P7.
+- **Accept:**
+  - the graph mode lists what can start now, most-unblocking first, and the chain
+    behind each blocked item
+  - its JSON matches photocull's shape, and a test fails if the shape drifts
+- **Depends on:** P10
 
 ---
 
