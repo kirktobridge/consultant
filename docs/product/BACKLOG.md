@@ -103,9 +103,12 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   exercised — it is R2. **The `Accept:` criteria now sitting on P4–P8 were drafted by the agent
   alongside the field, not spoken by the product owner** — they are proposals awaiting
   your correction, which is exactly the review this field exists to invite; treat them
-  as *asserted* until you've rewritten or ratified them. The standing risk, still
-  *asserted*: a required field can degrade into ceremony (Value restated as a bullet
-  list). Not filed as an OD deliberately — no check settles it before the field exists,
+  as *asserted* until you've rewritten or ratified them. The standing risk: a required
+  field can degrade into ceremony (Value restated as a bullet list). That the *check*
+  cannot stop it is now **verified** — the two-bullet split above passes, and no
+  falsifiability test is decidable without inviting a permanently-noisy heuristic, so
+  none is planned. The backstop is /triage's "could it fail?" prose (eval-measured)
+  plus R2's handshake, where the user approves `shipped`. Not filed as an OD deliberately — no check settles it before the field exists,
   and an OD settleable only post-build would park this entry outside `## Next up`
   permanently, inverting the register. R0 instead ships an eval case measuring whether
   the augmented /triage prose yields observable criteria.
@@ -270,6 +273,31 @@ user-facing, but a silent failure in it is invisible everywhere else.
     behind each blocked item
   - its JSON matches photocull's shape, and a test fails if the shape drifts
 - **Depends on:** P10
+
+### P12 — Resolve the trunk branch instead of assuming `main`
+- **Status:** proposed
+- **Drafted:** 2026-10-15
+- **Value:** a porter whose trunk isn't `main` gets a working claim gate on day one.
+  Today /implement's claim gate runs `git show main:…`, which errors on such a clone
+  (verified on this repo before it consolidated: `fatal: invalid object name 'main'`).
+- **Scope:**
+  - One resolution rule, already written: session-audit.mjs's order (`--base`, else
+    main/master/trunk, else fail loudly). Expose it as a command the skills call,
+    rather than restating the list in prose.
+  - /implement, /ship, /land and /checkpoint say "trunk" and get it from that command;
+    the claim gate reads `git show <trunk>:…`.
+  - A process test fails if a loop skill hard-codes `main` in a git command.
+  - Out: renaming branches; any trunk config beyond what `--base` allows.
+- **Accept:**
+  - In a clone whose only branch is `master`, /implement's claim gate reads master's
+    backlog and finds an existing in-progress claim.
+  - In a clone with no recognisable trunk, the claim gate stops and says how to name
+    one, rather than passing.
+  - Writing `git show main:` back into any loop skill fails `npm test`.
+- **Depends on:** —
+- **Notes:** Found during P4 R1. Not live here since this repo consolidated on `main`
+  (2026-10-15); a portability defect for porters. Filed as a feature because P5's
+  defect class isn't built.
 
 ---
 
