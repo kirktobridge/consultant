@@ -323,8 +323,9 @@ The kinds of thing the tracked docs hold, and where each one goes.
     /triage gains a route for it.
   - Each doc moves with its checker and the skills' greps in the same commit.
   - Out: photocull-specific parts (blind picks, scope vocabulary), and experiment
-    kinds — they were master-only, and the measurement track was retired 2026-10-15
-    (tag `measurement-track`), which settled the old "master vs build-only" question.
+    kinds, which move to **P13** with the research track they belong to. The old
+    "master vs build-only" question is settled: master's track was retired 2026-10-15
+    (tag `measurement-track`), and P13 rebuilds one from photocull's.
 - **Accept:**
   - A "should we find out how often X happens" idea has one obvious home and /triage
     routes it there.
@@ -355,7 +356,7 @@ The kinds of thing the tracked docs hold, and where each one goes.
      exist; staleness reads the Decided date. Seed one real entry in the same commit,
      because an empty tracked doc fails the check. Triage gains a routing question;
      ship holds the pen.
-  3. *Skip — out of scope since the measurement track was retired.* Experiment kinds. A Kind vocab line in the framework; per kind, a
+  3. *Not here — lands in P13.* Experiment kinds. A Kind vocab line in the framework; per kind, a
      test owes Hypothesis, Feeds and Power, a measure owes Precision, a probe owes a
      Budget. Feeds must name an existing decision that carries its rule while both
      are open (this holds the start gate mechanically). `answered` replaces won and
@@ -374,3 +375,31 @@ The kinds of thing the tracked docs hold, and where each one goes.
   line, compared against the starting commit). This repo's README quotes the schema
   check's entry count and a process test compares the two, so every added or removed
   entry means editing the README: fold a fix for that into this work.
+
+### P13 — A research track, ported from photocull
+- **Status:** proposed
+- **Drafted:** 2026-10-15
+- **Value:** claims a test can't catch — "it's faster", "the ranking is better",
+  "how often does X happen" — get a home with a discipline, instead of landing as
+  features with invented Accept criteria or as assumptions with no way to measure them.
+- **Scope:** milestones.
+  - R0: the docs and their checker — framework (three kinds: test / measure / probe,
+    and what each owes), experiment backlog (`X#`), append-only run log, findings with
+    confidence labels. The schema check learns the shapes; an empty doc must not pass.
+  - R1: the /research skill (sole writer of docs/research/) and the stats helper,
+    ported to Node.
+  - R2: /triage routes measurable questions to the research backlog by kind; the
+    skill count and every doc that states it move to seven.
+  - Out: photocull's harnesses and its domain scope vocabulary.
+- **Accept:**
+  - A "how often does X happen" idea lands in the research backlog as a measure, and
+    /triage routes it there.
+  - A test experiment without a pre-registered decision rule is rejected by
+    `npm run check:docs`.
+  - Every finding carries a confidence label and names the logged run it came from.
+  - `npm test` passes on a fresh clone with no Python installed.
+- **Depends on:** P10
+- **Notes:** "Probably what photocull has" is the user's direction, not a settled
+  choice — confirm the shape at claim time. Takes back the experiment kinds P10
+  dropped on 2026-10-15. Port from photocull's FRAMEWORK.md and research skill,
+  read fresh, not from this summary.
