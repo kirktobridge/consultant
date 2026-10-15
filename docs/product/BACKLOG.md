@@ -66,7 +66,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
      fields. -->
 
 ### P4 — Acceptance criteria, and the acceptance handshake
-- **Status:** partial
+- **Status:** in-progress
 - **Drafted:** 2026-08-03
 - **Value:** you say what "right" means before the build, in your own words, and the
   loop closes by reporting against those words. Today it closes without you: the agent
