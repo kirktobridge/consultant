@@ -36,10 +36,10 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P4** — R0 landed (the `Accept:` field); **R1 is what's next** — /implement and
-   /verify consuming those criteria, then R2's handshake. Still the highest payoff: the
-   only entry that closes the loop back to the product owner, and R0 alone doesn't
-   close it.
+1. **P4** — R0 (the `Accept:` field) and R1 (/implement and /verify consume it) landed;
+   **R2 is what's next** — /land reports per criterion and `shipped` becomes a flip
+   the user authorizes. Still the highest payoff: the loop doesn't close back to the
+   product owner until R2 does.
 2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
@@ -66,7 +66,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
      fields. -->
 
 ### P4 — Acceptance criteria, and the acceptance handshake
-- **Status:** in-progress
+- **Status:** partial
 - **Drafted:** 2026-08-03
 - **Value:** you say what "right" means before the build, in your own words, and the
   loop closes by reporting against those words. Today it closes without you: the agent
@@ -76,7 +76,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
     observable checks. Required on open entries by `scripts/backlog-schema-check.mjs`;
     drafted by /triage; preserved verbatim by /ship's intake. Doc + checker + every
     skill grep move in one commit.
-  - R1: /implement treats Accept as part of the contract alongside Scope; /verify drives
+  - R1 — **landed 2026-10-15**: /implement treats Accept as part of the contract alongside Scope; /verify drives
     *those criteria* rather than deriving the flow from `git diff`, and reports
     per-criterion observed / not-observed.
   - R2: the handshake — /land reports per criterion and stops short of the terminal
@@ -92,10 +92,15 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   - No entry reaches `shipped` without me saying so.
 - **Depends on:** —
 - **Notes:** R0 landed as the first claimant of the entry-shape/schema-check surface, so
-  **P5** now *extends* that checker rather than building it. R1 and R2 are unbuilt: the
-  field exists and is enforced, but nothing yet *consumes* it — /implement and /verify
-  still work from Scope and the diff, and /land still flips `shipped` without the user
-  saying yes. **The `Accept:` criteria now sitting on P4–P8 were drafted by the agent
+  **P5** now *extends* that checker rather than building it. R1 landed 2026-10-15:
+  /implement and /verify now consume Accept, and both read entries heading-to-heading
+  (the old `grep -A12` cut off mid-Scope on longer entries, so Accept never reached the
+  builder — a process test runs each skill's lookup verbatim against the real backlog).
+  **R2 remains:** /land still flips `shipped` without the user saying yes. Per-criterion
+  at R1 land: (1) observed; (2) observed *as worded*, but a loophole was found — one
+  unfalsifiable sentence split across two bullets passes the 2–4 count, so the check
+  holds the count, not falsifiability; (3) observed once, in the R1 session; (4) not
+  exercised — it is R2. **The `Accept:` criteria now sitting on P4–P8 were drafted by the agent
   alongside the field, not spoken by the product owner** — they are proposals awaiting
   your correction, which is exactly the review this field exists to invite; treat them
   as *asserted* until you've rewritten or ratified them. The standing risk, still
