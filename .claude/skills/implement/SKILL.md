@@ -116,10 +116,13 @@ run all of them.
   **not exercised** (a later milestone owns it — say which). A diff summary is not a
   close report: it says what changed, and the criteria say whether it was right. A
   criterion that is *not observed* is not done — say so plainly rather than
-  rounding it up; hand the same per-criterion report to /land.
-- Commit on the feature branch. Then **/land** merges it into main, re-runs the suite
-  on the merged result, and runs /ship's terminal flip there (`shipped`, or `partial`
-  + which milestone) — doc flips never happen on the branch.
+  rounding it up.
+- Commit on the feature branch, **with that per-criterion report in the commit
+  message** — /land runs forked and reads git, not this conversation, and it is the
+  report the user will be asked to accept against. Then **/land** merges it into main,
+  re-runs the suite on the merged result, and runs /ship's flips there (`partial` +
+  which milestone) — doc flips never happen on the branch. `shipped` is not among
+  them: it waits for the user to accept (see /ship).
 - Re-derive any "still owed" follow-ups from the **actual diff**, not the entry's
   Scope text (premise gate, step 1): name in the hand-off to /land only obligations
   the change as-built really incurs, and say explicitly which scope-listed ones turned

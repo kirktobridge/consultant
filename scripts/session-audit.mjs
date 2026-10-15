@@ -138,8 +138,9 @@ for (const e of backlog) {
 
 // ── 3. Claims that no longer match reality ───────────────────────────────────
 // An `in-progress` entry means "a branch is building this right now". If no unmerged
-// branch mentions it, that claim is either finished (needs its /ship flip) or
-// abandoned (needs clearing) — and both look identical from the doc alone.
+// branch mentions it, that claim is either finished (needs its /ship flip, or — on the
+// last milestone — the user's acceptance, since /land never flips `shipped`) or
+// abandoned (needs clearing), and these look identical from the doc alone.
 
 const unmerged = (git(`branch --no-merged ${BASE} --format='%(refname:short)'`) || '')
   .split('\n').filter(Boolean);
@@ -153,10 +154,10 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
   if (onUnmerged) continue; // legitimately in flight
   if (onMerged) {
     add('warn', `${e.id} is \`in-progress\` but its branch is already merged into ${BASE}.`,
-      `The terminal flip was missed — run /ship on ${BASE}.`);
+      `If milestones remain, its \`partial\` flip was missed — run /ship on ${BASE}. If that was the last one, it awaits the user's acceptance: show them /land's per-criterion report and ask. \`shipped\` is their flip, never yours.`);
   } else {
     add('warn', `${e.id} is \`in-progress\` but no branch names it.`,
-      'Either the work merged without its flip, or this is an abandoned claim blocking another session from picking the entry up. Resolve it — a stale claim is worse than no claim.');
+      'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up. Resolve it — a stale claim is worse than no claim.');
   }
 }
 
