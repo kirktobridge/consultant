@@ -13,3 +13,6 @@ node_modules/
 # cases.mjs at any time, and a measurement of a model rather than a fact about the
 # repo — committing runs would turn `git log` into a results table nobody reads.
 evals/runs/
+
+# Editor workspace config is per-developer, like settings.local.json above.
+.vscode/
