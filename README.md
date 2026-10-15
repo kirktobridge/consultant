@@ -133,7 +133,7 @@ being prose — that's how L1 stopped being an exhortation and became `grep-chec
 npm install                  # no dependencies — this exists to arm the git hooks
 npm test                     # → the suite, then the schema + guard checks
 npm run eval -- --dry-run    # → renders every eval prompt, self-checks the graders
-npm run check:docs           # → backlog-schema: OK (9 entries across 2 file(s))
+npm run check:docs           # → backlog-schema: OK (10 entries across 2 file(s))
 npm run audit                # → session-audit: clean … (or the findings, with actions)
 npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 

@@ -245,3 +245,47 @@ user-facing, but a silent failure in it is invisible everywhere else.
   running `labelled` against this entry's body. Do not "fix" the criterion to
   make the demonstration go away; fix the probe, and keep this entry as the
   regression case.
+
+---
+
+## Epic: What the loop tracks
+
+The kinds of thing the tracked docs hold, and where each one goes.
+
+### P10 — Port the assumptions/decisions split and experiment kinds from photocull
+- **Status:** proposed
+- **Drafted:** 2026-10-14
+- **Value:** three misclassifications the suite currently forces, found by running it
+  on photocull. Only confirmatory tests are admitted to the research track, so
+  measurements and exploratory probes land in the assumptions register. The register
+  is named for decisions but holds assumptions, so real decisions (choices the product
+  owner makes) have no home and hide inside features and experiment objectives. A
+  measurement's threshold for acting sits on the experiment, though it belongs to the
+  decision it informs.
+- **Scope:**
+  - Rename OPEN_DECISIONS to an assumptions register (`A-n`): yes/no facts about the
+    outside world, settled by observation. Both branches.
+  - Add a decisions register (`D-n`): open choices with options, what they wait on and
+    a decision rule; decided ones with the choice, why and what would reopen them.
+    /triage gains a route for it. Both branches.
+  - master only: experiments get a kind (test / measure / probe). Only a test that
+    gates a change needs a pre-registered rule; a measure plans precision, a probe
+    plans a budget and yields directional findings.
+  - Each doc moves with its checker and the skills' greps in the same commit.
+  - Out: photocull-specific parts (blind picks, scope vocabulary). First decide master
+    vs build-only: bring master up to date with build-only, or rebuild its research
+    track from photocull's.
+- **Accept:**
+  - A "should we find out how often X happens" idea has one obvious home and /triage
+    routes it there.
+  - A choice only I can make is listed somewhere I can see at a glance, with what it
+    is waiting on.
+  - The schema check rejects an entry that depends on an open decision being queued
+    in Next up.
+  - Both branches carry the rename, and neither has a stray OD-n reference.
+- **Depends on:** —
+- **Notes:** waits on the same change landing in photocull and being exercised once
+  per new shape (one measure run, one decision taken, one assumption resolved). The
+  dependency is cross-repo, so it lives here in prose: the schema check would read a
+  photocull ID as a local one. Port from photocull's tagged generic/local list in its
+  plan, not from memory.
