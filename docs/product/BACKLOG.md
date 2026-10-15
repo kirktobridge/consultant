@@ -287,5 +287,41 @@ The kinds of thing the tracked docs hold, and where each one goes.
 - **Notes:** waits on the same change landing in photocull and being exercised once
   per new shape (one measure run, one decision taken, one assumption resolved). The
   dependency is cross-repo, so it lives here in prose: the schema check would read a
-  photocull ID as a local one. Port from photocull's tagged generic/local list in its
-  plan, not from memory.
+  photocull ID as a local one. Port from the checklist below, not from memory.
+
+  **Porting checklist** (landed in photocull 2026-10-15, commits d82e902, a5d6c45,
+  ceca3cb, 8665884, eb43d7e, 5fb167c, 8179fef; read those diffs, not this summary,
+  for the exact wording). Generic, in this order, one green commit each:
+  1. Rename the register to assumptions, A-n (both branches). Checker config, ID
+     regex, the open-dependency gate's prefix, docstring, test fixtures, every doc
+     link and skill mention, one commit. Add a provenance line mapping old numbers to
+     new. The schema check's entry count must not change: that is the proof the
+     rename lost nothing.
+  2. Decisions register, D-n (both branches). Statuses open / decided / superseded.
+     Options always; Waiting on while open; a Decision rule whenever it waits on an
+     experiment. Decided needs a dated Decided line plus Why, Leads to and Reopen if.
+     Leads to naming a closed feature must lead with `shipped` (the old Deploys-as
+     check, moved). Superseded names an existing decision. An open decision blocks
+     queueing and claiming exactly like an open assumption; Waiting on IDs must
+     exist; staleness reads the Decided date. Seed one real entry in the same commit,
+     because an empty tracked doc fails the check. Triage gains a routing question;
+     ship holds the pen.
+  3. master only: experiment kinds. A Kind vocab line in the framework; per kind, a
+     test owes Hypothesis, Feeds and Power, a measure owes Precision, a probe owes a
+     Budget. Feeds must name an existing decision that carries its rule while both
+     are open (this holds the start gate mechanically). `answered` replaces won and
+     no-win; Deploys as goes; the spike exit accepts shipped or answered. The stats
+     helper gains a precision mode (interval at n; n for a target half-width).
+  4. A `moved` terminal status for assumptions: the Resolution must name an existing
+     new home, and no open entry may depend on a moved one.
+  5. Triage routing becomes: yes/no fact about the world, choice, question answered
+     from data (with a kind), else feature; "does our own code work" is a feature's
+     acceptance, a test or a verify run, never an entry.
+  Local to photocull, do not port: blind picks, the people/scenery scope vocab, the
+  actual entries (D-1 to D-12, P32, X8).
+  Learned during the photocull pass: a script that re-wraps prose after a rename must
+  treat indented code fences as fences (one split a command), and should be followed
+  by a scan for inline code spans split across lines (an odd backtick count on a
+  line, compared against the starting commit). This repo's README quotes the schema
+  check's entry count and a process test compares the two, so every added or removed
+  entry means editing the README: fold a fix for that into this work.
