@@ -22,8 +22,10 @@ run all of them.
 
 - **No ID given?** The product `## Next up` block (top of BACKLOG.md) is the ranked,
   dependency-ready head — propose its first entry.
-- Find the entry: `grep -n -A12 "^### <ID>" docs/product/BACKLOG.md`. Not there →
-  it's an untriaged idea; bounce to **/triage**, don't invent an entry.
+- Find the entry: `awk '/^##/{p = $1 == "###" && $2 == "<ID>"} p' docs/product/BACKLOG.md`
+  — heading to next heading, never a fixed line count: entries run long, and a
+  truncated read drops `Accept:`, the half of the contract that comes last. No
+  output → it's an untriaged idea; bounce to **/triage**, don't invent an entry.
 - **CLAIM GATE:** `git show main:docs/product/BACKLOG.md | grep -n "in-progress"`
   first — **main's version, never the checked-out copy**: in a worktree the local
   file reflects when you branched, so it can miss a claim another session made since.
@@ -49,7 +51,8 @@ run all of them.
   depends on it. "Proceed carefully" is not on the list.
 - **MILESTONE GATE:** if Scope lists milestones (R0/R1/…), build **one per
   invocation**. If the user didn't name one, propose the first unshipped one and
-  confirm — don't silently build the whole epic.
+  confirm — don't silently build the whole epic. Name which `Accept:` criteria this
+  milestone answers; the rest are honestly *not exercised* at close, not passed.
 - **SPIKE GATE:** if this entry carries `**Resolves:** OD-n`, it is a spike — its
   deliverable is *the answer*, not a feature. Build the smallest thing that settles the
   assumption, and treat writing the OD's `Resolution:` as part of done (step 4). A
@@ -81,9 +84,13 @@ run all of them.
   files to touch) before editing.
 
 ### 3. Build
-- The entry's **Scope is the contract** — build what it says, resist adjacent
-  improvements. If scope turns out wrong mid-build, stop and renegotiate the entry
-  with the user (the rescope note lands in BACKLOG.md via /ship), don't drift.
+- The entry's **Scope and Accept are the contract** — Scope is what to build, Accept
+  is what the product owner must be able to watch pass. Build what Scope says, resist
+  adjacent improvements, and keep each criterion observable as you go. If scope turns
+  out wrong mid-build — or a criterion can't be met by the Scope as written — stop and
+  renegotiate the entry with the user (the rescope note lands in BACKLOG.md via
+  /ship), don't drift. Accept is the user's wording: never reinterpret a criterion
+  into one the build happens to satisfy.
 - **The project's invariants govern** — don't re-derive them here. *PORTING: list your
   project's non-negotiable architectural rules in CLAUDE.md and reference them from
   this line; they belong in one place, not duplicated per skill.*
@@ -102,7 +109,14 @@ run all of them.
 
 ### 4. Verify + close
 - Run the full check suite (tests, typecheck, lint). Wrap long runs with `time`.
-- Run **/verify** — drive the affected flow in the real app, not just tests.
+- Run **/verify `<ID>`** — it drives the entry's `Accept:` criteria in the real app,
+  not a flow guessed from the diff.
+- **Close by criterion, not by diff.** Report each `Accept:` criterion, verbatim, as
+  **observed** (with the evidence), **not observed** (with what was seen instead), or
+  **not exercised** (a later milestone owns it — say which). A diff summary is not a
+  close report: it says what changed, and the criteria say whether it was right. A
+  criterion that is *not observed* is not done — say so plainly rather than
+  rounding it up; hand the same per-criterion report to /land.
 - Commit on the feature branch. Then **/land** merges it into main, re-runs the suite
   on the merged result, and runs /ship's terminal flip there (`shipped`, or `partial`
   + which milestone) — doc flips never happen on the branch.

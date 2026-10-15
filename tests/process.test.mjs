@@ -135,6 +135,67 @@ describe('every command a doc tells you to run exists', () => {
   });
 });
 
+describe('the entry lookup returns the whole contract', () => {
+  // /implement used to read entries with `grep -A12`, which ended mid-Scope on most of
+  // them — so the field the loop closes on, Accept, was never in front of the builder.
+  // A fixed line count is wrong the moment one entry runs long, and nothing signals it.
+  // So the commands are run, verbatim from the skills, against the real backlog.
+  const BACKLOG = join(REPO, 'docs', 'product', 'BACKLOG.md');
+  const lines = read(BACKLOG).split('\n');
+  const TERMINAL = new Set(['shipped', 'deferred', 'abandoned']);
+
+  // An independent parse of each entry's extent: heading to the line before the next heading.
+  const entries = [];
+  lines.forEach((l, i) => {
+    if (/^##/.test(l) && entries.length && entries.at(-1).end === undefined) entries.at(-1).end = i;
+    const m = l.match(/^### (P\d+)\b/);
+    if (m) entries.push({ id: m[1], start: i });
+  });
+  if (entries.length && entries.at(-1).end === undefined) entries.at(-1).end = lines.length;
+  for (const e of entries) {
+    const body = lines.slice(e.start, e.end).join('\n');
+    e.text = body;
+    e.open = !TERMINAL.has(body.match(/^- \*\*Status:\*\* (\S+)/m)?.[1]);
+  }
+
+  const lookup = (skill) => {
+    const m = read(join(SKILL_DIR, skill, 'SKILL.md')).match(/`(awk [^`]*<ID>[^`]*)`/);
+    assert.ok(m, `/${skill} no longer names an awk entry lookup — update this test with it`);
+    return m[1];
+  };
+
+  test('the backlog has entries to look up — the corpus is not silently empty (L3)', () => {
+    assert.ok(entries.filter((e) => e.open).length >= 1, 'no open entries parsed; the parser is broken');
+  });
+
+  for (const skill of ['implement', 'verify']) {
+    test(`/${skill}'s lookup returns every entry whole, Accept included`, () => {
+      const cmd = lookup(skill);
+      const bad = [];
+      for (const e of entries) {
+        const r = spawnSync('sh', ['-c', cmd.replaceAll('<ID>', e.id)], { cwd: REPO, encoding: 'utf8' });
+        assert.equal(r.status, 0, `lookup failed for ${e.id}: ${r.stderr}`);
+        if (r.stdout.trimEnd() !== e.text.trimEnd()) bad.push(`${e.id}: not the whole entry`);
+        if (e.open && !/^- \*\*Accept:\*\*/m.test(r.stdout)) bad.push(`${e.id}: Accept missing`);
+      }
+      assert.deepEqual(bad, [], `/${skill}'s entry lookup truncates or misses entries`);
+    });
+  }
+
+  test('an ID with no entry returns nothing — the "untriaged" signal /implement relies on', () => {
+    const r = spawnSync('sh', ['-c', lookup('implement').replaceAll('<ID>', 'P999')], { cwd: REPO, encoding: 'utf8' });
+    assert.equal(r.stdout, '');
+  });
+
+  test('the old fixed-window grep would fail this — the check bites', () => {
+    const truncated = entries.filter((e) => {
+      const r = spawnSync('sh', ['-c', `grep -A12 "^### ${e.id}\\b" docs/product/BACKLOG.md`], { cwd: REPO, encoding: 'utf8' });
+      return r.stdout.trimEnd() !== e.text.trimEnd();
+    });
+    assert.ok(truncated.length > 0, 'every entry fits in 13 lines; this control no longer proves anything');
+  });
+});
+
 describe('every skill handoff points at a skill that exists', () => {
   test('skills reference only real skills', () => {
     const bad = [];
