@@ -125,7 +125,7 @@ describe('every command a doc tells you to run exists', () => {
     for (const f of DOCS) {
       const t = unfenced(read(f));
       for (const g of gone) {
-        // PORTING legitimately discusses the master variant, which still has stats.py.
+        // PORTING legitimately discusses the retired measurement-track variant, which has stats.py.
         if (t.includes(g) && !/master|variant/i.test(t.split(g)[0].slice(-200))) {
           hits.push(`${rel(f)} → ${g}`);
         }
@@ -218,7 +218,7 @@ describe('every skill handoff points at a skill that exists', () => {
       for (const m of t.matchAll(/\/(triage|implement|verify|land|ship|checkpoint|eval|research)\b/g)) {
         const name = m[1];
         if (SKILLS.includes(name)) continue;
-        // /research is deliberately named as the thing the master variant has.
+        // /research is deliberately named as the thing the retired measurement-track variant has.
         if (name === 'research' && /master|variant|measurable/i.test(t)) continue;
         bad.push(`${doc} → /${name}`);
       }

@@ -9,12 +9,13 @@ backlog says a feature is unbuilt when it shipped; a claim written from a mistyp
 reads as fact three sessions later; a feature ships on a premise nobody ever checked.
 This suite makes those failures either impossible or loud.
 
-> **Variant:** this is the **build-only** branch. The `master` branch carries a larger
-> version with a second, measurable track (`/research`, an experiment framework, an
-> append-only run log, findings graded by confidence) for projects that make claims a
-> test can't catch — performance, ranking, model quality, anything tuned. If that's
-> you, start there instead. Running a measurement track you don't need is worse than
-> not having one, because the next session reads an idle backlog as live.
+> **Retired variant:** an earlier version carried a second, measurable track
+> (`/research`, an experiment framework, an append-only run log, findings graded by
+> confidence) for projects that make claims a test can't catch — performance, ranking,
+> model quality, anything tuned. It was retired on 2026-10-15 and survives as the tag
+> `measurement-track`: a frozen snapshot that predates the test suite, the eval, and
+> the `Accept:` field. Running a measurement track you don't need is worse than not
+> having one, because the next session reads an idle backlog as live.
 
 ## The three ideas
 

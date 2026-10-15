@@ -317,17 +317,14 @@ The kinds of thing the tracked docs hold, and where each one goes.
   decision it informs.
 - **Scope:**
   - Rename OPEN_DECISIONS to an assumptions register (`A-n`): yes/no facts about the
-    outside world, settled by observation. Both branches.
+    outside world, settled by observation.
   - Add a decisions register (`D-n`): open choices with options, what they wait on and
     a decision rule; decided ones with the choice, why and what would reopen them.
-    /triage gains a route for it. Both branches.
-  - master only: experiments get a kind (test / measure / probe). Only a test that
-    gates a change needs a pre-registered rule; a measure plans precision, a probe
-    plans a budget and yields directional findings.
+    /triage gains a route for it.
   - Each doc moves with its checker and the skills' greps in the same commit.
-  - Out: photocull-specific parts (blind picks, scope vocabulary). First decide master
-    vs build-only: bring master up to date with build-only, or rebuild its research
-    track from photocull's.
+  - Out: photocull-specific parts (blind picks, scope vocabulary), and experiment
+    kinds — they were master-only, and the measurement track was retired 2026-10-15
+    (tag `measurement-track`), which settled the old "master vs build-only" question.
 - **Accept:**
   - A "should we find out how often X happens" idea has one obvious home and /triage
     routes it there.
@@ -335,7 +332,6 @@ The kinds of thing the tracked docs hold, and where each one goes.
     is waiting on.
   - The schema check rejects an entry that depends on an open decision being queued
     in Next up.
-  - Both branches carry the rename, and neither has a stray OD-n reference.
 - **Depends on:** —
 - **Notes:** waits on the same change landing in photocull and being exercised once
   per new shape (one measure run, one decision taken, one assumption resolved). The
@@ -345,12 +341,12 @@ The kinds of thing the tracked docs hold, and where each one goes.
   **Porting checklist** (landed in photocull 2026-10-15, commits d82e902, a5d6c45,
   ceca3cb, 8665884, eb43d7e, 5fb167c, 8179fef; read those diffs, not this summary,
   for the exact wording). Generic, in this order, one green commit each:
-  1. Rename the register to assumptions, A-n (both branches). Checker config, ID
+  1. Rename the register to assumptions, A-n. Checker config, ID
      regex, the open-dependency gate's prefix, docstring, test fixtures, every doc
      link and skill mention, one commit. Add a provenance line mapping old numbers to
      new. The schema check's entry count must not change: that is the proof the
      rename lost nothing.
-  2. Decisions register, D-n (both branches). Statuses open / decided / superseded.
+  2. Decisions register, D-n. Statuses open / decided / superseded.
      Options always; Waiting on while open; a Decision rule whenever it waits on an
      experiment. Decided needs a dated Decided line plus Why, Leads to and Reopen if.
      Leads to naming a closed feature must lead with `shipped` (the old Deploys-as
@@ -359,7 +355,7 @@ The kinds of thing the tracked docs hold, and where each one goes.
      exist; staleness reads the Decided date. Seed one real entry in the same commit,
      because an empty tracked doc fails the check. Triage gains a routing question;
      ship holds the pen.
-  3. master only: experiment kinds. A Kind vocab line in the framework; per kind, a
+  3. *Skip — out of scope since the measurement track was retired.* Experiment kinds. A Kind vocab line in the framework; per kind, a
      test owes Hypothesis, Feeds and Power, a measure owes Precision, a probe owes a
      Budget. Feeds must name an existing decision that carries its rule while both
      are open (this holds the start gate mechanically). `answered` replaces won and

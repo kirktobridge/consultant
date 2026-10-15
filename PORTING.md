@@ -14,18 +14,20 @@ grep -rn "PORTING" --include=*.md --include=*.mjs --include=*.py .
 
 ## Step 0 — check you're on the right variant
 
-This is the **build-only** suite: everything routes through one question — *would we
+This suite is **build-only**: everything routes through one question — *would we
 build this, or are we assuming it?*
 
-The `master` branch carries a larger version with a second, **measurable** track:
-`/research`, an experiment framework, an append-only run log, and findings graded
-`replicated`/`significant`/`directional`. Its routing question is *can this state a
-pre-registered success criterion — a metric plus a bar?*
+A retired variant carried a second, **measurable** track: `/research`, an experiment
+framework, an append-only run log, and findings graded
+`replicated`/`significant`/`directional`. Its routing question was *can this state a
+pre-registered success criterion — a metric plus a bar?* It survives as the tag
+`measurement-track`, frozen before this suite's tests, eval, and `Accept:` field.
 
-**Take that one instead** if your project makes claims that could be wrong in a way a
-test won't catch — performance work, model/prompt quality, ranking, pricing, anything
+**Consider porting from it** if your project makes claims that could be wrong in a way
+a test won't catch — performance work, model/prompt quality, ranking, pricing, anything
 tuned. The measurable track is what stops "it feels faster" from becoming a committed
-default.
+default. Expect to port by hand: the snapshot is unmaintained, and nothing here checks
+it.
 
 **Stay here** if you genuinely ship only features. Don't bolt a half-hearted research
 backlog onto this later: one nobody runs is worse than none, because the next session
