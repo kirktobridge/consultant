@@ -38,9 +38,11 @@ verified is how the next session inherits your guess as fact. And a negative cla
 from a broken tool is indistinguishable from a true negative.
 
 Grading claims one sentence at a time still leaves the *asserted* ones unindexed, so
-[docs/decisions/](docs/decisions/README.md) is the standing register of them —
+[docs/assumptions/](docs/assumptions/README.md) is the standing register of them —
 assumptions the project rests on that nobody has verified. Never build on an unverified
-figure.
+figure. Its sibling, [docs/decisions/](docs/decisions/README.md), holds the choices only
+the product owner can make, so they stop hiding inside features; an open one blocks the
+same way.
 
 ## The loop
 
@@ -52,8 +54,8 @@ figure.
       would we│BUILD it?           are we just  │ASSUMING it?
               ▼                                 ▼
        ┌─────────────┐                ┌──────────────────────┐
-       │ /implement  │                │  docs/decisions/     │
-       └──────┬──────┘                │  OD-n — blocks what  │
+       │ /implement  │                │  docs/assumptions/   │
+       └──────┬──────┘                │  A-n — blocks what   │
               ▼                       │  depends on it, in   │
         ┌───────────┐                 │  proportion to how   │
         │  /verify  │                 │  close that work is  │
@@ -67,7 +69,7 @@ figure.
           └────────┬────────┘
                    ▼
              ┌─────────┐
-             │  /ship  │  status flips, OD resolutions, the queue, architecture *why*
+             │  /ship  │  status flips, assumption resolutions, the queue, architecture *why*
              └─────────┘
 
   every session starts with the dangling-state audit (a SessionStart hook);
@@ -86,7 +88,7 @@ Two of its three payoffs (you can *enumerate* what you're standing on; a `refute
 tells you how often you're wrong) work even if nothing is ever verified. Only the block
 creates pressure, and it applies that pressure exactly when it matters.
 
-So an open decision escalates to real work — a **spike** `P#`, whose deliverable is the
+So an assumption escalates to real work — a **spike** `P#`, whose deliverable is the
 answer rather than a feature — only when its dependents reach the queue. An
 assumption blocking something deep in the pool is correctly parked. That bound is what
 keeps the register from becoming a generator of speculative work.
@@ -107,7 +109,8 @@ docs/
   BUILD_ORDER.md              the phased plan, disposable
   backlog/                    features, one file per P#  ← written only by /ship
     QUEUE.md                  what's next — the queue and nothing else
-  decisions/                  unverified assumptions, one file per OD-n — no single pen
+  assumptions/                unverified assumptions, one file per A-n — no single pen
+  decisions/                  the product owner's choices, one file per D-n ← written only by /ship
   LESSONS.md                  the expensive failures, each with the rule it bought
   dev_notes/OPEN_IDEAS.md     your raw dump              ← human-only, hook-blocked
 scripts/
@@ -154,7 +157,7 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 The tracked docs carry this repo's own live entries rather than placeholders, so what
 you see is the shape in use — replace them with yours. The idioms a fresh backlog won't
 show you (a feature blocked on an assumption, the spike that unblocks it) are specified
-in [docs/decisions/](docs/decisions/README.md)'s entry template and exercised by
+in [docs/assumptions/](docs/assumptions/README.md)'s entry template and exercised by
 the tests, which is where they're held rather than merely illustrated.
 
 ## Then read

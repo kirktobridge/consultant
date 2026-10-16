@@ -12,7 +12,7 @@
 //   title: Entries as files
 //   status: proposed
 //   drafted: 2026-10-16
-//   depends_on: P9, OD-3
+//   depends_on: P9, A-3
 //   ---
 //
 //   ## Value
@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // ── The registers ────────────────────────────────────────────────────────────
 // PORTING: adjust directories and ID namespaces; keep the shapes.
 
-const ID = /^(P\d+|OD-\d+)$/;
+const ID = /^(P\d+|A-\d+|D-\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Value types. Each returns an error message, or null when the value is good.
@@ -48,6 +48,11 @@ const TYPES = {
     if (v === '—') return null;
     const bad = v.split(/,\s*/).filter((x) => !ID.test(x));
     return bad.length ? `not a comma-separated ID list (or —): "${v}" — prose belongs in the body` : null;
+  },
+  // What an open decision waits on: IDs, and/or `user` for the product owner.
+  waits: (v) => {
+    const bad = v.split(/,\s*/).filter((x) => x !== 'user' && !ID.test(x));
+    return bad.length ? `not a comma-separated list of IDs and/or \`user\`: "${v}" — prose belongs in the body` : null;
   },
 };
 
@@ -68,10 +73,10 @@ export const BACKLOG = {
   },
 };
 
-export const DECISIONS = {
-  dir: 'docs/decisions',
-  readme: 'docs/decisions/README.md',
-  idPattern: /^OD-\d+$/,
+export const ASSUMPTIONS = {
+  dir: 'docs/assumptions',
+  readme: 'docs/assumptions/README.md',
+  idPattern: /^A-\d+$/,
   keys: {
     id: 'id',
     title: 'text',
@@ -79,10 +84,27 @@ export const DECISIONS = {
     raised: 'date',
     resolved: 'date',
     spiked_as: 'ids',
+    moved_to: 'ids',
   },
 };
 
-export const REGISTERS = [BACKLOG, DECISIONS];
+export const DECISIONS = {
+  dir: 'docs/decisions',
+  readme: 'docs/decisions/README.md',
+  idPattern: /^D-\d+$/,
+  keys: {
+    id: 'id',
+    title: 'text',
+    status: 'word',
+    raised: 'date',
+    waiting_on: 'waits',
+    decided: 'date',
+    leads_to: 'ids',
+    superseded_by: 'ids',
+  },
+};
+
+export const REGISTERS = [BACKLOG, ASSUMPTIONS, DECISIONS];
 
 /** Files in a register directory that are not entries. */
 const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);

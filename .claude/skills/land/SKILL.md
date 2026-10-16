@@ -43,8 +43,8 @@ not observed or not exercised first; that is what the user is accepting despite.
    the entry's last milestone, it stays `in-progress`: whether it shipped is the
    product owner's call, made against the report below, and a forked skill cannot
    ask them. Tests green and every criterion observed are evidence for that call,
-   not the call. If the branch was a **spike** (`resolves: OD-n`), /ship also
-   writes the OD's `Resolution:` and flips its status — the answer landing in the code
+   not the call. If the branch was a **spike** (`resolves: A-n`), /ship also
+   writes the assumption's `Resolution:` and flips its status — the answer landing in the code
    without landing in the register is the exact failure the pairing check exists for.
    Name the resolution in your final report, and say if it was a **refutation**: that
    may void other entries rather than unblock them, and the main session needs to know

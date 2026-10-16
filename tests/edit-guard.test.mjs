@@ -64,7 +64,7 @@ describe('human-owned files are blocked', () => {
 describe('everything else is permitted', () => {
   test('the tracked docs the skills own', () => {
     assert.equal(guard({ tool_input: { file_path: 'docs/backlog/P1.md' } }).code, ALLOWED);
-    assert.equal(guard({ tool_input: { file_path: 'docs/decisions/OD-1.md' } }).code, ALLOWED);
+    assert.equal(guard({ tool_input: { file_path: 'docs/assumptions/A-1.md' } }).code, ALLOWED);
     assert.equal(guard({ tool_input: { file_path: 'docs/ARCHITECTURE.md' } }).code, ALLOWED);
   });
 

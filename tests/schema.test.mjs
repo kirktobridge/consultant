@@ -14,7 +14,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, OD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
+import { P, A, D, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -168,43 +168,43 @@ describe('the Next up queue', () => {
   });
 });
 
-describe('graduated OD blocking — severity tracks proximity to the work', () => {
-  const od = () => OD('OD-1');
-  const blocked = (status) => P('P2', { status, dependsOn: ['OD-1'] });
+describe('graduated assumption blocking — severity tracks proximity to the work', () => {
+  const assumption = () => A('A-1');
+  const blocked = (status) => P('P2', { status, dependsOn: ['A-1'] });
 
-  test('PARKED: proposed, not queued, open OD → passes (blocked-not-rejected)', () => {
-    passes(project({ backlog: [P('P1'), blocked('proposed')], decisions: [od()], nextUp: ['P1'] }));
+  test('PARKED: proposed, not queued, open assumption → passes (blocked-not-rejected)', () => {
+    passes(project({ backlog: [P('P1'), blocked('proposed')], assumptions: [assumption()], nextUp: ['P1'] }));
   });
 
   test('QUEUED: the same entry in Next up → fails', () => {
     const o = fails(
-      project({ backlog: [P('P1'), blocked('proposed')], decisions: [od()], nextUp: ['P1', 'P2'] }),
-      /P2 is in Next up but depends on OD-1, still `open`/,
+      project({ backlog: [P('P1'), blocked('proposed')], assumptions: [assumption()], nextUp: ['P1', 'P2'] }),
+      /P2 is in Next up but depends on A-1, still `open`/,
     );
     assert.match(o, /dependency-ready/, 'the message must say why the queue is the line');
   });
 
   test('CLAIMED: in-progress → fails, regardless of the queue', () => {
     fails(
-      project({ backlog: [P('P1'), blocked('in-progress')], decisions: [od()], nextUp: ['P1'] }),
-      /P2 is `in-progress` but depends on OD-1, still `open`/,
+      project({ backlog: [P('P1'), blocked('in-progress')], assumptions: [assumption()], nextUp: ['P1'] }),
+      /P2 is `in-progress` but depends on A-1, still `open`/,
     );
   });
 
   test('CLAIMED: partial is treated as claimed too', () => {
     fails(
-      project({ backlog: [P('P1'), blocked('partial')], decisions: [od()], nextUp: ['P1'] }),
+      project({ backlog: [P('P1'), blocked('partial')], assumptions: [assumption()], nextUp: ['P1'] }),
       /P2 is `partial`/,
     );
   });
 
-  test('a verified OD lifts the block entirely', () => {
+  test('a verified assumption lifts the block entirely', () => {
     passes(
       project({
         // Resolution predates the entry, so the staleness rule below stays out of it
         // and this isolates the block itself.
-        backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(10), dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
+        backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(10), dependsOn: ['A-1'] })],
+        assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
         nextUp: ['P1'],
       }),
     );
@@ -214,11 +214,11 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
   // unblocked — and no rule targets it. But coverage is not zero, and the boundary is
   // not where you would guess, so both halves are pinned.
 
-  test('a refuted OD: an entry drafted BEFORE the refutation is caught, by staleness', () => {
+  test('a refuted assumption: an entry drafted BEFORE the refutation is caught, by staleness', () => {
     fails(
       project({
-        backlog: [P('P1'), P('P2', { drafted: daysAgo(40), dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(10), resolution: 'wrong.' })],
+        backlog: [P('P1'), P('P2', { drafted: daysAgo(40), dependsOn: ['A-1'] })],
+        assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(10), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
       /presumptively stale/,
@@ -230,21 +230,21 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
     // (the entry is newer than the resolution). Sweeping refuted dependents is prose
     // in /ship and /triage groom, held by nobody.
     //
-    // Pinned so the gap is a decision rather than a discovery. If a refuted-OD gate is
+    // Pinned so the gap is a decision rather than a discovery. If a refuted-assumption gate is
     // ever added this test SHOULD fail — change it knowingly.
     passes(
       project({
-        backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(5), dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(30), resolution: 'wrong.' })],
+        backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(5), dependsOn: ['A-1'] })],
+        assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(30), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
     );
   });
 
-  test('a dangling OD reference fails at ANY status — broken audit trail', () => {
+  test('a dangling assumption reference fails at ANY status — broken audit trail', () => {
     fails(
-      project({ backlog: [P('P1'), P('P2', { status: 'shipped', dependsOn: ['OD-99'] })] }),
-      /P2 depends on OD-99, which has no entry/,
+      project({ backlog: [P('P1'), P('P2', { status: 'shipped', dependsOn: ['A-99'] })] }),
+      /P2 depends on A-99, which has no entry/,
     );
   });
 
@@ -252,8 +252,8 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
     // An inflated count is not cosmetic: the count is the positive control (L3).
     const o = fails(
       project({
-        backlog: [P('P1'), P('P2', { dependsOn: ['OD-1', 'OD-1'] })],
-        decisions: [od()],
+        backlog: [P('P1'), P('P2', { dependsOn: ['A-1', 'A-1'] })],
+        assumptions: [assumption()],
         nextUp: ['P1', 'P2'],
       }),
     );
@@ -262,43 +262,43 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
 });
 
 describe('spike ↔ assumption pairing', () => {
-  test('an open spike pointing at an open OD passes — the normal live state', () => {
+  test('an open spike pointing at an open assumption passes — the normal live state', () => {
     passes(
       project({
-        backlog: [P('P1'), P('P9', { resolves: 'OD-1' })],
-        decisions: [OD('OD-1')],
+        backlog: [P('P1'), P('P9', { resolves: 'A-1' })],
+        assumptions: [A('A-1')],
         nextUp: ['P1'],
       }),
     );
   });
 
-  test('an open spike pointing at an already-settled OD fails as obsolete', () => {
+  test('an open spike pointing at an already-settled assumption fails as obsolete', () => {
     fails(
       project({
-        backlog: [P('P1'), P('P9', { resolves: 'OD-1' })],
-        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(1), resolution: 'wrong.' })],
+        backlog: [P('P1'), P('P9', { resolves: 'A-1' })],
+        assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(1), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
-      /open P9 resolves OD-1, but OD-1 is already `refuted`/,
+      /open P9 resolves A-1, but A-1 is already `refuted`/,
     );
   });
 
-  test('a SHIPPED spike whose OD is still open fails — the answer never came back', () => {
+  test('a SHIPPED spike whose assumption is still open fails — the answer never came back', () => {
     const o = fails(
       project({
-        backlog: [P('P1'), P('P9', { status: 'shipped', resolves: 'OD-1' })],
-        decisions: [OD('OD-1')],
+        backlog: [P('P1'), P('P9', { status: 'shipped', resolves: 'A-1' })],
+        assumptions: [A('A-1')],
         nextUp: ['P1'],
       }),
-      /P9 shipped and resolves OD-1, but OD-1 is still `open`/,
+      /P9 shipped and resolves A-1, but A-1 is still `open`/,
     );
     assert.match(o, /inventory/, 'the message must name the failure mode (L2)');
   });
 
-  test('a spike pointing at a nonexistent OD fails', () => {
+  test('a spike pointing at a nonexistent assumption fails', () => {
     fails(
-      project({ backlog: [P('P1'), P('P9', { resolves: 'OD-77' })] }),
-      /P9 resolves OD-77, which has no entry/,
+      project({ backlog: [P('P1'), P('P9', { resolves: 'A-77' })] }),
+      /P9 resolves A-77, which has no entry/,
     );
   });
 });
@@ -332,9 +332,173 @@ describe('staleness', () => {
   });
 });
 
+describe('decisions — choices only the product owner makes (P10)', () => {
+  const blocked = (status) => P('P2', { status, dependsOn: ['D-1'] });
+
+  test('a minimal open decision passes, and is counted', () => {
+    const o = passes(project({ decisions: [D('D-1')] }));
+    assert.match(o, /OK \(2 entries across 2 register\(s\)\)/);
+  });
+
+  // Accept criterion: an entry that depends on an open decision may not be queued.
+  test('QUEUED: an entry resting on an open decision fails in Next up', () => {
+    const o = fails(
+      project({ backlog: [P('P1'), blocked('proposed')], decisions: [D('D-1')], nextUp: ['P1', 'P2'] }),
+      /P2 is in Next up but depends on D-1, still `open`/,
+    );
+    assert.match(o, /decide D-1/, 'the remedy for a decision is to decide it, not to spike it');
+  });
+
+  test('PARKED: the same entry in the pool passes (blocked-not-rejected)', () => {
+    passes(project({ backlog: [P('P1'), blocked('proposed')], decisions: [D('D-1')], nextUp: ['P1'] }));
+  });
+
+  test('CLAIMED: in-progress on an open decision fails', () => {
+    fails(
+      project({ backlog: [P('P1'), blocked('in-progress')], decisions: [D('D-1')], nextUp: ['P1'] }),
+      /P2 is `in-progress` but depends on D-1, still `open`.*a choice nobody has made/s,
+    );
+  });
+
+  test('deciding lifts the block', () => {
+    passes(
+      project({
+        backlog: [P('P1'), P('P2', { drafted: daysAgo(0), dependsOn: ['D-1'] })],
+        decisions: [decidedD('D-1', { decided: daysAgo(1) })],
+        nextUp: ['P1', 'P2'],
+      }),
+    );
+  });
+
+  test('a dependent drafted BEFORE the decision was taken is flagged stale', () => {
+    fails(
+      project({
+        backlog: [P('P1'), P('P2', { drafted: daysAgo(30), dependsOn: ['D-1'] })],
+        decisions: [decidedD('D-1', { decided: daysAgo(1) })],
+      }),
+      /P2 \(drafted .*\) depends on D-1, which landed .*presumptively stale/s,
+    );
+  });
+
+  test('an open decision must say what it is waiting on', () => {
+    fails(project({ decisions: [D('D-1', { waitingOn: null })] }), /open D-1 has no `waiting_on:`/);
+  });
+
+  test('waiting_on takes IDs and `user`, never prose', () => {
+    passes(project({ decisions: [D('D-1', { waitingOn: 'user, P1' })] }));
+    fails(
+      project({ decisions: [D('D-1', { waitingOn: 'the user, once P1 lands' })] }),
+      /waiting_on: not a comma-separated list of IDs and\/or `user`/,
+    );
+  });
+
+  test('waiting_on an ID with no entry fails', () => {
+    fails(project({ decisions: [D('D-1', { waitingOn: 'A-9' })] }), /D-1 waiting_on A-9, which has no entry/);
+  });
+
+  test('every decision lists its Options', () => {
+    fails(project({ decisions: [D('D-1', { options: null })] }), /D-1 missing \*\*Options\*\*/);
+  });
+
+  test('a decided entry owes its date, what it leads to, the choice, why, and what reopens it', () => {
+    const owed = [
+      [{ decided: null }, /decided D-1 has no `decided:`/],
+      [{ leadsTo: null }, /decided D-1 has no `leads_to:`/],
+      [{ choice: null }, /decided D-1 missing \*\*Decided\*\*/],
+      [{ why: null }, /decided D-1 missing \*\*Why\*\*/],
+      [{ reopenIf: null }, /decided D-1 missing \*\*Reopen if\*\*/],
+    ];
+    passes(project({ decisions: [decidedD('D-1')] }));
+    for (const [over, needle] of owed) fails(project({ decisions: [decidedD('D-1', over)] }), needle);
+  });
+
+  test('leads_to a shipped feature passes: the consequence landed', () => {
+    passes(
+      project({
+        backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(1) })],
+        decisions: [decidedD('D-1', { leadsTo: 'P2' })],
+      }),
+    );
+  });
+
+  test('leads_to a feature that was abandoned fails: the consequence was dropped', () => {
+    fails(
+      project({
+        backlog: [P('P1'), P('P2', { status: 'abandoned' })],
+        decisions: [decidedD('D-1', { leadsTo: 'P2' })],
+      }),
+      /D-1 leads to P2, which is `abandoned`.*Supersede D-1/s,
+    );
+  });
+
+  test('leads_to an entry that does not exist fails', () => {
+    fails(project({ decisions: [decidedD('D-1', { leadsTo: 'P42' })] }), /D-1 leads_to P42, which has no entry/);
+  });
+
+  test('a superseded decision names an existing D-n that replaced it', () => {
+    const sup = (by) => D('D-1', { status: 'superseded', waitingOn: null, supersededBy: by });
+    passes(project({ decisions: [sup('D-2'), D('D-2')] }));
+    fails(project({ decisions: [sup(null)] }), /superseded D-1 has no `superseded_by:`/);
+    fails(project({ decisions: [sup('D-7')] }), /D-1 superseded_by D-7, which has no entry/);
+    fails(project({ decisions: [sup('P1')] }), /`superseded_by:` must name the D-n/);
+  });
+
+  test('a decisions register with no entries fails — an empty tracked doc is not a pass', () => {
+    const dir = project({ decisions: [D('D-1')] });
+    rmSync(join(dir, 'docs/decisions/D-1.md'));
+    fails(dir, /docs\/decisions: no entry files parsed/);
+  });
+
+  test('a D-n in the wrong register is out of namespace', () => {
+    fails(project({ assumptions: [A('D-1')] }), /docs\/assumptions\/D-1\.md: ID out of namespace: D-1/);
+  });
+});
+
+describe('a moved assumption is a forwarding address (P10)', () => {
+  const moved = (to) => A('A-1', { status: 'moved', resolved: daysAgo(1), movedTo: to });
+
+  test('moved to an existing entry passes, and the stub stays countable', () => {
+    passes(project({ assumptions: [moved('D-1')], decisions: [D('D-1')] }));
+  });
+
+  test('moved with no `moved_to:` fails', () => {
+    fails(project({ assumptions: [moved(null)] }), /moved A-1 has no `moved_to:`/);
+  });
+
+  test('moved to an entry that does not exist fails', () => {
+    fails(project({ assumptions: [moved('D-4')] }), /A-1 moved_to D-4, which has no entry/);
+  });
+
+  test('moved to itself, or to nothing, fails', () => {
+    fails(project({ assumptions: [moved('A-1')] }), /`moved_to:` must name the entry that is its new home/);
+    fails(project({ assumptions: [moved('—')] }), /`moved_to:` must name the entry that is its new home/);
+  });
+
+  test('an open entry still depending on a moved assumption fails, even parked in the pool', () => {
+    fails(
+      project({
+        backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+        assumptions: [moved('D-1')],
+        decisions: [D('D-1')],
+      }),
+      /P2 depends on A-1, which was moved to D-1 — depend on its new home instead/,
+    );
+  });
+
+  test('a shipped entry that depended on it before the move is history, not a failure', () => {
+    passes(
+      project({
+        backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(30), dependsOn: ['A-1'] })],
+        assumptions: [moved('D-1')],
+        decisions: [D('D-1')],
+      }),
+    );
+  });
+});
+
 describe('identity and ID hygiene', () => {
   test('an ID outside its register namespace fails', () => {
-    fails(project({ backlog: [P('P1')], decisions: [OD('P5')] }), /docs\/decisions\/P5\.md: ID out of namespace: P5/);
+    fails(project({ backlog: [P('P1')], assumptions: [A('P5')] }), /docs\/assumptions\/P5\.md: ID out of namespace: P5/);
   });
 
   test('a header id that does not match its file name fails', () => {
@@ -359,7 +523,7 @@ describe('identity and ID hygiene', () => {
 // one added to its config later is covered without anyone adding a test for it.
 describe('only the header is read: prose about a field is never the field', () => {
   const fields = JSON.parse(run('backlog-schema-check.mjs', ['--fields']).stdout);
-  const fileIn = (dir) => `${dir}/${dir.endsWith('backlog') ? 'P1' : 'OD-1'}.md`;
+  const fileIn = (dir) => `${dir}/${{ 'docs/backlog': 'P1', 'docs/assumptions': 'A-1', 'docs/decisions': 'D-1' }[dir]}.md`;
 
   // Drop the section from the one entry in `rel`, and add a prose section that names
   // it in every shape it used to be written in.
@@ -375,16 +539,17 @@ describe('only the header is read: prose about a field is never the field', () =
 
   // Positive control: an empty or truncated list would make the walk below pass by
   // walking nothing (L3).
-  test('the probe list covers both registers', () => {
+  test('the probe list covers every register', () => {
     assert.ok(fields['docs/backlog'].required.includes('Accept'));
-    assert.ok(fields['docs/decisions'].required.includes('Assumption'));
+    assert.ok(fields['docs/assumptions'].required.includes('Assumption'));
+    assert.ok(fields['docs/decisions'].required.includes('Options'));
     assert.ok(fields['docs/backlog'].keys.includes('depends_on'));
   });
 
   for (const [regDir, { required }] of Object.entries(fields)) {
     for (const label of required) {
       test(`${regDir}: naming ${label} in prose does not count as carrying it`, () => {
-        const dir = project({ backlog: [P('P1')], decisions: [OD('OD-1')] });
+        const dir = project({ backlog: [P('P1')], assumptions: [A('A-1')], decisions: [D('D-1')] });
         passes(dir); // the fixture is valid before the section is taken away
         proseOnly(dir, fileIn(regDir), label);
         fails(dir, new RegExp(`missing \\*\\*${label}\\*\\*`));
@@ -394,20 +559,20 @@ describe('only the header is read: prose about a field is never the field', () =
 
   // Accept criterion 1. Every header key, written as a header line, in the body: none
   // of them may change what the checker reads. If `status: shipped` were read, the
-  // queue would call P2 terminal; if `depends_on: OD-2` were read, OD-2 (verified)
-  // would join the real, open OD-1.
-  test('an entry whose prose says `status: shipped` or `depends_on: OD-3` is unaffected', () => {
-    const notes = 'status: shipped\ndepends_on: OD-2\nresolves: OD-2\n**Depends on:** OD-2\n- **Status:** shipped';
+  // queue would call P2 terminal; if `depends_on: A-2` were read, A-2 (verified)
+  // would join the real, open A-1.
+  test('an entry whose prose says `status: shipped` or `depends_on: A-3` is unaffected', () => {
+    const notes = 'status: shipped\ndepends_on: A-2\nresolves: A-2\n**Depends on:** A-2\n- **Status:** shipped';
     const o = fails(
       project({
-        backlog: [P('P1'), P('P2', { notes, dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1'), OD('OD-2', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
+        backlog: [P('P1'), P('P2', { notes, dependsOn: ['A-1'] })],
+        assumptions: [A('A-1'), A('A-2', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
         nextUp: ['P1', 'P2'],
       }),
-      /P2 is in Next up but depends on OD-1, still `open`/,
+      /P2 is in Next up but depends on A-1, still `open`/,
     );
     assert.doesNotMatch(o, /terminal/, 'body prose was read as the status');
-    assert.doesNotMatch(o, /OD-2/, 'body prose was read as a dependency or a spike pairing');
+    assert.doesNotMatch(o, /A-2/, 'body prose was read as a dependency or a spike pairing');
     assert.match(o, /^backlog-schema: 1 violation/m);
   });
 });

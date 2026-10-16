@@ -1,7 +1,7 @@
 // The hooks judge a worktree's files against that worktree (P16).
 //
 // In a worktree session the hooks still run from the checkout the session launched in
-// (OD-7, refuted by probe). A linked worktree under `.claude/worktrees/` is then just a
+// (A-7, refuted by probe). A linked worktree under `.claude/worktrees/` is then just a
 // subfolder of that checkout, so a folder pattern like `docs/dev_notes/` silently
 // stopped matching the worktree's copy, and the PostToolUse checks validated main's
 // docs instead of the branch's. Nothing failed — that is the whole problem — so every
@@ -89,7 +89,7 @@ describe('the edit-guard judges a path against the checkout that contains it', (
 });
 
 describe('the PostToolUse checks run against the worktree the edit landed in', () => {
-  // The hook runs with CLAUDE_PROJECT_DIR at the main checkout, as OD-7 found it does.
+  // The hook runs with CLAUDE_PROJECT_DIR at the main checkout, as A-7 found it does.
   const hook = (scriptName, main, filePath) =>
     run(scriptName, [], {
       cwd: main,

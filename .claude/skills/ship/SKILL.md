@@ -1,6 +1,6 @@
 ---
 name: ship
-description: The sole pen for the tracked docs — flip product-backlog statuses (claims and terminal), record open-decision resolutions, tick the build plan, keep the architecture doc's *why* current, and append approved /triage drafts — minimally, without restating code. Runs on main, usually as /land's last step. Use for "mark X shipped", "we shipped Y, update docs", "add the approved draft to the backlog", "flip P# to in-progress", "resolve OD-3", "/ship".
+description: The sole pen for the tracked docs — flip product-backlog statuses (claims and terminal), record decisions the user takes and assumption resolutions, tick the build plan, keep the architecture doc's *why* current, and append approved /triage drafts — minimally, without restating code. Runs on main, usually as /land's last step. Use for "mark X shipped", "we shipped Y, update docs", "add the approved draft to the backlog", "flip P# to in-progress", "resolve A-3", "we decided D-1", "/ship".
 ---
 
 # Ship — the pen for the product docs
@@ -45,11 +45,12 @@ the code:
 **Single-writer contract:** this skill is the sole writer of the backlog —
 every entry file in [docs/backlog/](../../../docs/backlog/README.md), plus its
 `QUEUE.md` and `README.md` —
-[docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md), and
+[docs/decisions/](../../../docs/decisions/README.md) (the user decides; this skill
+records), [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md), and
 [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md). It writes **nothing else** — the
 spec is human-owned (propose diffs, never edit).
 
-[docs/decisions/](../../../docs/decisions/README.md) is the exception: it has **no
+[docs/assumptions/](../../../docs/assumptions/README.md) is the exception: it has **no
 single pen** — an assumption gets settled by whoever hits it — and this skill is simply
 the usual hand doing the writing. What's enforced there is the *shape*, by the schema
 check, not the author.
@@ -69,14 +70,17 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 | What shipped | Doc | Edit |
 |---|---|---|
 | Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
-| A spike landed (`resolves: OD-n`) | `docs/decisions/OD-n.md` | write the OD's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
+| A spike landed (`resolves: A-n`) | `docs/assumptions/A-n.md` | write the assumption's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
+| An assumption was misfiled (a choice, our own code's behavior, a quantity) | `docs/assumptions/A-n.md` | `status: moved`, add `resolved:` and `moved_to:` (its new home, filed first), and a one-line `## Resolution` saying why it moved. Repoint the `depends_on:` of every open entry that named it. |
+| The user took a decision | `docs/decisions/D-n.md` | `status: decided`, add `decided: YYYY-MM-DD` and `leads_to:` (the `P#` that carries it, or `—`) to the header, and add `## Decided` (the choice), `## Why` and `## Reopen if`; drop `waiting_on:`. **Only on the user's word**, as with `shipped`: recording a choice they didn't make is the one edit here that invents product direction. |
+| A decision was replaced | `docs/decisions/D-n.md` | the old one → `status: superseded` + `superseded_by: D-m`; the new choice is a fresh entry. |
 | A build phase completed | [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md) | tick / delete the phase (it's disposable). |
 | Structure/architecture changed | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) | update the *why* **only** — not signatures (its code blocks are illustrative sketches; the source wins). |
 | Rules / spec changed | *(human-only)* | **do not edit** the spec — it's human-owned and edit-guard blocks it. Propose the exact diff to the user, and flag that ARCHITECTURE needs its matching update once applied. |
 
-3. **Sweep what a resolution unblocked.** If this pass wrote an OD's Resolution, name
-   every entry whose `depends_on:` cites it — they just changed state and nothing else
-   notices. A `verified` OD unblocks them; a **`refuted`** one may have *voided* them,
+3. **Sweep what a resolution unblocked.** If this pass wrote an assumption's Resolution
+   or recorded a decision, name every entry whose `depends_on:` cites it — they just
+   changed state and nothing else notices. A `verified` assumption unblocks them; a **`refuted`** one may have *voided* them,
    which is the case worth stopping over. Report the list; the deep pass is
    `/triage groom`.
 4. **Verify:** relative links resolve; no stale `proposed`/`deferred`/`partial` left on
@@ -143,12 +147,14 @@ improvement, it is quietly editing the definition of done. Same standing as the 
 if a criterion looks wrong, say so and let the user rewrite it. The schema check holds
 the count (2–4 bullets), never the meaning.
 
-An approved **OD** draft becomes a new `docs/decisions/OD-n.md` with `status: open` and
-today's `raised:` date. No other changes — /triage classifies and drafts; this skill is
-just the pen.
+An approved **assumption** draft becomes a new `docs/assumptions/A-n.md` with `status: open` and
+today's `raised:` date. An approved **decision** draft becomes a new
+`docs/decisions/D-n.md` with `status: open`, today's `raised:` date and its
+`waiting_on:` — or `decided`, if the user answered on the spot. No other changes —
+/triage classifies and drafts; this skill is just the pen.
 
-A drafted entry whose `depends_on:` names an open OD goes **into the pool, not into
-the queue**. That's not a workaround — the queue means dependency-ready, and this
+A drafted entry whose `depends_on:` names an open assumption or decision goes **into
+the pool, not into the queue**. That's not a workaround — the queue means dependency-ready, and this
 one isn't. The schema check enforces the distinction.
 
 ## Not this skill

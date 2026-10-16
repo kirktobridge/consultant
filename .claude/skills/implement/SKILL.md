@@ -37,18 +37,21 @@ run all of them.
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
 - **DEPENDS GATE:** read its header's `depends_on:`. A dependency that is an unshipped
-  `P#` or an **`open` `OD-n`**
+  `P#`, an **`open` `A-n`**
+  ([docs/assumptions/](../../../docs/assumptions/README.md)) or an **`open` `D-n`**
   ([docs/decisions/](../../../docs/decisions/README.md)) blocks the build — stop
   and tell the user what's blocking, unless the specific milestone is explicitly marked
-  unblocked.
-  **Never build on an unverified figure.** An open OD is an assumption nobody has
+  unblocked. An open decision has one way forward: ask the user to take it, and have
+  /ship record it. Building on a guess about which way they'll choose is building on
+  an unverified figure.
+  **Never build on an unverified figure.** An open assumption is a fact nobody has
   checked; work resting on it isn't merely risky, it's *misleading* — it ships, looks
   correct, and stays that way until the assumption is finally tested, taking everything
   downstream with it. This gate is **unconditional**, unlike the schema check's
   graduated version: the check tolerates a blocked entry parked in the pool, because
   parking one costs nothing. You are about to pick it up, which is exactly the moment
   that stops being true.
-  Three ways forward, and /triage's spike decision picks between them: settle the OD
+  Three ways forward, and /triage's spike decision picks between them: settle the assumption
   now if it's cheap (one API call, one probe) and write its `Resolution:`; build the
   spike `P#` that answers it, if one is queued; or rescope this entry so it no longer
   depends on it. "Proceed carefully" is not on the list.
@@ -56,9 +59,9 @@ run all of them.
   invocation**. If the user didn't name one, propose the first unshipped one and
   confirm — don't silently build the whole epic. Name which `Accept:` criteria this
   milestone answers; the rest are honestly *not exercised* at close, not passed.
-- **SPIKE GATE:** if this entry's header carries `resolves: OD-n`, it is a spike — its
+- **SPIKE GATE:** if this entry's header carries `resolves: A-n`, it is a spike — its
   deliverable is *the answer*, not a feature. Build the smallest thing that settles the
-  assumption, and treat writing the OD's `Resolution:` as part of done (step 4). A
+  assumption, and treat writing the assumption's `Resolution:` as part of done (step 4). A
   spike that ships without the answer written back is the failure LESSONS
   [L2](../../../docs/LESSONS.md) describes; the schema check fails it, but catching it
   here is cheaper.
@@ -108,7 +111,7 @@ run all of them.
   /triage at the end, and return to the task. This is the concrete mechanism behind
   "resist adjacent improvements": scope resistance fails when the only alternative to
   widening is forgetting, so give the finding somewhere to go. If the finding is an
-  unverified assumption the build is now resting on, it's an **OD**, and it may block
+  unverified assumption the build is now resting on, it's an **assumption**, and it may block
   the very entry you're building — surface it rather than proceeding past it.
 
 ### 4. Verify + close
@@ -133,14 +136,14 @@ run all of them.
   Scope text (premise gate, step 1): name in the hand-off to /land only obligations
   the change as-built really incurs, and say explicitly which scope-listed ones turned
   out void and why — /ship writes what it's handed.
-- **If this was a spike** (`resolves: OD-n`), the answer is the deliverable: state what
+- **If this was a spike** (`resolves: A-n`), the answer is the deliverable: state what
   you actually found, how you established it, and hand /land the exact text for the
-  OD's `Resolution:`. If the assumption turned out **wrong**, say so plainly and flag
+  assumption's `Resolution:`. If the assumption turned out **wrong**, say so plainly and flag
   it as a refutation — that's the high-value case, and it may void other entries rather
   than unblock them. Never soften a refutation into "mostly held"; the register's worth
   depends on that distinction being honest.
 - If the work surfaced a new assumption the build is now resting on, route it through
-  **/triage** as an OD — don't leave it in a commit message.
+  **/triage** as an assumption — don't leave it in a commit message.
 
 ## Not this skill
 - Merging into main → **/land**.

@@ -129,7 +129,7 @@ function userFor(c) {
     `The user says: "${c.request}"`,
     '',
     'Decide what to do, following the skill exactly. In `cites`, list every identifier',
-    'your decision turns on — backlog IDs, open-decision IDs, document names, and the',
+    'your decision turns on — backlog IDs, assumption IDs, document names, and the',
     'words "spike" or "control" if the skill\'s rule about either applies here.',
   );
   return parts.join('\n');
@@ -168,7 +168,7 @@ function promptFor(c) {
     JSON.stringify(
       {
         action: 'proceed | refuse | clarify',
-        classification: 'feature | open-decision | both | not-applicable',
+        classification: 'feature | assumption | decision | both | not-applicable',
         cites: ['every identifier the decision turns on'],
         reason: 'one or two sentences',
       },
@@ -210,9 +210,9 @@ const DECISION_SCHEMA = {
     },
     classification: {
       type: 'string',
-      enum: ['feature', 'open-decision', 'both', 'not-applicable'],
+      enum: ['feature', 'assumption', 'decision', 'both', 'not-applicable'],
       description:
-        'For a triage request: what the idea is. "both" means it splits into a feature and an assumption. "not-applicable" means it cannot be filed as either. Use "not-applicable" for non-triage requests.',
+        'For a triage request: what the idea is. "both" means it splits into a feature and an assumption or decision. "not-applicable" means it cannot be filed as any of them. Use "not-applicable" for non-triage requests.',
     },
     cites: {
       type: 'array',
@@ -285,7 +285,7 @@ function dryRun(cases) {
     };
     const bogus = {
       action: good.action === 'refuse' ? 'proceed' : 'refuse',
-      classification: good.classification === 'feature' ? 'open-decision' : 'feature',
+      classification: good.classification === 'feature' ? 'assumption' : 'feature',
       cites: [...(c.expect.citesNone ?? [])],
       reason: 'synthetic',
     };

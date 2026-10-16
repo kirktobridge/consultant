@@ -1,7 +1,7 @@
 // session-audit — what the last session left dangling, shown to the next one.
 //
 // It runs when a session starts, from a SessionStart hook in .claude/settings.json,
-// whose stdout lands in the new session's context (OD-10). Start rather than end
+// whose stdout lands in the new session's context (A-10). Start rather than end
 // because a session that crashed or was simply closed never runs an end-of-session
 // step, and those are the sessions most likely to have left something behind.
 //
@@ -20,13 +20,13 @@
 // every time and cannot decide it already knows the answer.
 //
 // Exit: 0 nothing dangling | 1 findings to resolve | 2 could not audit (not a repo, &c.)
-// OD-10: a SessionStart hook's output is dropped on a non-zero exit, so the hook
+// A-10: a SessionStart hook's output is dropped on a non-zero exit, so the hook
 // forces 0 — exactly when there are findings is when the exit code would hide them.
 //
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
 import { execFileSync } from 'node:child_process';
-import { BACKLOG, DECISIONS, loadRegister, idsOf } from './entries.mjs';
+import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -90,8 +90,9 @@ if (!BASE) {
 // shows up as a red check rather than as a quietly different audit.
 
 const backlog = loadRegister(ROOT, BACKLOG).entries;
+const assumptions = loadRegister(ROOT, ASSUMPTIONS).entries;
+const aById = new Map(assumptions.map((d) => [d.id, d]));
 const decisions = loadRegister(ROOT, DECISIONS).entries;
-const odById = new Map(decisions.map((d) => [d.id, d]));
 const today = new Date().toISOString().slice(0, 10);
 
 // ── 1. Working tree ──────────────────────────────────────────────────────────
@@ -111,17 +112,17 @@ if (dirty.length) {
 }
 
 // ── 2. Spikes and the assumptions they owe ───────────────────────────────────
-// The schema check fails a *shipped* spike whose OD is still open. That leaves the
+// The schema check fails a *shipped* spike whose assumption is still open. That leaves the
 // in-flight case, where the answer may exist only in a session's transcript.
 
 for (const e of backlog) {
-  for (const odId of idsOf(e, 'resolves').filter((id) => /^OD-/.test(id))) {
-    const od = odById.get(odId);
-    if (!od) continue; // schema check owns dangling refs
-    if (od.status !== 'open') continue;
+  for (const aId of idsOf(e, 'resolves').filter((id) => /^A-/.test(id))) {
+    const assumption = aById.get(aId);
+    if (!assumption) continue; // schema check owns dangling refs
+    if (assumption.status !== 'open') continue;
     if (e.status === 'in-progress' || e.status === 'partial') {
-      add('warn', `Spike ${e.id} is \`${e.status}\` and ${odId} is still \`open\`.`,
-        `If a session established the answer, write it into ${odId}'s Resolution via /ship — an answer that exists only in the transcript is lost. If not, the spike is still owed.`);
+      add('warn', `Spike ${e.id} is \`${e.status}\` and ${aId} is still \`open\`.`,
+        `If a session established the answer, write it into ${aId}'s Resolution via /ship — an answer that exists only in the transcript is lost. If not, the spike is still owed.`);
     }
   }
 }
@@ -153,30 +154,55 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
   }
 }
 
-// ── 4. Resolutions nobody swept ──────────────────────────────────────────────
-// A resolved OD changes the state of every entry that named it, and nothing else in
+// ── 4. Resolutions and decisions nobody swept ────────────────────────────────
+// A resolved assumption changes the state of every entry that named it, and nothing else in
 // the loop notices. `refuted` is the case worth stopping over: those dependents may
 // be void rather than unblocked.
 
-for (const od of decisions) {
-  if (od.status === 'open') continue;
-  const resolvedToday = od.header.resolved === today;
-  const changedThisSession = (git('diff', BASE, '--name-only') || '').includes(`${DECISIONS.dir}/`);
-  if (!resolvedToday && !changedThisSession) continue;
-  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(od.id));
+// A decision taken unblocks its dependents the same way; it cannot void them.
+const settled = [
+  ...assumptions.map((x) => ({ x, dir: ASSUMPTIONS.dir, date: x.header.resolved, verb: 'resolved' })),
+  ...decisions.map((x) => ({ x, dir: DECISIONS.dir, date: x.header.decided, verb: 'decided' })),
+];
+const changed = git('diff', BASE, '--name-only') || '';
+for (const { x, dir, date, verb } of settled) {
+  if (x.status === 'open') continue;
+  const settledToday = date === today;
+  if (!settledToday && !changed.includes(`${dir}/`)) continue;
+  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(x.id));
   if (dependents.length === 0) continue;
   const ids = dependents.map((d) => `${d.id} (${d.status})`).join(', ');
-  add(od.status === 'refuted' ? 'alert' : 'info',
-    `${od.id} is \`${od.status}\`${resolvedToday ? ' (resolved today)' : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
-    od.status === 'refuted'
+  add(x.status === 'refuted' ? 'alert' : 'info',
+    `${x.id} is \`${x.status}\`${settledToday ? ` (${verb} today)` : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
+    x.status === 'refuted'
       ? 'A refutation can VOID dependents rather than unblock them — re-read each against the new truth, and check whether anything already shipped on the false assumption. Deep pass: /triage groom.'
       : 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.');
 }
 
+// ── 5. Choices waiting on the user ───────────────────────────────────────────
+// Not findings: an open decision is not something a session left dangling, and an
+// audit that can never come back clean teaches people to skip it. Listed apart, so
+// the questions only the user can unblock reach them at the start of every session.
+
+const waitingOnUser = decisions
+  .filter((d) => d.status === 'open' && (d.header.waiting_on ?? '').split(/,\s*/).includes('user'))
+  .map((d) => {
+    const held = backlog.filter((e) => idsOf(e, 'depends_on').includes(d.id)).map((e) => e.id);
+    const also = idsOf(d, 'waiting_on');
+    return { id: d.id, title: d.header.title ?? '', alsoWaitingOn: also, holds: held };
+  });
+const waitingLines = waitingOnUser.map((w) =>
+  `  ${w.id} — ${w.title}` +
+    (w.alsoWaitingOn.length ? ` (also waiting on ${w.alsoWaitingOn.join(', ')})` : '') +
+    (w.holds.length ? ` — holds back ${w.holds.join(', ')}` : ''));
+const waitingBlock = waitingOnUser.length
+  ? `\nWaiting on the user — choices only they can make (docs/decisions/); raise them:\n${waitingLines.join('\n')}\n`
+  : '';
+
 // ── Report ───────────────────────────────────────────────────────────────────
 
 if (asJson) {
-  console.log(JSON.stringify({ base: BASE, findings }, null, 2));
+  console.log(JSON.stringify({ base: BASE, findings, waitingOnUser }, null, 2));
   process.exit(findings.length ? 1 : 0);
 }
 
@@ -185,9 +211,10 @@ const LABEL = { alert: 'ALERT', warn: 'CHECK', info: 'note ' };
 findings.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 
 if (findings.length === 0) {
-  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.`);
+  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.${waitingBlock}`);
   process.exit(0);
 }
 console.log(`session-audit: ${findings.length} item(s) left dangling — resolve before starting new work (base ${BASE})\n`);
 for (const f of findings) console.log(`  [${LABEL[f.severity]}] ${f.what}\n           → ${f.action}\n`);
+if (waitingBlock) console.log(waitingBlock.trimStart());
 process.exit(1);

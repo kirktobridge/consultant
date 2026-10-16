@@ -67,8 +67,8 @@ export function P(id, over = {}) {
   };
 }
 
-/** An open decision. Defaults are a minimal *valid* open OD. */
-export function OD(id, over = {}) {
+/** An open assumption. Defaults are a minimal *valid* open assumption. */
+export function A(id, over = {}) {
   return {
     id,
     title: `${id} example`,
@@ -80,9 +80,43 @@ export function OD(id, over = {}) {
     // `resolved` is the header date; `resolution` the body text saying what was found.
     resolved: null,
     resolution: null,
+    movedTo: null,
     ...over,
   };
 }
+
+/** A decision. Defaults are a minimal *valid* open decision, waiting on the user. */
+export function D(id, over = {}) {
+  return {
+    id,
+    title: `${id} example`,
+    status: 'open',
+    raised: '2026-08-01',
+    waitingOn: 'user',
+    options: '(a) one way. (b) the other.',
+    // Set together on decide: header keys and the sections a decided entry owes.
+    decided: null,
+    leadsTo: null,
+    choice: null,
+    why: null,
+    reopenIf: null,
+    supersededBy: null,
+    ...over,
+  };
+}
+
+/** A decided decision: the fields `decided` owes, filled. */
+export const decidedD = (id, over = {}) =>
+  D(id, {
+    status: 'decided',
+    waitingOn: null,
+    decided: '2026-08-02',
+    leadsTo: '—',
+    choice: '(a).',
+    why: 'because.',
+    reopenIf: 'it stops being true.',
+    ...over,
+  });
 
 // A null field means the LINE IS ABSENT, not the line with the word "null" on it.
 // Rendering `status: null` would still be a header line, so a missing-field test would
@@ -113,14 +147,41 @@ const renderP = (e) =>
     [section('Value', e.value), section('Scope', e.scope), list('Accept', e.accept), section('Notes', e.notes)],
   );
 
-const renderOD = (d) =>
+const renderA = (d) =>
   entry(
-    [key('id', d.id), key('title', d.title), key('status', d.status), key('raised', d.raised), key('resolved', d.resolved)],
+    [
+      key('id', d.id),
+      key('title', d.title),
+      key('status', d.status),
+      key('raised', d.raised),
+      key('resolved', d.resolved),
+      key('moved_to', d.movedTo),
+    ],
     [
       section('Assumption', d.assumption),
       section('Why it matters', d.why),
       section('How to verify', d.howToVerify),
       section('Resolution', d.resolution),
+    ],
+  );
+
+const renderD = (d) =>
+  entry(
+    [
+      key('id', d.id),
+      key('title', d.title),
+      key('status', d.status),
+      key('raised', d.raised),
+      key('waiting_on', d.waitingOn),
+      key('decided', d.decided),
+      key('leads_to', d.leadsTo),
+      key('superseded_by', d.supersededBy),
+    ],
+    [
+      section('Options', d.options),
+      section('Decided', d.choice),
+      section('Why', d.why),
+      section('Reopen if', d.reopenIf),
     ],
   );
 
@@ -134,9 +195,10 @@ const renderOD = (d) =>
  * list of P ids; pass [] deliberately to test the empty-queue failure. The READMEs
  * carry the status vocab lines verbatim because the checker reads its vocabulary *from
  * them* — a fixture that omitted them would be testing a different contract than the
- * real docs have. The decisions register is only written when it has entries.
+ * real docs have. The assumptions and decisions registers are only written when they
+ * have entries.
  */
-export function renderFiles({ backlog = [P('P1')], decisions = [], nextUp = ['P1'] } = {}) {
+export function renderFiles({ backlog = [P('P1')], assumptions = [], decisions = [], nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
       '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
@@ -144,9 +206,13 @@ export function renderFiles({ backlog = [P('P1')], decisions = [], nextUp = ['P1
       '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
   };
   for (const e of backlog) files[`docs/backlog/${e.id}.md`] = renderP(e);
+  if (assumptions.length) {
+    files['docs/assumptions/README.md'] = '# Assumptions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot` / `moved`.\n';
+    for (const d of assumptions) files[`docs/assumptions/${d.id}.md`] = renderA(d);
+  }
   if (decisions.length) {
-    files['docs/decisions/README.md'] = '# Open Decisions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot`.\n';
-    for (const d of decisions) files[`docs/decisions/${d.id}.md`] = renderOD(d);
+    files['docs/decisions/README.md'] = '# Decisions\n\nStatus vocab: `open` / `decided` / `superseded`.\n';
+    for (const d of decisions) files[`docs/decisions/${d.id}.md`] = renderD(d);
   }
   return files;
 }

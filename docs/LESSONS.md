@@ -61,7 +61,7 @@ happen, and the record looks complete from either side alone.
 
 **Rule:** an obligation that crosses entries names its counterpart in a **structured
 field**, not in prose, so a check can hold the pair. In this suite that is a spike
-`P#`'s `Resolves: OD-n` and the OD's `Resolution:` — paired by
+`P#`'s `Resolves: A-n` and the assumption's `Resolution:` — paired by
 [the schema check](../scripts/backlog-schema-check.mjs). Intent buried in a sentence
 ("we should settle this eventually") is unenforceable by construction: nothing can
 grep it and nobody is accountable for it.

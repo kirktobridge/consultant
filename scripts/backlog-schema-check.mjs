@@ -41,7 +41,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
-import { BACKLOG, DECISIONS, loadRegister, parseQueue, idsOf } from './entries.mjs';
+import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf } from './entries.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -70,20 +70,45 @@ const REGISTERS = [
     dated: 'drafted',
     closed: 'shipped',
   },
-  // Open Decisions: load-bearing assumptions. Not a backlog (no queue, no payoff
+  // Assumptions: load-bearing assumptions. Not a backlog (no queue, no payoff
   // order) but the same shape rules apply, and backlog entries may depend on them —
   // which is the point.
+  {
+    ...ASSUMPTIONS,
+    kind: 'assumptions',
+    open: new Set(['open']),
+    terminal: new Set(['verified', 'refuted', 'moot', 'moved']),
+    always: ['Assumption'],
+    whileOpen: ['Why it matters', 'How to verify'],
+    // `moved`: not an assumption after all (a choice, a feature's acceptance, a
+    // quantity). It stays as a stub so the ID still resolves, pointing at its new home.
+    onStatus: { moved: { keys: ['moved_to'], sections: [] } },
+    dated: 'raised',
+    closed: 'resolved',
+  },
+  // Decisions: choices only the product owner makes. Blocks exactly like an
+  // assumption, but is settled by deciding rather than by observing.
   {
     ...DECISIONS,
     kind: 'decisions',
     open: new Set(['open']),
-    terminal: new Set(['verified', 'refuted', 'moot']),
-    always: ['Assumption'],
-    whileOpen: ['Why it matters', 'How to verify'],
+    terminal: new Set(['decided', 'superseded']),
+    always: ['Options'],
+    whileOpen: [],
+    // Header keys an open entry carries, and what each terminal status owes.
+    whileOpenKeys: ['waiting_on'],
+    onStatus: {
+      decided: { keys: ['decided', 'leads_to'], sections: ['Decided', 'Why', 'Reopen if'] },
+      superseded: { keys: ['superseded_by'], sections: [] },
+    },
     dated: 'raised',
-    closed: 'resolved',
+    closed: 'decided',
   },
 ];
+
+// Open entries in these registers gate what depends on them: an entry resting on one
+// may sit in the pool, but may not be queued or claimed.
+const GATING = /^(A|D)-/;
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 //
@@ -124,7 +149,7 @@ if (!run) {
     const norm = `/${file.replaceAll('\\', '/')}`;
     run = REGISTERS.some((r) => norm.includes(`/${r.dir}/`));
     // Check the checkout the edit landed in. In a worktree session the hook still
-    // runs from the launch checkout (OD-7), which would validate main's copy.
+    // runs from the launch checkout (A-7), which would validate main's copy.
     if (run) ROOT = checkoutOf(file, ROOT);
   }
 }
@@ -175,7 +200,7 @@ const problems = [];
 const fail = (msg) => problems.push(msg);
 
 // Every ID in the queue. The queue is documented as the *dependency-ready* head,
-// which is what gives OD blocking its severity tiers below.
+// which is what gives assumption blocking its severity tiers below.
 let queued = new Set();
 const queueReg = loaded.find((l) => l.reg.queue)?.reg;
 let queueIds = [];
@@ -300,7 +325,7 @@ for (const { reg: b, entries } of loaded) {
   //
   // But severity tracks how close the dependent is to actually being built, and
   // the earlier all-or-nothing version got this wrong: it failed any `proposed`
-  // entry resting on an open OD — including one parked deep in the pool, which is
+  // entry resting on an open assumption — including one parked deep in the pool, which is
   // exactly the "blocked-not-rejected" draft /triage is instructed to write. A
   // correctly-drafted entry could never be committed green, and a check that's
   // permanently red teaches people to ignore it.
@@ -313,23 +338,88 @@ for (const { reg: b, entries } of loaded) {
   //
   // /implement's DEPENDS GATE stays unconditional — it acts on work being picked
   // up, which is already in a failing tier by the time it runs.
+  //
+  // An open decision gates exactly the same way: work resting on a choice nobody has
+  // made is resting on a guess about which way it will go.
   for (const e of entries) {
     for (const depId of idsOf(e, 'depends_on')) {
-      if (!/^OD-/.test(depId)) continue;
-      const od = byId.get(depId);
+      if (!GATING.test(depId)) continue;
+      const dep = byId.get(depId);
       // A dangling reference is wrong at any status: a terminal entry citing a
-      // nonexistent OD is a broken audit trail, not a harmless leftover.
-      if (!od) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
-      if (od.status !== 'open') continue;
+      // nonexistent assumption or decision is a broken audit trail, not a harmless leftover.
+      if (!dep) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
+      // A moved assumption is a forwarding address, not a dependency: whatever this
+      // entry waits on now lives at the new home, which has its own status.
+      if (dep.status === 'moved' && b.open.has(e.status ?? '')) {
+        fail(
+          `${e.file}: ${e.id} depends on ${depId}, which was moved to ` +
+            `${idsOf(dep, 'moved_to').join(', ') || 'a new home'} — depend on its new home instead.`,
+        );
+        continue;
+      }
+      if (dep.status !== 'open') continue;
       const claimed = e.status === 'in-progress' || e.status === 'partial';
       if (!claimed && !queued.has(e.id)) continue; // parked in the pool — fine
+      const isDecision = depId.startsWith('D-');
       fail(
         `${e.file}: ${e.id} is ${claimed ? `\`${e.status}\`` : 'in Next up'} but ` +
           `depends on ${depId}, still \`open\`. ${claimed
-            ? 'Work in flight is resting on an unverified assumption'
+            ? `Work in flight is resting on ${isDecision ? 'a choice nobody has made' : 'an unverified assumption'}`
             : 'The queue is the dependency-ready head, and this entry is not ready'}` +
-          ` — verify ${depId}, promote it to a spike, or ${claimed ? 'rescope' : 'demote'} ${e.id}.`,
+          ` — ${isDecision ? `decide ${depId}` : `verify ${depId}, promote it to a spike`}, ` +
+          `or ${claimed ? 'rescope' : 'demote'} ${e.id}.`,
       );
+    }
+  }
+
+  // — what a decision names must exist, and what it leads to must not be dropped —
+  //
+  // `leads_to:` is how a decision's consequence gets an owner (LESSONS L2). It is a
+  // header field, so its target's status is readable: a shipped P# is the consequence
+  // landing; an abandoned or deferred one is the consequence quietly dropped while the
+  // decision still reads as in force.
+  for (const e of entries) {
+    for (const key of ['waiting_on', 'leads_to', 'superseded_by', 'moved_to']) {
+      for (const id of idsOf(e, key)) {
+        if (!byId.has(id)) fail(`${e.file}: ${e.id} ${key} ${id}, which has no entry`);
+      }
+    }
+    if (b.whileOpenKeys && b.open.has(e.status ?? '')) {
+      for (const key of b.whileOpenKeys) {
+        if (!e.header[key]) fail(`${e.file}: open ${e.id} has no \`${key}:\` in the header`);
+      }
+    }
+    const owes = b.onStatus?.[e.status ?? ''];
+    if (!owes) continue;
+    for (const key of owes.keys) {
+      if (!e.header[key]) fail(`${e.file}: ${e.status} ${e.id} has no \`${key}:\` in the header`);
+    }
+    for (const s of owes.sections) {
+      if (!e.sections.has(s)) fail(`${e.file}: ${e.status} ${e.id} missing **${s}**`);
+    }
+    if (e.status === 'moved' && e.header.moved_to) {
+      const to = idsOf(e, 'moved_to');
+      if (!to.length || to.includes(e.id)) {
+        fail(`${e.file}: ${e.id} is moved, but \`moved_to:\` must name the entry that is its new home`);
+      }
+    }
+    if (e.status === 'superseded' && e.header.superseded_by) {
+      const by = idsOf(e, 'superseded_by');
+      if (!by.length || by.some((id) => !/^D-/.test(id))) {
+        fail(`${e.file}: ${e.id} is superseded, but \`superseded_by:\` must name the D-n that replaced it`);
+      }
+    }
+    if (e.status === 'decided') {
+      for (const id of idsOf(e, 'leads_to')) {
+        const t = byId.get(id);
+        if (t && isTerminal(t) && t.status !== 'shipped') {
+          fail(
+            `${e.file}: ${e.id} leads to ${id}, which is \`${t.status}\` — the decision's ` +
+              `consequence was dropped. Supersede ${e.id}, or repoint \`leads_to:\` at what ` +
+              `carries it now.`,
+          );
+        }
+      }
     }
   }
 
@@ -338,25 +428,25 @@ for (const { reg: b, entries } of loaded) {
   // The one cross-register obligation in the suite, and the reason it's a structured
   // field rather than a sentence (LESSONS L2): an obligation recorded on one side
   // of a boundary with nothing accountable on the other never fails loudly, it
-  // just quietly doesn't happen. `resolves: OD-n` is readable and pairable;
+  // just quietly doesn't happen. `resolves: A-n` is readable and pairable;
   // "we should settle this eventually" is neither.
   for (const e of entries) {
-    for (const odId of idsOf(e, 'resolves').filter((id) => /^OD-/.test(id))) {
-      const od = byId.get(odId);
-      if (!od) { fail(`${e.file}: ${e.id} resolves ${odId}, which has no entry`); continue; }
+    for (const aId of idsOf(e, 'resolves').filter((id) => /^A-/.test(id))) {
+      const assumption = byId.get(aId);
+      if (!assumption) { fail(`${e.file}: ${e.id} resolves ${aId}, which has no entry`); continue; }
       // Live spike pointing at an already-settled assumption: either the spike is
-      // obsolete, or something resolved the OD out from under it.
-      if (b.open.has(e.status ?? '') && od.status !== 'open') {
+      // obsolete, or something resolved the assumption out from under it.
+      if (b.open.has(e.status ?? '') && assumption.status !== 'open') {
         fail(
-          `${e.file}: open ${e.id} resolves ${odId}, but ${odId} is already ` +
-            `\`${od.status}\` — the spike is obsolete (close it) or it answers a ` +
+          `${e.file}: open ${e.id} resolves ${aId}, but ${aId} is already ` +
+            `\`${assumption.status}\` — the spike is obsolete (close it) or it answers a ` +
             `different question (repoint \`resolves:\`).`,
         );
       }
       // Spike shipped, assumption still open: the answer never made it back.
-      if (e.status === 'shipped' && od.status === 'open') {
+      if (e.status === 'shipped' && assumption.status === 'open') {
         fail(
-          `${e.file}: ${e.id} shipped and resolves ${odId}, but ${odId} is still \`open\` — ` +
+          `${e.file}: ${e.id} shipped and resolves ${aId}, but ${aId} is still \`open\` — ` +
             `write what the spike found into its **Resolution**, then sweep the entries ` +
             `that were blocked on it. A finding nobody wrote down is inventory.`,
         );
