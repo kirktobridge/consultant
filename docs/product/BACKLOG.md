@@ -36,26 +36,24 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P18** — retire /checkpoint and the handoff file. Landed on main 2026-10-16;
-   `in-progress` until you accept it.
-2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
+1. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
    after.
-3. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
    touches, so it follows P9 by preference rather than by dependency.
-4. **P6** — split "merged" from "released". Independent of the others; available to
+3. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
-5. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
-   because nothing else waits on it.
+4. **P8** — a review step in the loop. Placement, not construction, so it's cheap;
+   nothing else waits on it.
+5. **P15** — the loop drives git. Dependency-ready since P16 shipped, and written
+   against the loop P18 left. Last only because it entered the queue last; its rank
+   against the others is yours to call.
 
 Note what is *absent*: P7 is a high-payoff idea, and is
 deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
-readiness it doesn't have. P15 is dependency-ready, and its R2 and R3
-are now written against the loop without HANDOFF and /checkpoint; it sits outside the queue only because its five slots are
-taken, and where it ranks against them is yours to call.
-P17 waits on P15 and on an open assumption (OD-8). P19 waits on P18 and on P11's
-graph (which waits on P10).
+readiness it doesn't have. P17 waits on P15 and on an open assumption (OD-8). P19's P18 half has shipped; it
+still waits on P11's graph (which waits on P10).
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
@@ -295,7 +293,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 ---
 
 ### P18 — Retire /checkpoint and the handoff file; history comes from git
-- **Status:** in-progress
+- **Status:** shipped
 - **Drafted:** 2026-10-16
 - **Value:** sessions end when the work ends, with no closing ritual and no file to
   manage. The dangling-state audit still runs, at the start of every session,
@@ -321,6 +319,12 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   the user never maintains; most sessions are self-contained. Overlaps P15, whose R2
   lock covers HANDOFF writes and whose R3 hands cleanup checks to /checkpoint's audit;
   whichever lands second adapts.
+- **Shipped:** 2026-10-16 — accepted by the user; criteria 1–3 observed. Criterion 4
+  accepted on the user's condition that the remaining mentions are about the
+  retirement or historical: this entry, OD-10, P15's re-read note, and the queue's
+  notes. The process test exempts BACKLOG.md and OPEN_DECISIONS.md for that reason.
+  Follow-up fixes merged in d2bccd1: claims match their branch by whole ID, and the
+  session audit works under a Windows `claude` started from WSL.
 
 ---
 
