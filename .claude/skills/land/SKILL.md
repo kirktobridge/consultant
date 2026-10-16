@@ -15,12 +15,22 @@ session's context. Consequences: everything needed must come from git + HANDOFF 
 does — don't rely on conversation state), and the main session sees **only your final
 message** — end with a compact report: merge sha, test totals, doc flips made, branch
 deleted or not, and on failure *exactly* what failed and what state main was left in.
+Then the **acceptance handshake**: the branch's per-criterion report, each `Accept:`
+criterion verbatim with its verdict and evidence — not a diff summary — and, if the
+entry's last milestone just landed, the question it is now waiting on: *"P# landed
+and is `in-progress` until you accept it. Ship it?"* Name every criterion that is
+not observed or not exercised first; that is what the user is accepting despite.
 
 ## Preconditions (stop if any fail)
 - Working tree clean (`git status --short`).
 - The branch's section in `.claude/HANDOFF.md` says **ready to land** — or the user
   explicitly says land it anyway. No section → run /checkpoint on that branch first.
 - Tests were green at the branch's checkpoint; if in doubt, re-run on the branch.
+- The branch carries its **per-criterion close report** — /implement writes it into
+  the feature commit's message: each `Accept:` criterion, verbatim, as observed /
+  not observed / not exercised. Read it with `git log main..<branch>`. No report →
+  stop: the user is about to be asked to accept against it, and you cannot write it
+  from here (you never saw the build). Send the branch back through /verify.
 
 ## Steps
 1. `git checkout main` (pull first if there's a remote), then
@@ -31,8 +41,12 @@ deleted or not, and on failure *exactly* what failed and what state main was lef
 3. Verify the merged result: the full test suite + typecheck, wrapped in `time`. Red →
    undo the merge (`git reset --merge ORIG_HEAD`), report what failed, and leave main
    untouched — **never leave main broken**.
-4. Run **/ship** on main: terminal status flip, `## Next up` refresh, any BUILD_ORDER /
-   ARCHITECTURE touch-up. If the branch was a **spike** (`Resolves: OD-n`), /ship also
+4. Run **/ship** on main: `partial` + the milestone if milestones remain, `## Next up`
+   refresh, any BUILD_ORDER / ARCHITECTURE touch-up. **Never `shipped`.** If this was
+   the entry's last milestone, it stays `in-progress`: whether it shipped is the
+   product owner's call, made against the report below, and a forked skill cannot
+   ask them. Tests green and every criterion observed are evidence for that call,
+   not the call. If the branch was a **spike** (`Resolves: OD-n`), /ship also
    writes the OD's `Resolution:` and flips its status — the answer landing in the code
    without landing in the register is the exact failure the pairing check exists for.
    Name the resolution in your final report, and say if it was a **refutation**: that
@@ -45,3 +59,4 @@ deleted or not, and on failure *exactly* what failed and what state main was lef
 - Doc edits → **/ship** (invoked as step 4, never replaced).
 - Session closeout / writing HANDOFF → **/checkpoint**.
 - Building the feature → **/implement**.
+- Deciding an entry shipped → **the user**, then /ship writes it.

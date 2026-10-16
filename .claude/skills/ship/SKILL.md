@@ -67,8 +67,8 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 
 | What shipped | Doc | Edit |
 |---|---|---|
-| Product feature / UX / UI | [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) | flip entry `Status:` → `shipped`, or `partial` + note which milestone landed. |
-| A spike landed (`Resolves: OD-n`) | [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) | write the OD's `**Resolution:**` — what was found, how, and the date — and flip its `Status:` to `verified` / `refuted` / `moot`. Then flip the spike entry itself. Both, same commit. |
+| Product feature / UX / UI | [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) | `partial` + note which milestone landed; or `shipped` — **only on the user's word** (below). |
+| A spike landed (`Resolves: OD-n`) | [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) | write the OD's `**Resolution:**` — what was found, how, and the date — and flip its `Status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | A build phase completed | [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md) | tick / delete the phase (it's disposable). |
 | Structure/architecture changed | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) | update the *why* **only** — not signatures (its code blocks are illustrative sketches; the source wins). |
 | Rules / spec changed | *(human-only)* | **do not edit** the spec — it's human-owned and edit-guard blocks it. Propose the exact diff to the user, and flag that ARCHITECTURE needs its matching update once applied. |
@@ -87,6 +87,21 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
    `## Next up` block at the top of BACKLOG.md — drop a now-terminal ID, promote the
    next dependency-ready entry (payoff-ranked, ≤5, one-line why). The schema check
    fails CI if the queue dangles or lists a terminal ID.
+
+## `shipped` is the user's flip
+
+Every other edit here is bookkeeping; `shipped` is a verdict — *this is what I asked
+for* — and only the product owner can give it, because `Accept:` is their definition
+of done. So flip an entry to `shipped` only when **the user says so in this
+conversation**, after seeing the per-criterion report ("mark P4 shipped", "yes, ship
+it"). None of these is the user saying so: /land handing you a merged branch, a green
+suite, every criterion observed, a commit message, HANDOFF. Invoked from /land, or
+with no such word, leave the entry `in-progress` and say it awaits acceptance.
+
+When they do say so, name any criterion that was **not observed** or **not exercised**
+before writing the flip — they may be accepting a gap knowingly, and that's theirs to
+do, but not unknowingly. The flip's one-line note records which criteria were accepted
+on what.
 
 ## When the schema check goes red
 

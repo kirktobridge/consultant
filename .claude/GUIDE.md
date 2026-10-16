@@ -61,7 +61,10 @@ The integration step: merge one finished branch into main, re-run the full suite
 merged result, then run /ship's doc flips there. Doc flips happen at land time — never
 on the branch — so parallel branches can't conflict on the backlog. Runs forked
 (`context: fork`), so the merge/test output doesn't eat the session's context — you get
-back a compact landing report.
+back a compact landing report, ending in the entry's `Accept:` criteria with a verdict
+each. It never flips `shipped`: when the last milestone lands, the entry waits
+`in-progress` for **you** to accept it against that report — "ship it" sends /ship to
+make the flip.
 
 ```
 /land feat/p10-long-feedback
@@ -77,6 +80,7 @@ terminal), records open-decision resolutions and sweeps what they unblocked, ref
 ```
 /ship                          ← figure out what shipped from git
 mark P5 partial — first milestone landed
+yes, ship P5                   ← your acceptance; the only way an entry reaches shipped
 resolve OD-3 — the real limit is 40/min
 ```
 
@@ -149,7 +153,7 @@ honest limits are in [evals/README.md](../evals/README.md).
 
 **Feature idea → shipped:**
 ```
-/triage <idea>  →  /implement P#  →  /verify  →  /land  →  /checkpoint
+/triage <idea>  →  /implement P#  →  /verify  →  /land  →  you accept  →  /ship  →  /checkpoint
 ```
 
 **Assumption discovered → settled:**

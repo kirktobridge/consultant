@@ -18,9 +18,9 @@ runs:
 | Needs `npm install` | no | no |
 | A red result means | something is broken | something is *worth looking at* |
 
-**On cost:** subagents are not free, they are just not *separately billed*. The full 12
-cases at the default 3 reps is 36 subagent invocations; one smoke-test case ran ~25k
-tokens. What the subagent transport actually removed is the API key, the SDK, and the
+**On cost:** subagents are not free, they are just not *separately billed*. A full run
+is one subagent per case per rep — three times the case count at the default 3 reps
+(`--dry-run` prints the count); one smoke-test case ran ~25k tokens. What the subagent transport actually removed is the API key, the SDK, and the
 second bill — not the expense. Budget a run, and prefer `--reps 1` while iterating on a
 prompt.
 

@@ -79,7 +79,7 @@ describe('claims that no longer match reality', () => {
     assert.doesNotMatch(r.stdout, /P1 is `in-progress`/);
   });
 
-  test('in-progress whose branch already merged → the /ship flip was missed', () => {
+  test('in-progress whose branch already merged → a flip is owed, and shipped is the user\'s', () => {
     const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
     g.checkout('feat/p1-thing', true);
     g.commitAll('work');
@@ -89,6 +89,10 @@ describe('claims that no longer match reality', () => {
     assert.equal(r.code, FINDINGS);
     assert.match(r.stdout, /P1 is `in-progress` but its branch is already merged into main/);
     assert.match(r.stdout, /run \/ship on main/);
+    // P4 R2: /land leaves a last milestone `in-progress`, so this state is also
+    // "awaiting acceptance" — the audit must not send the session off to flip it.
+    assert.match(r.stdout, /awaits the user's acceptance/);
+    assert.match(r.stdout, /`shipped` is their flip, never yours/);
   });
 
   test('in-progress with no branch anywhere → an abandoned claim', () => {
@@ -96,6 +100,7 @@ describe('claims that no longer match reality', () => {
     const r = audit(dir);
     assert.match(r.stdout, /P1 is `in-progress` but no branch names it/);
     assert.match(r.stdout, /a stale claim is worse than no claim/);
+    assert.match(r.stdout, /`shipped` once the user accepts it/);
   });
 });
 
