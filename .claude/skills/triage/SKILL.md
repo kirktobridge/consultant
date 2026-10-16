@@ -124,9 +124,12 @@ skill. Run it periodically, and always after an OD resolves.
 5. **Flag stale claims.** An entry `in-progress` with no branch and no recent commits
    is an abandoned claim — surface it; clearing it back to `proposed` is a /ship flip,
    on the user's word.
-6. **Propose, never silently apply.** Re-ranking, demoting, and deleting are the user's
-   calls. Say what you'd change and why; let them decide. Priorities that events have
-   overtaken are worth naming explicitly — that's usually why a groom was asked for.
+6. **Propose, never silently apply.** Demoting and deleting are the user's calls.
+   Re-ranking isn't: the queue's ranking rule
+   ([docs/backlog/README.md](../../../docs/backlog/README.md#the-queue)) decides it, so
+   a groom that finds the queue out of order says so and hands the fix to /ship. For
+   the rest, say what you'd change and why; let them decide. Priorities that events
+   have overtaken are worth naming explicitly — that's usually why a groom was asked for.
 
 Output is a short report: unblocked, newly-void, about-to-block, stale, and abandoned —
 each with the one action it needs. Nothing is written until the user picks.
@@ -168,6 +171,7 @@ groom output.
 
 ## Not this skill
 - Writing the entry → **/ship** (Intake).
-- Deciding *when* to build it → the backlog is a pool; sequencing is the user's call.
+- Deciding *when* to build it → /ship ranks the queue by the rule in
+  [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue).
 - Settling an OD → whoever hits the block. If it needs building, it's a spike P# and
   goes through **/implement** like any other entry.

@@ -1,11 +1,9 @@
 # Next up
 
-1. **P5** — defects as a third intake class. Extends the schema-check surface; P20 has landed, so it
-   now builds on the header format.
-2. **P6** — split "merged" from "released". Independent of the others; available to
-   a parallel session at any time.
-3. **P8** — a review step in the loop. Placement, not construction, so it's cheap;
-   nothing else waits on it.
-4. **P15** — the loop drives git. Dependency-ready since P16 shipped, and written
-   against the loop P18 left. Last only because it entered the queue last; its rank
-   against the others is yours to call.
+1. **P10** — the assumptions/decisions split. Unblocks four: P11 and P13 directly,
+   then P19 and P7 through P11.
+2. **P6** — split "merged" from "released". Unblocks P7 (which still waits on P11).
+3. **P15** — the loop drives git. Unblocks P17 (which still waits on OD-8 and OD-9).
+4. **P5** — defects as a third intake class. Unblocks nothing; ahead of P8 by
+   existing order.
+5. **P8** — a review step in the loop. Unblocks nothing; cheap placement work.

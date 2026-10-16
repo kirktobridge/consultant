@@ -95,6 +95,13 @@ line fails the check, so a note naming an ID can never queue it. The check also 
 if a queued ID is missing, terminal, or resting on an open assumption: "dependency-ready"
 is a claim the queue makes, so it has to be true.
 
+**Ranking is the agent's job, not the user's** (user decision, 2026-10-16). /ship
+ranks on every refresh by one rule: the dependency-ready entry that unblocks the most
+open entries goes first, counted transitively through the `depends_on` graph. Ties keep
+their existing order, so an entry already in the queue stays ahead of a newcomer. Each
+item's *why* names what it unblocks. The user can still overrule any ranking. Until
+P23 lands, this ranking is *asserted*, not checked.
+
 ## Epics
 
 The `epic:` values in use, and what each groups:

@@ -86,7 +86,10 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
    why, not copied forward.
 5. **Refresh the queue:** on any product status flip or intake, update
    `docs/backlog/QUEUE.md` — drop a now-terminal ID, promote the next
-   dependency-ready entry (payoff-ranked, ≤5, `N. **P#** — one-line why`). The file
+   dependency-ready entry, ≤5, `N. **P#** — one-line why`. **Rank it yourself**, by the
+   rule in [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue): most
+   open entries unblocked through the `depends_on` graph first, ties in existing order.
+   Report the ranking to the user; don't ask them for it. The file
    holds the queue and nothing else; notes about what's absent go nowhere. The schema
    check fails CI if the queue dangles, lists a terminal ID, or carries any other line.
 
