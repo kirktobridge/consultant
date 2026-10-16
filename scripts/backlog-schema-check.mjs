@@ -74,6 +74,9 @@ const REGISTERS = [
     // Header keys: when the entry's claims were established, and when it closed.
     dated: 'drafted',
     closed: 'shipped',
+    // The only statuses that may carry the `closed` date. A `shipped:` date on any other
+    // status is the claim "the user accepted this" contradicting the status line.
+    closedBy: new Set(['shipped']),
   },
   // Assumptions: load-bearing assumptions. Not a backlog (no queue, no payoff
   // order) but the same shape rules apply, and backlog entries may depend on them —
@@ -401,6 +404,9 @@ for (const { reg: b, entries } of loaded) {
       for (const key of b.whileOpenKeys) {
         if (!e.header[key]) fail(`${e.file}: open ${e.id} has no \`${key}:\` in the header`);
       }
+    }
+    if (b.closedBy && e.header[b.closed] && !b.closedBy.has(e.status ?? '')) {
+      fail(`${e.file}: ${e.id} is \`${e.status}\` but carries \`${b.closed}:\` — only a ${[...b.closedBy].join('/')} entry has that date`);
     }
     const owes = b.onStatus?.[e.status ?? ''];
     if (!owes) continue;

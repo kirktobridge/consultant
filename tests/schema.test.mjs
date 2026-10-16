@@ -295,6 +295,12 @@ describe('spike ↔ assumption pairing', () => {
     assert.match(o, /inventory/, 'the message must name the failure mode (L2)');
   });
 
+  test('a shipped date on an entry that is not shipped fails', () => {
+    for (const status of ['proposed', 'in-progress', 'abandoned']) {
+      fails(project({ backlog: [P('P1'), P('P2', { status, shipped: daysAgo(1) })] }), new RegExp(`P2 is \`${status}\` but carries \`shipped:\``));
+    }
+  });
+
   test('a spike pointing at a nonexistent assumption fails', () => {
     fails(
       project({ backlog: [P('P1'), P('P9', { resolves: 'A-77' })] }),
