@@ -359,8 +359,8 @@ The suite's own tooling — the checks the skills orient off. Work here is not
 user-facing, but a silent failure in it is invisible everywhere else.
 
 ### P9 — Anchor the field probes, and decide about non-entry headings
-- **Status:** proposed
-- **Drafted:** 2026-08-03
+- **Status:** in-progress
+- **Drafted:** 2026-10-16
 - **Value:** two silent-failure classes leave the keystone check. An entry that
   *describes* a field stops being read as *carrying* it, and a prose section
   heading stops being handled by accident. Both fail green today, which is the
