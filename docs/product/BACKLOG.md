@@ -181,11 +181,16 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   - It names what is blocked and which assumption is blocking it.
   - Running it leaves every tracked file unchanged.
 - **Depends on:** P4, P6, P11 — P4 shipped 2026-10-15; P6 and P11 are not terminal, so
-  this entry is still *blocked-not-rejected*. It
-  reports on acceptance state and released-vs-merged. P4's R0 gave the criteria a place
-  to live, but nothing records whether one was *met* until P4 R1/R2; released-vs-merged
-  doesn't exist at all. It stays in the pool legitimately and may not enter `## Next up`
-  until they land.
+  this entry is still *blocked-not-rejected*; it may not enter `## Next up` until they
+  land. Released-vs-merged (P6) doesn't exist yet.
+- **Notes:** P4 changed what this entry reads (*verified* against the /land, /implement
+  and /ship text, 2026-10-15). Acceptance state now exists, in three places:
+  per-criterion verdicts in the feature commit's message; "waiting on me" = an entry
+  still `in-progress` whose merge is on main (/land never flips `shipped`); and the
+  acceptance itself in the entry's `Shipped:` line. All three are free prose, not
+  fields. So "what's waiting on me" is now concrete, but rendering *which criteria*
+  passed means parsing commit messages unless P11's graph carries them — a design
+  question for whoever builds this, not settled here.
 
 ### P8 — A review step in the loop
 - **Status:** proposed
