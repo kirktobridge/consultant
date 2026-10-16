@@ -122,7 +122,8 @@ skill. Run it periodically, and always after an OD resolves.
    one of: *still accurate* (bump `Drafted:` — after a real re-read, never to quiet the
    check), *needs rescoping* (say how), or *void* (say why).
 5. **Flag stale claims.** An entry `in-progress` with no branch and no recent commits
-   is an abandoned claim — surface it; /checkpoint clears it.
+   is an abandoned claim — surface it; clearing it back to `proposed` is a /ship flip,
+   on the user's word.
 6. **Propose, never silently apply.** Re-ranking, demoting, and deleting are the user's
    calls. Say what you'd change and why; let them decide. Priorities that events have
    overtaken are worth naming explicitly — that's usually why a groom was asked for.

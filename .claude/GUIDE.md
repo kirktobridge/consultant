@@ -1,13 +1,12 @@
 # Skill framework — quick guide
 
-Six skills, one loop. **triage** sorts an idea in: things we'd *build* become backlog
+Five skills, one loop. **triage** sorts an idea in: things we'd *build* become backlog
 entries and go to **implement**, then **verify** in the running app; things we're
 merely *assuming* become open decisions, which block whatever depends on them. Work
-ends the same way: **land** the branch on main → **ship** the docs → **checkpoint** the
-session. Each tracking file has exactly one skill that writes it, so nothing goes stale
+ends the same way: **land** the branch on main → **ship** the docs. Each tracking file has exactly one skill that writes it, so nothing goes stale
 or gets double-edited.
 
-There is a seventh, **/eval**, that is deliberately *not* part of that loop: it measures
+There is a sixth, **/eval**, that is deliberately *not* part of that loop: it measures
 whether these skills' own prose still works. See [The checks](#the-checks-behind-the-skills).
 
 ## The skills
@@ -86,22 +85,21 @@ resolve OD-3 — the real limit is 40/min
 
 It will *propose* spec changes to you but never edit them — those are yours.
 
-### /checkpoint — "wrap up the session"
-End-of-session closeout: runs `npm run audit` to find what's dangling (statuses honest,
-tree clean, spikes that found an answer but didn't record it, resolutions nobody swept,
-unmerged branches accounted for), decides what to do about each, makes tidy commits, and
-updates **this branch's section** of `.claude/HANDOFF.md`. HANDOFF holds one section per
-in-flight branch — parallel sessions each own theirs — and marks which branches are
-ready for /land.
+### Session start — the audit runs itself
+There is no closing ritual: a session ends when its work ends. Instead, every session
+**starts** with `npm run audit`, run by a SessionStart hook whose output lands in the
+session's context — what the last session left dangling (statuses that don't match
+git, an uncommitted tree, a spike that found an answer but didn't record it, a
+resolution nobody swept). Start rather than end, because a session that crashed or was
+just closed never runs an end-of-session step.
 
-```
-/checkpoint
-wrap up
-```
+The audit computes; the session and you decide what to do about each finding.
 
-The audit is a script, not a checklist in the skill, because all five checks are
-decidable from git + the docs — and end-of-session is exactly when eyeballing a grep
-goes wrong. The skill owns the *response*; the script owns the *computation*.
+### History — `npm run history [P#]`
+What happened to an entry, read from git: each commit that names the ID in its subject
+(claim, build commit with its close report, merge, landing note), in date order, plus
+any branch not yet merged with its latest commit message. Nothing is kept by hand, so
+nothing falls behind.
 
 ## The checks behind the skills
 
@@ -113,7 +111,8 @@ aren't — they run whether or not anyone remembers them.
 | `npm test` | every check proven to still bite, the loop walked end-to-end, the skills' own instructions held against rot | pre-commit hook, and CI |
 | `npm run check:docs` | the docs stay greppable — the schema every skill's grep depends on | in-session (PostToolUse hook) + `npm test` |
 | `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
-| `npm run audit` | the decidable half of /checkpoint — dangling claims, unswept resolutions, branches with no baton | /checkpoint |
+| `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |
+| `npm run history` | each entry's commits and close reports, and unmerged branches | on demand |
 | `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |
 
 Nothing installs: Node 18+ and nothing else.
@@ -125,7 +124,7 @@ Nothing installs: Node 18+ and nothing else.
 runs **one subagent per file** and saves each reply verbatim, then
 `npm run eval -- --grade <dir>` scores them mechanically.
 
-That procedure is the **/eval** skill — the seventh, off-loop one. It exists because the
+That procedure is the **/eval** skill — the sixth, off-loop one. It exists because the
 steps are executed by an agent rather than a shell, and instructions an agent has to be
 told about are instructions that get skipped.
 
@@ -153,7 +152,7 @@ honest limits are in [evals/README.md](../evals/README.md).
 
 **Feature idea → shipped:**
 ```
-/triage <idea>  →  /implement P#  →  /verify  →  /land  →  you accept  →  /ship  →  /checkpoint
+/triage <idea>  →  /implement P#  →  /verify  →  /land  →  you accept  →  /ship
 ```
 
 **Assumption discovered → settled:**
@@ -166,7 +165,7 @@ honest limits are in [evals/README.md](../evals/README.md).
 **Parallel sessions** (2–3 at once):
 
 - **One session = one branch = one worktree.** The main checkout belongs to whichever
-  session is integrating (/land, /ship, /checkpoint on main); branch sessions never
+  session is integrating (/land, /ship on main); branch sessions never
   edit it.
 - **Claims are read from main**, not your checkout — a worktree's BACKLOG.md copy
   predates claims made since you branched. /implement's claim gate does this
@@ -175,16 +174,13 @@ honest limits are in [evals/README.md](../evals/README.md).
   reuses whatever server holds the port, so a parallel run silently tests the *other*
   worktree's code and passes anyway. Branch sessions run targeted tests only; the full
   suite runs once, at /land (forked, so its output stays out of your context).
-- **Start narrow, end early** (token budget): open with "continue P38 per HANDOFF"
-  rather than "what's next?" so the session reads its HANDOFF section instead of
-  re-exploring the repo, and /checkpoint + close as soon as its milestone is done — an
-  idle open session just accretes context.
-- **One /checkpoint at a time**: HANDOFF is a single file; simultaneous writers clobber
-  each other (last one wins).
+- **Start narrow, end early** (token budget): open with "continue P38" rather than
+  "what's next?" — `npm run history P38` is the cheap re-entry — and close as soon as
+  the milestone is done; an idle open session just accretes context.
 
 **Starting a fresh session:**
 ```
-read .claude/HANDOFF.md   (or just: "what's next?")
+the audit has already run — read it, then: npm run history P#   (or just: "what's next?")
 ```
 
 ## Who writes what (the single-writer map)
@@ -194,7 +190,6 @@ read .claude/HANDOFF.md   (or just: "what's next?")
 | `docs/product/BACKLOG.md`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship | **main only** |
 | `docs/OPEN_DECISIONS.md` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
-| `.claude/HANDOFF.md` | /checkpoint (own branch's section only) | local, gitignored |
 | `src/`, `tests/` | /implement | branch |
 | *(nothing tracked — scratchpad scripts, gitignored eval runs)* | /verify, /triage, /eval | — |
 | `docs/SPEC.md`, `docs/dev_notes/` | **you** (human-only, hook-enforced) | — |

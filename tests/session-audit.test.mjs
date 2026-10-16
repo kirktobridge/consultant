@@ -6,13 +6,15 @@
 //
 // The most important assertion in the file is the LAST one: exit 2 must be
 // distinguishable from exit 0. An audit that could not run looks exactly like an audit
-// that found nothing (LESSONS L3), and /checkpoint branches on that difference.
+// that found nothing (LESSONS L3), and the session reading it at startup has to
+// be able to tell which one it got.
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { P, OD, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
+import { P, OD, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -161,30 +163,57 @@ describe('resolutions nobody swept', () => {
   });
 });
 
-describe('branches without a baton', () => {
-  test('an unmerged branch with no HANDOFF section is flagged', () => {
+describe('unmerged branches are not findings by themselves', () => {
+  // P18 retired the baton file, and with it the "branch with no handoff section"
+  // check. A branch is in-flight work; git already records it, and `npm run history`
+  // shows its latest commit message.
+  test('an unmerged branch with no claim attached is not flagged', () => {
     const { dir, g } = repo();
     g.checkout('feat/orphan', true);
     g.commitAll('work');
     g.checkout('main');
     const r = audit(dir);
-    assert.match(r.stdout, /Branch `feat\/orphan` is unmerged and has no/);
+    assert.equal(r.code, CLEAN, out(r));
+    assert.doesNotMatch(r.stdout, /feat\/orphan/);
+  });
+});
+
+describe('the SessionStart hook, run as the harness runs it', () => {
+  // The command string in settings.json, executed by a shell in a fixture project.
+  // The script's own exit code is the wrong thing to test here: what reaches the
+  // session is decided by the *hook's* exit (OD-10 — non-zero drops the output).
+  const settings = JSON.parse(readFileSync(join(REPO, '.claude', 'settings.json'), 'utf8'));
+  const command = settings.hooks.SessionStart.flatMap((g) => g.hooks).find((h) => /session-audit/.test(h.command)).command;
+  // The fixture has no copy of the script, so point the hook's script path at this repo's.
+  const hook = (dir) => {
+    const r = spawnSync('sh', ['-c', command.replace('$CLAUDE_PROJECT_DIR/scripts/', `${REPO}/scripts/`)], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
+    });
+    return { code: r.status, stdout: r.stdout, stderr: r.stderr };
+  };
+
+  test('an abandoned claim reaches stdout, and the hook still exits 0', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    const r = hook(dir);
+    assert.equal(r.code, 0, 'a non-zero hook exit drops the findings (OD-10)');
+    assert.match(r.stdout, /P1 is `in-progress` but no branch names it/);
   });
 
-  test('a branch named in HANDOFF is accepted', () => {
-    const { dir, g } = repo();
-    g.checkout('feat/described', true);
-    g.commitAll('work');
-    g.checkout('main');
-    mkdirSync(join(dir, '.claude'), { recursive: true });
-    writeFileSync(join(dir, '.claude', 'HANDOFF.md'), '# Handoff\n\n## feat/described\n- **Land:** ready\n');
-    assert.doesNotMatch(audit(dir).stdout, /feat\/described/);
+  test('a clean project says so', () => {
+    const { dir } = repo();
+    const r = hook(dir);
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, /session-audit: clean/);
   });
 
-  test('a branch with no unique commits counts as merged, not as an orphan', () => {
-    const { dir, g } = repo();
-    g.branch('feat/empty');
-    assert.doesNotMatch(audit(dir).stdout, /feat\/empty/);
+  test('an audit that could not run says so on stdout, not silently', () => {
+    // stderr's fate under SessionStart was not probed (OD-10), so the hook folds it
+    // into stdout — otherwise "could not audit" would look like no output at all.
+    const r = hook(tempDir());
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, /not a git repository/);
   });
 });
 

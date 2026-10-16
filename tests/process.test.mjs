@@ -5,8 +5,8 @@
 // prose, which nothing has ever held, and which rot the instant a file is renamed.
 //
 // That is not hypothetical. Building this suite, two renames silently invalidated
-// instructions in four skills: doc-debt-check.mjs was deleted while /checkpoint still
-// told you to run it, and edit-guard.py became .mjs while README and PORTING still
+// instructions in four skills: doc-debt-check.mjs was deleted while a skill still told
+// you to run it, and edit-guard.py became .mjs while README and PORTING still
 // printed the old command. Both were caught by hand-grepping, which is exactly the
 // method LESSONS L1 says not to trust.
 //
@@ -53,19 +53,20 @@ const pkg = JSON.parse(read(join(REPO, 'package.json')));
 const unfenced = (t) => t.replace(/```[\s\S]*?```/g, '');
 
 /** The loop. /eval is maintenance for this repo's own prose and is deliberately not one. */
-const LOOP_SKILLS = ['triage', 'implement', 'verify', 'land', 'ship', 'checkpoint'];
+const LOOP_SKILLS = ['triage', 'implement', 'verify', 'land', 'ship'];
 
 describe('the corpus is what we think it is', () => {
-  test('six loop skills, and the docs that describe them agree', () => {
+  test('five loop skills, and the docs that describe them agree', () => {
     assert.deepEqual(SKILLS.filter((s) => s !== 'eval').sort(), [...LOOP_SKILLS].sort());
     for (const doc of ['README.md', '.claude/GUIDE.md', 'CLAUDE.md']) {
       const t = read(join(REPO, doc));
-      assert.match(t, /\b[Ss]ix (loop )?skills\b/, `${doc} must state the real skill count`);
+      assert.match(t, /\b[Ff]ive (loop )?skills\b/, `${doc} must state the real skill count`);
+      assert.doesNotMatch(t, /\b[Ss]ix (loop )?skills\b/, `${doc} still states the old skill count`);
     }
   });
 
   test('/eval is outside the loop, and the loop docs do not route work through it', () => {
-    // The distinction is the point: the six carry a feature from idea to shipped, and a
+    // The distinction is the point: the five carry a feature from idea to shipped, and a
     // reader who meets /eval as a seventh step will look for where it fits and find
     // nothing. It measures this repo's prose; it never touches a backlog entry.
     assert.ok(SKILLS.includes('eval'), 'the eval skill should exist');
@@ -212,6 +213,39 @@ describe('the suite is immune to the hook environment that runs it', () => {
     const passed = Number(r.stdout.match(/^ℹ pass (\d+)/m)?.[1] ?? 0);
     assert.ok(passed > 0, `the child ran no tests, so this proves nothing (L3):\n${r.stdout}${r.stderr}`);
     assert.equal(r.status, 0, `fixture git inherited GIT_INDEX_FILE:\n${r.stdout.split('\n').filter((l) => /✖/.test(l)).join('\n')}`);
+  });
+});
+
+describe('the retired closeout stays retired (P18)', () => {
+  // /checkpoint and its baton file were removed because git already holds what the
+  // baton restated. A mention left behind is worse than none: it sends a reader to
+  // run a skill that is gone, or to wait on a file nobody writes any more.
+  //
+  // The backlog and the decisions register are exempt — their entries are the record
+  // of the retirement itself (P18, OD-10), and rewriting history to pass a check is
+  // the inversion the CLAUDE.md format rule forbids.
+  const RECORDS = new Set(['docs/product/BACKLOG.md', 'docs/OPEN_DECISIONS.md']);
+
+  test('no skill or doc mentions /checkpoint or the handoff file', () => {
+    const live = DOCS.filter((f) => !RECORDS.has(rel(f)));
+    assert.ok(live.some((f) => rel(f) === '.claude/GUIDE.md'), 'the corpus lost GUIDE — the walker is broken (L3)');
+    const bad = [];
+    for (const f of live) {
+      read(f).split('\n').forEach((l, i) => {
+        if (/\/checkpoint\b|HANDOFF\.md/.test(l)) bad.push(`${rel(f)}:${i + 1}: ${l.trim()}`);
+      });
+    }
+    assert.deepEqual(bad, []);
+  });
+
+  test('the session audit is wired to run at session start, and its output survives findings', () => {
+    // OD-10: a SessionStart hook's stdout reaches the session on exit 0 only, and the
+    // audit exits 1 exactly when it has findings — so the hook must force 0.
+    const settings = JSON.parse(read(join(REPO, '.claude', 'settings.json')));
+    const cmds = (settings.hooks?.SessionStart ?? []).flatMap((g) => g.hooks ?? []).map((h) => h.command ?? '');
+    const audit = cmds.find((c) => /scripts\/session-audit\.mjs/.test(c));
+    assert.ok(audit, 'no SessionStart hook runs session-audit.mjs');
+    assert.match(audit, /\|\|\s*true\s*$/, 'the hook must force exit 0, or findings are dropped (OD-10)');
   });
 });
 
@@ -595,7 +629,7 @@ describe('the single-writer map agrees with the skills', () => {
     const paths = [...mapSection.matchAll(/`([\w./-]+\.md)`/g)].map((m) => m[1]);
     assert.ok(paths.length >= 4, `parsed only ${paths.length} paths from the map`);
     const missing = paths.filter(
-      (p) => !existsSync(join(REPO, p)) && !existsSync(join(REPO, 'docs', p)) && !p.includes('HANDOFF'),
+      (p) => !existsSync(join(REPO, p)) && !existsSync(join(REPO, 'docs', p)),
     );
     assert.deepEqual(missing, [], 'the single-writer map names a file that does not exist');
   });
@@ -608,7 +642,6 @@ describe('the single-writer map agrees with the skills', () => {
       ['docs/product/BACKLOG.md', 'ship'],
       ['docs/BUILD_ORDER.md', 'ship'],
       ['docs/ARCHITECTURE.md', 'ship'],
-      ['.claude/HANDOFF.md', 'checkpoint'],
     ];
     for (const [file, skill] of owned) {
       const t = read(join(SKILL_DIR, skill, 'SKILL.md'));

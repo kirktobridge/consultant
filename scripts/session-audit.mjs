@@ -1,22 +1,27 @@
-// session-audit — the decidable half of /checkpoint.
+// session-audit — what the last session left dangling, shown to the next one.
 //
-// /checkpoint's job is "may this session end?", and its checks split cleanly in two:
+// It runs when a session starts, from a SessionStart hook in .claude/settings.json,
+// whose stdout lands in the new session's context (OD-10). Start rather than end
+// because a session that crashed or was simply closed never runs an end-of-session
+// step, and those are the sessions most likely to have left something behind.
+//
+// Its checks split cleanly in two:
 //
 //   COMPUTING THE FINDING  — is any status dishonest, is anything dangling, did an
 //                            assumption resolve without its dependents being swept.
 //                            All decidable from git + the docs. That's this script.
 //
 //   DECIDING THE RESPONSE  — is that in-progress entry abandoned or just paused, is
-//                            this untracked file worth committing, what goes in the
-//                            baton. Judgement. That stays in the skill.
+//                            this untracked file worth committing. Judgement. That
+//                            stays with the session and the user.
 //
-// Splitting them this way matters for a reason specific to this suite: every check
-// below is a search whose *empty result* the session is about to promote to a durable
-// HANDOFF line. A model running five greps and eyeballing them will occasionally
-// mis-read one, and the failure is silent by construction (LESSONS L1). A script
-// re-runs identically every time and cannot decide it already knows the answer.
+// A model running these greps and eyeballing them will occasionally mis-read one, and
+// the failure is silent by construction (LESSONS L1). A script re-runs identically
+// every time and cannot decide it already knows the answer.
 //
 // Exit: 0 nothing dangling | 1 findings to resolve | 2 could not audit (not a repo, &c.)
+// OD-10: a SessionStart hook's output is dropped on a non-zero exit, so the hook
+// forces 0 — exactly when there are findings is when the exit code would hide them.
 //
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
@@ -34,7 +39,6 @@ const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] : null;
 
 const BACKLOG = 'docs/product/BACKLOG.md';
 const DECISIONS = 'docs/OPEN_DECISIONS.md';
-const HANDOFF = '.claude/HANDOFF.md';
 
 const findings = [];
 const add = (severity, what, action) => findings.push({ severity, what, action });
@@ -111,7 +115,7 @@ if (dirty.length) {
     .filter((l) => l.startsWith('??') && /\s(src|scripts|tests?)\//.test(l))
     .map((l) => l.slice(3));
   add('info', `${dirty.length} uncommitted change(s) in the working tree.`,
-    'Group them into checkpoint commits — one per completed unit, code and docs separate.');
+    'Commit each completed unit on its own, code and docs separate — or, if they are a previous session\'s abandoned edits, ask the user before discarding them.');
   if (untrackedCode.length) {
     add('warn', `Untracked file(s) under code directories: ${untrackedCode.join(', ')}.`,
       'These are usually a half-finished unit or a scratch file that escaped the scratchpad. Commit with their feature, or delete.');
@@ -120,8 +124,7 @@ if (dirty.length) {
 
 // ── 2. Spikes and the assumptions they owe ───────────────────────────────────
 // The schema check fails a *shipped* spike whose OD is still open. That leaves the
-// in-flight case, which is where the answer exists only in the session's head — and
-// this is the last moment anyone will ask.
+// in-flight case, where the answer may exist only in a session's transcript.
 
 for (const e of backlog) {
   const odIds = [...e.field('Resolves').matchAll(/\bOD-\d+\b/g)].map((m) => m[0]);
@@ -131,7 +134,7 @@ for (const e of backlog) {
     if (od.status !== 'open') continue;
     if (e.status === 'in-progress' || e.status === 'partial') {
       add('warn', `Spike ${e.id} is \`${e.status}\` and ${odId} is still \`open\`.`,
-        `If this session established the answer, write it into ${odId}'s **Resolution:** via /ship before ending — an answer that exists only in the transcript is lost. If not, say so in HANDOFF.`);
+        `If a session established the answer, write it into ${odId}'s **Resolution:** via /ship — an answer that exists only in the transcript is lost. If not, the spike is still owed.`);
     }
   }
 }
@@ -157,7 +160,7 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
       `If milestones remain, its \`partial\` flip was missed — run /ship on ${BASE}. If that was the last one, it awaits the user's acceptance: show them /land's per-criterion report and ask. \`shipped\` is their flip, never yours.`);
   } else {
     add('warn', `${e.id} is \`in-progress\` but no branch names it.`,
-      'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up. Resolve it — a stale claim is worse than no claim.');
+      'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up: clear it back to `proposed` via /ship. Resolve it — a stale claim is worse than no claim.');
   }
 }
 
@@ -182,19 +185,6 @@ for (const od of decisions) {
       : 'These are now unblocked and nothing else will notice. Consider promoting one into `## Next up` via /ship.');
 }
 
-// ── 5. Branches without a baton ──────────────────────────────────────────────
-
-const handoffText = existsSync(join(ROOT, HANDOFF)) ? readFileSync(join(ROOT, HANDOFF), 'utf8') : '';
-for (const b of unmerged) {
-  if (!handoffText.includes(b)) {
-    add('warn', `Branch \`${b}\` is unmerged and has no ${HANDOFF} section.`,
-      'An unmerged branch nobody described is an unknown to the next session. Write its section, or say it is dead.');
-  }
-}
-if (!handoffText && unmerged.length) {
-  add('info', `${HANDOFF} does not exist yet.`, 'Create it — it is the next session\'s entry point.');
-}
-
 // ── Report ───────────────────────────────────────────────────────────────────
 
 if (asJson) {
@@ -207,9 +197,9 @@ const LABEL = { alert: 'ALERT', warn: 'CHECK', info: 'note ' };
 findings.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 
 if (findings.length === 0) {
-  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed, no orphan branches.`);
+  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.`);
   process.exit(0);
 }
-console.log(`session-audit: ${findings.length} item(s) to resolve before this session ends (base ${BASE})\n`);
+console.log(`session-audit: ${findings.length} item(s) left dangling — resolve before starting new work (base ${BASE})\n`);
 for (const f of findings) console.log(`  [${LABEL[f.severity]}] ${f.what}\n           → ${f.action}\n`);
 process.exit(1);

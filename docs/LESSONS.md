@@ -11,9 +11,8 @@ checker. It has no single pen: whoever pays for a new lesson writes it. Add one 
 when something actually went wrong; a lesson invented pre-emptively is a maxim wearing
 a costume.
 
-Referenced by the write gates in [/ship](../.claude/skills/ship/SKILL.md),
-[/implement](../.claude/skills/implement/SKILL.md) and
-[/checkpoint](../.claude/skills/checkpoint/SKILL.md), and by the claim-discipline
+Referenced by the write gates in [/ship](../.claude/skills/ship/SKILL.md)
+and [/implement](../.claude/skills/implement/SKILL.md), and by the claim-discipline
 section of [CLAUDE.md](../CLAUDE.md).
 
 ---

@@ -95,7 +95,7 @@ for* — and only the product owner can give it, because `Accept:` is their defi
 of done. So flip an entry to `shipped` only when **the user says so in this
 conversation**, after seeing the per-criterion report ("mark P4 shipped", "yes, ship
 it"). None of these is the user saying so: /land handing you a merged branch, a green
-suite, every criterion observed, a commit message, HANDOFF. Invoked from /land, or
+suite, every criterion observed, a commit message. Invoked from /land, or
 with no such word, leave the entry `in-progress` and say it awaits acceptance.
 
 When they do say so, name any criterion that was **not observed** or **not exercised**
@@ -148,6 +148,5 @@ one isn't. The schema check enforces the distinction.
 - Merging a branch / testing the merged result → **/land** (this skill is its last
   step, not a replacement for it).
 - Classifying/drafting a new idea → **/triage**.
-- Session wrap-up, commits, handoff → **/checkpoint**.
 - A rules/state change → propose the spec diff to the user (human-owned); update
   ARCHITECTURE's *why* yourself once the rule is settled.

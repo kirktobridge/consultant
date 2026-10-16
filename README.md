@@ -1,7 +1,7 @@
 # Agent skill suite — a doc-driven working loop
 
-A portable system of **six loop skills** plus the **documents they read and write**,
-extracted from a project where it ran for months across dozens of features. (A seventh,
+A portable system of **five loop skills** plus the **documents they read and write**,
+extracted from a project where it ran for months across dozens of features. (A sixth,
 `/eval`, is maintenance for the suite's own prose — off the loop by design.)
 
 It solves one problem: **an agent's durable notes drift from reality, silently.** A
@@ -66,11 +66,10 @@ figure.
                    ▼
              ┌─────────┐
              │  /ship  │  status flips, OD resolutions, Next up, architecture *why*
-             └────┬────┘
-                  ▼
-           ┌─────────────┐
-           │ /checkpoint │  dangling-state audit, commits, HANDOFF baton
-           └─────────────┘
+             └─────────┘
+
+  every session starts with the dangling-state audit (a SessionStart hook);
+  `npm run history P#` reads an entry's story back out of git
 ```
 
 The fork at the top is the whole design. *Would we build this, or are we assuming it?*
@@ -94,11 +93,11 @@ keeps the register from becoming a generator of speculative work.
 
 ```
 .claude/
-  GUIDE.md              human-facing guide to the six loop skills, and the checks
-  settings.json         hooks: edit-guard (Pre), schema check (Post)
+  GUIDE.md              human-facing guide to the five loop skills, and the checks
+  settings.json         hooks: session audit (Start), edit-guard (Pre), schema check (Post)
   edit-guard.mjs        blocks writes to human-owned files
   edit-blocklist        which files those are            ← edit for your project
-  skills/{triage,implement,verify,land,ship,checkpoint}/SKILL.md
+  skills/{triage,implement,verify,land,ship}/SKILL.md
   skills/eval/SKILL.md  off-loop: drives evals/ with subagents
 docs/
   SPEC.md                     what "correct" means       ← human-only, hook-blocked
@@ -112,7 +111,8 @@ scripts/
   backlog-schema-check.mjs    the keystone: asserts the docs stay greppable
   verify-guards.mjs           asserts the enforcement layer is still armed
   grep-checked.mjs            a search whose negative results are worth something
-  session-audit.mjs           the decidable half of /checkpoint
+  session-audit.mjs           what the last session left dangling (runs at session start)
+  history.mjs                 each entry's commits and close reports, from git
 tests/                        every check proven to still bite, the loop
                               walked end-to-end on a fake project, and the skills'
                               own instructions held against rot
@@ -136,6 +136,7 @@ npm test                     # → the suite, then the schema + guard checks
 npm run eval -- --dry-run    # → renders every eval prompt, self-checks the graders
 npm run check:docs           # → backlog-schema: OK …
 npm run audit                # → session-audit: clean … (or the findings, with actions)
+npm run history P16          # → P16's claim, build + close report, merge, landing note
 npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 
 # a negative you can trust, vs one you can't — note the exit codes
