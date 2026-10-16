@@ -292,11 +292,13 @@ describe("the README's promised output is what the commands actually print", () 
   // This has now drifted twice: "OK (4 entries across 2 backlog(s))" survived the
   // research-track removal, and "5 entries" survived adding OD-3. A number in a fenced
   // "here's what you'll see" block reads as verified and nothing held it — the exact
-  // failure the suite exists to prevent, in its own front door.
+  // failure the suite exists to prevent, in its own front door. The schema check's
+  // entry count is no longer shown at all: it changes on every intake, and a reader
+  // trying the suite needs the verdict, not this repo's count.
   const readme = read(join(REPO, 'README.md'));
 
   const promises = [
-    { claim: /backlog-schema: OK \([^)]+\)/, script: 'backlog-schema-check.mjs' },
+    { claim: /backlog-schema: OK/, script: 'backlog-schema-check.mjs' },
     { claim: /verify-guards: armed \([^)]+\)/, script: 'verify-guards.mjs' },
   ];
 
