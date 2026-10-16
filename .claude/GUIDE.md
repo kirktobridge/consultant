@@ -118,12 +118,41 @@ aren't — they run whether or not anyone remembers them.
 |---|---|---|
 | `npm test` | every check proven to still bite, the loop walked end-to-end, the skills' own instructions held against rot | pre-commit hook, and CI |
 | `npm run check:docs` | the docs stay greppable — the schema every skill's grep depends on | in-session (PostToolUse hook) + `npm test` |
+| `node scripts/backlog-schema-check.mjs --graph` | what blocks what: open entries with no open blocker ranked by how much they unblock, the chain behind each blocked one, prose blockers ([below](#the-dependency-graph)) | /triage groom; any "what's next?" |
 | `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
 | `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |
 | `npm run history` | each entry's commits and close reports, and unmerged branches | on demand |
 | `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |
 
 Nothing installs: Node 18+ and nothing else.
+
+### The dependency graph
+
+`node scripts/backlog-schema-check.mjs --graph` reads the `depends_on:` and
+`waiting_on:` headers and prints what can start now (no open blocker; most-unblocking
+first, counting everything downstream), the chain behind each blocked entry, and the
+blockers that name no entry — a decision `waiting_on: user` — which it lists but cannot
+follow, so they never hold an entry out of "start now".
+
+`--graph --json` is the contract other tools read, the same shape as photocull's
+`doc_check.py --graph --json`, so one renderer serves both. `tests/graph.test.mjs`
+fails if the output and this block disagree, so change both together (and bump
+`version` when a consumer would break). `from` blocks `to`; `field` is the header the
+edge is written in (on `to`); edges and prose cover every entry as written, closed ones
+included, and `open` says whether the entry's status is an open one in its register.
+
+```json
+{
+  "version": 1,
+  "entries": [{"id": "P19", "register": "product", "status": "proposed", "open": true, "title": "Session start says what's next"}],
+  "edges": [{"from": "P11", "to": "P19", "field": "depends_on"}],
+  "prose": [{"id": "D-1", "field": "waiting_on", "text": "user"}]
+}
+```
+
+Graph registers: `product` / `assumptions` / `decisions`.
+
+Graph fields: `depends_on` / `waiting_on`.
 
 ### /eval — running it
 
