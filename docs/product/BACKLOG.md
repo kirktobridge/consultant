@@ -36,9 +36,8 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P16** — hooks guard the worktree a session is in. First because it's a live hole:
-   any worktree session today can write the human-owned dev notes, and P15 can't
-   start without it.
+1. **P16** — hooks guard the worktree a session is in. Landed on main 2026-10-16;
+   awaiting your acceptance against its per-criterion report. P15 waits on it.
 2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
@@ -52,7 +51,7 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
 
 Note what is *absent*: P7 is a high-payoff idea, and is
 deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
-readiness it doesn't have. P15 is absent for the same reason: it waits on P16. P17
+readiness it doesn't have. P15 is absent for the same reason: it waits on P16's acceptance. P17
 waits on P15 and on an open assumption (OD-8).
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
@@ -431,6 +430,8 @@ user-facing, but a silent failure in it is invisible everywhere else.
 - **Notes:** Found by the OD-7 probe, 2026-10-15. Live without P15, since the GUIDE
   already recommends worktrees. Filed as a feature because P5's defect class isn't
   built.
+  Landed 2026-10-16 (merge 05a73ff); stays `in-progress` until accepted. The
+  per-criterion report is in commit 85c4eaf's message.
 
 ---
 
