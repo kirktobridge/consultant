@@ -48,7 +48,7 @@ any of the three — by the time you're building, parked is no longer where you 
 
 The counterpart obligation: **when an OD resolves, sweep the blocked work.** A resolved
 OD usually unblocks several entries, and nothing else will notice. /ship does the
-immediate sweep at resolution time; /triage's groom mode and /checkpoint catch the rest.
+immediate sweep at resolution time; /triage's groom mode and the session-start audit catch the rest.
 
 ---
 

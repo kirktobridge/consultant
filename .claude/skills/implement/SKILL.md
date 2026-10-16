@@ -30,7 +30,8 @@ run all of them.
   first — **main's version, never the checked-out copy**: in a worktree the local
   file reflects when you branched, so it can miss a claim another session made since.
   Target entry already `in-progress` → stop; it's claimed by another session/branch
-  (stale claims are cleared via /checkpoint, not overridden here). Another entry
+  (stale claims are cleared via /ship — the session-start audit surfaces them — not
+  overridden here). Another entry
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
 - **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#` or
@@ -74,7 +75,8 @@ run all of them.
 
 ### 2. Set up
 - **CLEAN-TREE GATE:** `git status` must be clean before branching. Dirty tree =
-  another task's live state — bounce to /checkpoint; don't branch over it. For a
+  another task's live state — commit it with its own unit (or ask the user what it
+  is); don't branch over it. For a
   deliberately parallel session, take a `git worktree` instead of sharing the tree.
 - Flip the entry to `in-progress` **via /ship, committed on main before branching** —
   a flip made on your branch is invisible to other sessions, which defeats the claim
@@ -118,7 +120,9 @@ run all of them.
   criterion that is *not observed* is not done — say so plainly rather than
   rounding it up.
 - Commit on the feature branch, **with that per-criterion report in the commit
-  message** — /land runs forked and reads git, not this conversation, and it is the
+  message** and the entry's ID in the subject (`feat: … (P#)`). `npm run history`
+  finds an entry's commits by that ID, so a commit without it drops out of the
+  record; and /land runs forked and reads git, not this conversation, and it is the
   report the user will be asked to accept against. Then **/land** merges it into main,
   re-runs the suite on the merged result, and runs /ship's flips there (`partial` +
   which milestone) — doc flips never happen on the branch. `shipped` is not among
@@ -140,6 +144,5 @@ run all of them.
 - Merging into main → **/land**.
 - Doc/status edits of any kind → **/ship**.
 - Classifying a new idea → **/triage**.
-- Session wrap-up, commits-as-closeout, handoff → **/checkpoint**.
 - A spec/rules change → the spec diff is proposed to the human first (see /ship);
   don't start building on an unapproved rule.

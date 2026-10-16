@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A doc-driven working loop: six Claude Code skills plus the documents they read and write.",
+  "description": "A doc-driven working loop: five Claude Code skills plus the documents they read and write.",
   "scripts": {
     "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs && npm run check:guards",
     "check:docs": "node scripts/backlog-schema-check.mjs --all",
     "check:guards": "node scripts/verify-guards.mjs --all",
     "audit": "node scripts/session-audit.mjs",
+    "history": "node scripts/history.mjs",
     "eval": "node evals/run.mjs",
     "prepare": "node scripts/install-hooks.mjs",
     "install-git-hooks": "node scripts/install-hooks.mjs"

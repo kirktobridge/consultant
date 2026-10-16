@@ -20,7 +20,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 | [docs/product/BACKLOG.md](docs/product/BACKLOG.md) | **Product/feature backlog** — the pool of shippable work. |
 | [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
-| [.claude/GUIDE.md](.claude/GUIDE.md) | The six loop skills, how they hand off, and the checks behind them. |
+| [.claude/GUIDE.md](.claude/GUIDE.md) | The five loop skills, how they hand off, and the checks behind them. |
 
 ## Doc discipline (avoid the re-align treadmill)
 

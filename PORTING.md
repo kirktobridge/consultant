@@ -65,7 +65,7 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 | `OD-n` | open decisions (unverified assumptions) | OPEN_DECISIONS.md, schema check |
 | `L#` | lessons | LESSONS.md |
 | `docs/SPEC.md` | your human-owned source of truth | blocklist, /ship, /implement |
-| `main` | integration branch | /land, /implement, /checkpoint |
+| `main` | integration branch | /land, /implement, session-audit, history |
 
 Keep `P#` and `OD-n` **globally unique** — the schema check enforces it, and the
 cross-pointers (`Depends on: OD-3`, `Resolves: OD-3`) are unparseable without it.
@@ -158,7 +158,7 @@ runs one subagent per file and saves each reply, and `npm run eval -- --grade <d
 scores them. Keep the emitted prompt **unedited** when you hand it over; it is the
 artifact under test.
 
-That procedure is the **/eval** skill — the seventh, and the one that is *not* part of
+That procedure is the **/eval** skill — the sixth, and the one that is *not* part of
 the loop. Keep it if you expect to edit the skills' prose; delete
 `.claude/skills/eval/` and `evals/` together if you don't, and don't leave one without
 the other. Subagents cost your session's token budget, so a full sweep is worth
@@ -237,10 +237,13 @@ Pre-commit rather than post-commit, for the same reason: post-commit runs after 
 commit exists, so it can only narrate a state it was too late to prevent. Install with
 `npm run install-git-hooks`.
 
-**The audit as a script, not a checklist.** /checkpoint's five end-of-session checks
-live in `scripts/session-audit.mjs` because they are fully decidable, and because a
-model re-deriving them by hand at the end of a long session is exactly when eyeballing
-a grep goes wrong. The skill owns the *response*; the script owns the *computation*.
+**The audit as a script, run at session start.** The dangling-state checks live in
+`scripts/session-audit.mjs` because they are fully decidable, and a model re-deriving
+them by hand is exactly when eyeballing a grep goes wrong. A SessionStart hook runs it,
+so it needs no one to remember it and still runs after a session that crashed. Keep the
+hook's `|| true`: a SessionStart hook's output is dropped on a non-zero exit, and the
+audit exits 1 precisely when it has something to say. The session owns the
+*response*; the script owns the *computation*.
 Resist folding judgement into it — "is this claim abandoned or just paused" has to stay
 a question asked of a human.
 
@@ -271,7 +274,7 @@ and confirm it fails, before trusting a green run on real input.
 ## Adapting to a different topology
 
 **Solo, no parallel sessions?** Keep single-writer (it prevents doc drift regardless);
-you can relax flips-on-main and skip HANDOFF's per-branch sectioning.
+you can relax flips-on-main.
 
 **Trunk-based, no feature branches?** /land collapses into "run the suite, then /ship".
 Keep the claim flip — it still prevents two sessions racing the same entry.

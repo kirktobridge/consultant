@@ -1,9 +1,3 @@
-# HANDOFF is session state, not project history: it describes in-flight branches
-# in *your* working copy, and parallel sessions each own a section. Committing it
-# creates conflicts on every merge and tells the next clone lies about branches
-# that don't exist there.
-.claude/HANDOFF.md
-
 # Per-machine overrides (permissions, env). settings.json is shared; this is not.
 .claude/settings.local.json
 
