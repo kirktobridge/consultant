@@ -39,9 +39,9 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
 1. **P4** — R0, R1 and R2 (the acceptance handshake) have all landed; R2 landed
    2026-10-15 (merge 9517b50). **Awaiting your acceptance** — the entry stays
    `in-progress` until you say "ship it" against the per-criterion report.
-2. **P14** — test subprocesses inherit git's hook environment. Small, and it makes the
-   commit gate reject correct work on every `git commit -a` — a gate that is wrong
-   teaches `--no-verify`.
+2. **P14** — test subprocesses inherit git's hook environment. Its single milestone
+   landed 2026-10-15 (merge 8fd218c). **Awaiting your acceptance** — the entry stays
+   `in-progress` until you say "ship it" against the per-criterion report.
 3. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
@@ -324,7 +324,9 @@ user-facing, but a silent failure in it is invisible everywhere else.
 - **Depends on:** —
 - **Notes:** Found during P4 R2; *verified* by reproduction (`GIT_INDEX_FILE` set →
   5 failures across process and session-audit tests; unset → all pass). Filed as a
-  feature because P5's defect class isn't built.
+  feature because P5's defect class isn't built. **Landed 2026-10-15** (merge 8fd218c),
+  single milestone; stays `in-progress` awaiting acceptance against the per-criterion
+  report in 38ca310.
 
 ---
 
