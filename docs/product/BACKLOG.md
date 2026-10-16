@@ -36,9 +36,8 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P18** — retire /checkpoint and the handoff file. First because it removes
-   friction you hit on every landing, and P15 should be written against the loop
-   without them. OD-10 settled it: the hook must force exit 0.
+1. **P18** — retire /checkpoint and the handoff file. Landed on main 2026-10-16;
+   `in-progress` until you accept it.
 2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
@@ -52,9 +51,9 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
 
 Note what is *absent*: P7 is a high-payoff idea, and is
 deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
-readiness it doesn't have. P15 is dependency-ready now that P16 has shipped, but it is held behind P18 by
-preference: its R2 and R3 lean on HANDOFF and /checkpoint, which P18 retires, so
-building it second means writing it once.
+readiness it doesn't have. P15 is dependency-ready, and its R2 and R3
+are now written against the loop without HANDOFF and /checkpoint; it sits outside the queue only because its five slots are
+taken, and where it ranks against them is yours to call.
 P17 waits on P15 and on an open assumption (OD-8). P19 waits on P18 and on P11's
 graph (which waits on P10).
 (Named in plain text on purpose: a **bolded** ID in this
@@ -171,11 +170,11 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 
 ### P7 — A status view for the product owner
 - **Status:** proposed
-- **Drafted:** 2026-10-15
+- **Drafted:** 2026-10-16
 - **Value:** you can ask "where are we?" and get an answer without reading markdown —
   what landed, what's in flight and since when, what's blocked and on what. Today the
-  only continuity artifact is HANDOFF, which is agent session-state, gitignored, and
-  scoped per branch.
+  history lives in git (`npm run history`) and the audit runs at session start; both
+  are addressed to the next session, not to you.
 - **Scope:** a read-only `/status` that composes what already exists (backlog statuses,
   OD blocks, `npm run audit`, git) into a short report addressed to the product owner
   rather than to the next session. Out: any new tracked file — if it needs storage,
@@ -230,14 +229,15 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
     CLAUDE.md/memory instructions, and a SKILL.md isn't on that list. settings.json
     sets `worktree.baseRef: head` (OD-6). `.claude/worktrees/` is gitignored, so the
     main checkout stays clean.
-  - R2 — when /implement closes green, it runs /land itself. Claims, landings and
-    HANDOFF writes take one repo-wide lock, so two sessions that finish together land
-    one after the other instead of colliding. On a conflict, the session rebases its
-    own branch onto the new main in its worktree, resolves, re-runs the suite and
+  - R2 — when /implement closes green, it runs /land itself. Claims and landings take
+    one repo-wide lock, so two sessions that finish together land one
+    after the other instead of colliding. On a conflict, the session rebases its own
+    branch onto the new main in its worktree, resolves, re-runs the suite and
     lands, reporting each conflict it resolved; it stops for the user only if the suite
     is red after resolving. This replaces /land's "never auto-resolve" rule.
-  - R3 — once a branch lands, its worktree and branch are removed. /checkpoint's audit
-    flags any worktree whose branch is merged or whose claim is gone.
+  - R3 — once a branch lands, its worktree and branch are removed. The session-start
+    audit (`scripts/session-audit.mjs`) gains a check that flags any worktree whose
+    branch is merged or whose claim is gone.
   - Out: remotes, PRs and merge queues; auto-*shipping*. Landing stays separate from
     acceptance, and `shipped` still waits for you.
 - **Accept:**
@@ -259,8 +259,10 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   run and landings stop at the clean-tree check. P12 doesn't block this, but if it
   lands first, the lock and claim helpers use its trunk command rather than `main`.
   Re-read 2026-10-16 after P16 shipped: P16 settled the dependency and moved nothing
-  else described here. R2's HANDOFF lock and R3's /checkpoint audit change if P18
-  lands first.
+  else described here. Re-read 2026-10-16 after P18 landed: with HANDOFF and
+  /checkpoint gone, R2's lock covers claims and landings only, and R3's check goes in
+  the session-start audit, which has no worktree check yet (*verified* by
+  grep-checked).
 
 ### P17 — An orchestrator that builds non-conflicting entries in parallel
 - **Status:** proposed
@@ -419,7 +421,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
 
 ### P12 — Resolve the trunk branch instead of assuming `main`
 - **Status:** proposed
-- **Drafted:** 2026-10-15
+- **Drafted:** 2026-10-16
 - **Value:** a porter whose trunk isn't `main` gets a working claim gate on day one.
   Today /implement's claim gate runs `git show main:…`, which errors on such a clone
   (verified on this repo before it consolidated: `fatal: invalid object name 'main'`).
@@ -427,7 +429,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
   - One resolution rule, already written: session-audit.mjs's order (`--base`, else
     main/master/trunk, else fail loudly). Expose it as a command the skills call,
     rather than restating the list in prose.
-  - /implement, /ship, /land and /checkpoint say "trunk" and get it from that command;
+  - /implement, /ship and /land say "trunk" and get it from that command;
     the claim gate reads `git show <trunk>:…`.
   - A process test fails if a loop skill hard-codes `main` in a git command.
   - Out: renaming branches; any trunk config beyond what `--base` allows.
