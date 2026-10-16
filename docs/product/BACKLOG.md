@@ -55,7 +55,8 @@ deliberately not queued — it depends on P6 (P4 has shipped), so the queue woul
 readiness it doesn't have. P15 is dependency-ready now that P16 has shipped, but it is held behind P18 by
 preference: its R2 and R3 lean on HANDOFF and /checkpoint, which P18 retires, so
 building it second means writing it once.
-P17 waits on P15 and on an open assumption (OD-8).
+P17 waits on P15 and on an open assumption (OD-8). P19 waits on P18 and on P11's
+graph (which waits on P10).
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
@@ -318,6 +319,31 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   the user never maintains; most sessions are self-contained. Overlaps P15, whose R2
   lock covers HANDOFF writes and whose R3 hands cleanup checks to /checkpoint's audit;
   whichever lands second adapts.
+
+---
+
+### P19 — Session start says what's next, read from the graph
+- **Status:** proposed
+- **Drafted:** 2026-10-16
+- **Value:** every session opens knowing what to pick up and what's about to block,
+  not just what was left dangling.
+- **Scope:**
+  - In: the SessionStart output from P18 gains a forward section rendered from P11's
+    graph JSON: the `## Next up` head, entries that are dependency-ready but
+    unqueued, and open assumptions ranked by how many near-queue entries they block.
+  - Out: a second dependency parser (the graph is the one source; that's why this
+    waits on P11); any owner-facing view (P7).
+- **Accept:**
+  - A new session names the first queued entry without anyone asking.
+  - An entry whose last blocker just shipped, but that isn't in the queue, is named
+    at the next session start.
+  - An open assumption blocking a queued or near-queued entry is named, with the
+    entries it blocks.
+  - The whole session-start output stays under ~15 lines on this repo.
+- **Depends on:** P18, P11
+- **Notes:** The user chose the graph over a stopgap built on the schema check's own
+  parsing (2026-10-16): one mechanism, not two that drift. P11 waits on P10, so this
+  is a long chain. Keep it short because the output lands in every session's context.
 
 ---
 
