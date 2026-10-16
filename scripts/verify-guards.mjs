@@ -28,8 +28,9 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { checkoutOf } from '../.claude/edit-guard.mjs';
 
-const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const SETTINGS = '.claude/settings.json';
 const BLOCKLIST = '.claude/edit-blocklist';
 
@@ -78,6 +79,9 @@ if (!run) {
       file = p?.tool_input?.file_path ?? p?.tool_response?.filePath ?? '';
     } catch { /* unparseable → no-op */ }
     run = WATCHED.some((w) => file.replaceAll('\\', '/').endsWith(w));
+    // Check the checkout the edit landed in. In a worktree session the hook still
+    // runs from the launch checkout (OD-7), which would validate main's copy.
+    if (run) ROOT = checkoutOf(file, ROOT);
   }
 }
 if (!run) process.exit(0);

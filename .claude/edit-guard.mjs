@@ -13,13 +13,57 @@
 // (unparseable payload, missing blocklist, no paths) deliberately permits, so a broken
 // guard never wedges an unrelated edit.
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, '..');
 export const BLOCKLIST_FILE = join(HERE, 'edit-blocklist');
+
+/** The git dir every checkout of one repository shares, or null if `root` isn't one. */
+function commonDirOf(root) {
+  const dotgit = join(root, '.git');
+  try {
+    if (statSync(dotgit).isDirectory()) return realpathSync(dotgit);
+    // A linked worktree: `.git` is a file naming its private gitdir, which in turn
+    // names the shared one in `commondir`.
+    const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotgit, 'utf8'));
+    if (!m) return null;
+    const gitdir = resolve(root, m[1].trim());
+    const common = existsSync(join(gitdir, 'commondir'))
+      ? resolve(gitdir, readFileSync(join(gitdir, 'commondir'), 'utf8').trim())
+      : gitdir;
+    return realpathSync(common);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The checkout of `home`'s repository that contains `filePath` — the main checkout or
+ * any linked worktree, nearest first. Falls back to `home`.
+ *
+ * This exists because the hooks run from wherever the session was launched (OD-7):
+ * in a worktree session, `home` is the main checkout, and a worktree under
+ * `.claude/worktrees/` is just a subfolder of it. Judged against `home`, a folder
+ * pattern like `docs/dev_notes/` never matches the worktree's copy. Checkouts of
+ * other repositories are walked past, so a path elsewhere on disk is judged exactly
+ * as before. Exported because the PostToolUse checks need the same answer — and it
+ * lives here, in a blocklisted file, because a guard that imported an editable
+ * helper could be disarmed by editing the helper.
+ */
+export function checkoutOf(filePath, home = REPO_ROOT) {
+  const common = commonDirOf(home);
+  if (!common) return home;
+  let dir = dirname(resolve(filePath));
+  for (;;) {
+    if (existsSync(join(dir, '.git')) && commonDirOf(dir) === common) return dir;
+    const up = dirname(dir);
+    if (up === dir) return home;
+    dir = up;
+  }
+}
 
 /**
  * Python's fnmatch, which is NOT glob: `*` crosses directory separators. That is
@@ -72,10 +116,10 @@ export function loadBlocklist(file = BLOCKLIST_FILE) {
  */
 export function isBlocked(filePath, patterns) {
   // Lexical resolution, not realpath: a Write may target a file that does not exist
-  // yet, and touching the filesystem in a hook that fires on every edit is a cost with
-  // no matching benefit.
+  // yet. The only filesystem reads are checkoutOf's walk up to the nearest `.git`.
   const abs = resolve(filePath);
-  const prefix = REPO_ROOT.endsWith(sep) ? REPO_ROOT : REPO_ROOT + sep;
+  const root = checkoutOf(abs);
+  const prefix = root.endsWith(sep) ? root : root + sep;
   const rel = abs.startsWith(prefix) ? abs.slice(prefix.length) : filePath;
   const base = basename(rel);
 
