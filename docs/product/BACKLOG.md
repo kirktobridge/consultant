@@ -535,7 +535,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
   in 85c4eaf's message.
 
 ### P20 — Entries as files: a strict field header, a prose body, the queue on its own
-- **Status:** proposed
+- **Status:** in-progress
 - **Drafted:** 2026-10-16
 - **Value:** the checker stops guessing which `**Depends on:**` is the field and which
   is prose about it. P9 patched that class one instance at a time and surfaced three
