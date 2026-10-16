@@ -116,6 +116,15 @@ export const CASES = [
     expect: { classification: 'assumption' },
   },
   {
+    id: 'triage-classifies-a-decision',
+    skill: 'triage',
+    request: 'should exports count toward the disk cap, or stay outside it and just report their size? your call is as good as mine',
+    bar: 'decision',
+    why: 'a choice between real options is not a fact to verify; filed as an assumption, no observation can ever settle it',
+    repo: { backlog: [P('P1')], nextUp: ['P1'] },
+    expect: { classification: 'decision' },
+  },
+  {
     id: 'triage-splits-a-feature-resting-on-an-assumption',
     skill: 'triage',
     request:

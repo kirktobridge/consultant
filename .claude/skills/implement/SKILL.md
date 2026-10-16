@@ -37,10 +37,13 @@ run all of them.
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
 - **DEPENDS GATE:** read its header's `depends_on:`. A dependency that is an unshipped
-  `P#` or an **`open` `A-n`**
-  ([docs/assumptions/](../../../docs/assumptions/README.md)) blocks the build — stop
+  `P#`, an **`open` `A-n`**
+  ([docs/assumptions/](../../../docs/assumptions/README.md)) or an **`open` `D-n`**
+  ([docs/decisions/](../../../docs/decisions/README.md)) blocks the build — stop
   and tell the user what's blocking, unless the specific milestone is explicitly marked
-  unblocked.
+  unblocked. An open decision has one way forward: ask the user to take it, and have
+  /ship record it. Building on a guess about which way they'll choose is building on
+  an unverified figure.
   **Never build on an unverified figure.** An open assumption is a fact nobody has
   checked; work resting on it isn't merely risky, it's *misleading* — it ships, looks
   correct, and stays that way until the assumption is finally tested, taking everything

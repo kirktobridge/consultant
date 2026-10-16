@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { P, A, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
+import { P, A, D, decidedD, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -169,6 +169,50 @@ describe('resolutions nobody swept', () => {
       assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(400), resolution: 'held.' })],
     });
     assert.equal(audit(dir).code, CLEAN);
+  });
+
+  test('a decision taken today with dependents is an unblock note', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['D-1'] })],
+      decisions: [decidedD('D-1', { decided: daysAgo(0) })],
+    });
+    const r = audit(dir);
+    assert.match(r.stdout, /\[note \] D-1 is `decided` \(decided today\) and 1 entr\(y\/ies\) depend on it: P2/);
+    assert.doesNotMatch(r.stdout, /\[ALERT\]/);
+  });
+});
+
+describe('choices waiting on the user (P10)', () => {
+  // Accept criterion: a choice only the product owner can make is listed somewhere
+  // they can see at a glance, with what it is waiting on.
+  test('an open decision waiting on the user is listed, with what else it waits on and what it holds back', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['D-1'] })],
+      decisions: [D('D-1', { title: 'Do exports count toward the cap?', waitingOn: 'user, P1' })],
+    });
+    const r = audit(dir);
+    assert.match(r.stdout, /Waiting on the user — choices only they can make/);
+    assert.match(r.stdout, /D-1 — Do exports count toward the cap\? \(also waiting on P1\) — holds back P2/);
+  });
+
+  test('it is not a finding: the audit still reports clean, exit 0', () => {
+    const { dir } = repo({ decisions: [D('D-1')] });
+    const r = audit(dir);
+    assert.equal(r.code, CLEAN, out(r));
+    assert.match(r.stdout, /clean \(base main\)[\s\S]*D-1 — D-1 example/);
+  });
+
+  test('a decision waiting only on other entries, or already decided, is not listed', () => {
+    const { dir } = repo({
+      decisions: [D('D-1', { waitingOn: 'P1' }), decidedD('D-2')],
+    });
+    assert.doesNotMatch(audit(dir).stdout, /Waiting on the user/);
+  });
+
+  test('--json carries the list', () => {
+    const { dir } = repo({ decisions: [D('D-1')] });
+    const j = JSON.parse(audit(dir, ['--json']).stdout);
+    assert.deepEqual(j.waitingOnUser, [{ id: 'D-1', title: 'D-1 example', alsoWaitingOn: [], holds: [] }]);
   });
 });
 

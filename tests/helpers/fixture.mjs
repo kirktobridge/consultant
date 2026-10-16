@@ -84,6 +84,39 @@ export function A(id, over = {}) {
   };
 }
 
+/** A decision. Defaults are a minimal *valid* open decision, waiting on the user. */
+export function D(id, over = {}) {
+  return {
+    id,
+    title: `${id} example`,
+    status: 'open',
+    raised: '2026-08-01',
+    waitingOn: 'user',
+    options: '(a) one way. (b) the other.',
+    // Set together on decide: header keys and the sections a decided entry owes.
+    decided: null,
+    leadsTo: null,
+    choice: null,
+    why: null,
+    reopenIf: null,
+    supersededBy: null,
+    ...over,
+  };
+}
+
+/** A decided decision: the fields `decided` owes, filled. */
+export const decidedD = (id, over = {}) =>
+  D(id, {
+    status: 'decided',
+    waitingOn: null,
+    decided: '2026-08-02',
+    leadsTo: '—',
+    choice: '(a).',
+    why: 'because.',
+    reopenIf: 'it stops being true.',
+    ...over,
+  });
+
 // A null field means the LINE IS ABSENT, not the line with the word "null" on it.
 // Rendering `status: null` would still be a header line, so a missing-field test would
 // pass while proving nothing — the exact shape of failure L3 warns about, produced by
@@ -124,6 +157,26 @@ const renderA = (d) =>
     ],
   );
 
+const renderD = (d) =>
+  entry(
+    [
+      key('id', d.id),
+      key('title', d.title),
+      key('status', d.status),
+      key('raised', d.raised),
+      key('waiting_on', d.waitingOn),
+      key('decided', d.decided),
+      key('leads_to', d.leadsTo),
+      key('superseded_by', d.supersededBy),
+    ],
+    [
+      section('Options', d.options),
+      section('Decided', d.choice),
+      section('Why', d.why),
+      section('Reopen if', d.reopenIf),
+    ],
+  );
+
 // Rendered as text, not just written to disk: the eval harness feeds these exact
 // files to a model as context. One renderer means the state a model reasons about
 // and the state the checker validates can never drift apart — which matters, because a
@@ -134,9 +187,10 @@ const renderA = (d) =>
  * list of P ids; pass [] deliberately to test the empty-queue failure. The READMEs
  * carry the status vocab lines verbatim because the checker reads its vocabulary *from
  * them* — a fixture that omitted them would be testing a different contract than the
- * real docs have. The assumptions register is only written when it has entries.
+ * real docs have. The assumptions and decisions registers are only written when they
+ * have entries.
  */
-export function renderFiles({ backlog = [P('P1')], assumptions = [], nextUp = ['P1'] } = {}) {
+export function renderFiles({ backlog = [P('P1')], assumptions = [], decisions = [], nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
       '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
@@ -147,6 +201,10 @@ export function renderFiles({ backlog = [P('P1')], assumptions = [], nextUp = ['
   if (assumptions.length) {
     files['docs/assumptions/README.md'] = '# Assumptions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot`.\n';
     for (const d of assumptions) files[`docs/assumptions/${d.id}.md`] = renderA(d);
+  }
+  if (decisions.length) {
+    files['docs/decisions/README.md'] = '# Decisions\n\nStatus vocab: `open` / `decided` / `superseded`.\n';
+    for (const d of decisions) files[`docs/decisions/${d.id}.md`] = renderD(d);
   }
   return files;
 }

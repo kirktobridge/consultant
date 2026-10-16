@@ -41,7 +41,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
-import { BACKLOG, ASSUMPTIONS, loadRegister, parseQueue, idsOf } from './entries.mjs';
+import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf } from './entries.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -83,7 +83,29 @@ const REGISTERS = [
     dated: 'raised',
     closed: 'resolved',
   },
+  // Decisions: choices only the product owner makes. Blocks exactly like an
+  // assumption, but is settled by deciding rather than by observing.
+  {
+    ...DECISIONS,
+    kind: 'decisions',
+    open: new Set(['open']),
+    terminal: new Set(['decided', 'superseded']),
+    always: ['Options'],
+    whileOpen: [],
+    // Header keys an open entry carries, and what each terminal status owes.
+    whileOpenKeys: ['waiting_on'],
+    onStatus: {
+      decided: { keys: ['decided', 'leads_to'], sections: ['Decided', 'Why', 'Reopen if'] },
+      superseded: { keys: ['superseded_by'], sections: [] },
+    },
+    dated: 'raised',
+    closed: 'decided',
+  },
 ];
+
+// Open entries in these registers gate what depends on them: an entry resting on one
+// may sit in the pool, but may not be queued or claimed.
+const GATING = /^(A|D)-/;
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 //
@@ -313,23 +335,73 @@ for (const { reg: b, entries } of loaded) {
   //
   // /implement's DEPENDS GATE stays unconditional — it acts on work being picked
   // up, which is already in a failing tier by the time it runs.
+  //
+  // An open decision gates exactly the same way: work resting on a choice nobody has
+  // made is resting on a guess about which way it will go.
   for (const e of entries) {
     for (const depId of idsOf(e, 'depends_on')) {
-      if (!/^A-/.test(depId)) continue;
-      const assumption = byId.get(depId);
+      if (!GATING.test(depId)) continue;
+      const dep = byId.get(depId);
       // A dangling reference is wrong at any status: a terminal entry citing a
-      // nonexistent assumption is a broken audit trail, not a harmless leftover.
-      if (!assumption) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
-      if (assumption.status !== 'open') continue;
+      // nonexistent assumption or decision is a broken audit trail, not a harmless leftover.
+      if (!dep) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
+      if (dep.status !== 'open') continue;
       const claimed = e.status === 'in-progress' || e.status === 'partial';
       if (!claimed && !queued.has(e.id)) continue; // parked in the pool — fine
+      const isDecision = depId.startsWith('D-');
       fail(
         `${e.file}: ${e.id} is ${claimed ? `\`${e.status}\`` : 'in Next up'} but ` +
           `depends on ${depId}, still \`open\`. ${claimed
-            ? 'Work in flight is resting on an unverified assumption'
+            ? `Work in flight is resting on ${isDecision ? 'a choice nobody has made' : 'an unverified assumption'}`
             : 'The queue is the dependency-ready head, and this entry is not ready'}` +
-          ` — verify ${depId}, promote it to a spike, or ${claimed ? 'rescope' : 'demote'} ${e.id}.`,
+          ` — ${isDecision ? `decide ${depId}` : `verify ${depId}, promote it to a spike`}, ` +
+          `or ${claimed ? 'rescope' : 'demote'} ${e.id}.`,
       );
+    }
+  }
+
+  // — what a decision names must exist, and what it leads to must not be dropped —
+  //
+  // `leads_to:` is how a decision's consequence gets an owner (LESSONS L2). It is a
+  // header field, so its target's status is readable: a shipped P# is the consequence
+  // landing; an abandoned or deferred one is the consequence quietly dropped while the
+  // decision still reads as in force.
+  for (const e of entries) {
+    for (const key of ['waiting_on', 'leads_to', 'superseded_by']) {
+      for (const id of idsOf(e, key)) {
+        if (!byId.has(id)) fail(`${e.file}: ${e.id} ${key} ${id}, which has no entry`);
+      }
+    }
+    if (b.whileOpenKeys && b.open.has(e.status ?? '')) {
+      for (const key of b.whileOpenKeys) {
+        if (!e.header[key]) fail(`${e.file}: open ${e.id} has no \`${key}:\` in the header`);
+      }
+    }
+    const owes = b.onStatus?.[e.status ?? ''];
+    if (!owes) continue;
+    for (const key of owes.keys) {
+      if (!e.header[key]) fail(`${e.file}: ${e.status} ${e.id} has no \`${key}:\` in the header`);
+    }
+    for (const s of owes.sections) {
+      if (!e.sections.has(s)) fail(`${e.file}: ${e.status} ${e.id} missing **${s}**`);
+    }
+    if (e.status === 'superseded' && e.header.superseded_by) {
+      const by = idsOf(e, 'superseded_by');
+      if (!by.length || by.some((id) => !/^D-/.test(id))) {
+        fail(`${e.file}: ${e.id} is superseded, but \`superseded_by:\` must name the D-n that replaced it`);
+      }
+    }
+    if (e.status === 'decided') {
+      for (const id of idsOf(e, 'leads_to')) {
+        const t = byId.get(id);
+        if (t && isTerminal(t) && t.status !== 'shipped') {
+          fail(
+            `${e.file}: ${e.id} leads to ${id}, which is \`${t.status}\` — the decision's ` +
+              `consequence was dropped. Supersede ${e.id}, or repoint \`leads_to:\` at what ` +
+              `carries it now.`,
+          );
+        }
+      }
     }
   }
 

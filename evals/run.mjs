@@ -168,7 +168,7 @@ function promptFor(c) {
     JSON.stringify(
       {
         action: 'proceed | refuse | clarify',
-        classification: 'feature | assumption | both | not-applicable',
+        classification: 'feature | assumption | decision | both | not-applicable',
         cites: ['every identifier the decision turns on'],
         reason: 'one or two sentences',
       },
@@ -210,9 +210,9 @@ const DECISION_SCHEMA = {
     },
     classification: {
       type: 'string',
-      enum: ['feature', 'assumption', 'both', 'not-applicable'],
+      enum: ['feature', 'assumption', 'decision', 'both', 'not-applicable'],
       description:
-        'For a triage request: what the idea is. "both" means it splits into a feature and an assumption. "not-applicable" means it cannot be filed as either. Use "not-applicable" for non-triage requests.',
+        'For a triage request: what the idea is. "both" means it splits into a feature and an assumption or decision. "not-applicable" means it cannot be filed as any of them. Use "not-applicable" for non-triage requests.',
     },
     cites: {
       type: 'array',

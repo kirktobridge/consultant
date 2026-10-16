@@ -19,6 +19,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, folder layout, key types, the *why*. |
 | [docs/backlog/](docs/backlog/README.md) | **Product/feature backlog** — the pool of shippable work, one file per entry; [QUEUE.md](docs/backlog/QUEUE.md) is what's next. |
 | [docs/assumptions/](docs/assumptions/README.md) | **Load-bearing assumptions** (`A-n`) nobody has verified. An `open` assumption blocks work that depends on it. |
+| [docs/decisions/](docs/decisions/README.md) | **Choices only the product owner makes** (`D-n`): open ones with options and what they wait on, decided ones with why. An `open` decision blocks like an open assumption. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
 | [.claude/GUIDE.md](.claude/GUIDE.md) | The five loop skills, how they hand off, and the checks behind them. |
 
@@ -26,7 +27,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 
 - **Single source of truth per fact:** behavior → SPEC, structure/why → ARCHITECTURE,
   plan → BUILD_ORDER, features → `docs/backlog/`, unverified assumptions →
-  `docs/assumptions/`. Once code exists, **code + tests own the *what*; docs
+  `docs/assumptions/`, the product owner's choices → `docs/decisions/`. Once code exists, **code + tests own the *what*; docs
   keep the *why*.**
 - **ARCHITECTURE code blocks are illustrative sketches** — when they diverge from the
   source, the source wins; don't sync every signature back into the doc.

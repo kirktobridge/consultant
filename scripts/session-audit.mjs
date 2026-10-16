@@ -26,7 +26,7 @@
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
 import { execFileSync } from 'node:child_process';
-import { BACKLOG, ASSUMPTIONS, loadRegister, idsOf } from './entries.mjs';
+import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -92,6 +92,7 @@ if (!BASE) {
 const backlog = loadRegister(ROOT, BACKLOG).entries;
 const assumptions = loadRegister(ROOT, ASSUMPTIONS).entries;
 const aById = new Map(assumptions.map((d) => [d.id, d]));
+const decisions = loadRegister(ROOT, DECISIONS).entries;
 const today = new Date().toISOString().slice(0, 10);
 
 // ── 1. Working tree ──────────────────────────────────────────────────────────
@@ -153,30 +154,55 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
   }
 }
 
-// ── 4. Resolutions nobody swept ──────────────────────────────────────────────
+// ── 4. Resolutions and decisions nobody swept ────────────────────────────────
 // A resolved assumption changes the state of every entry that named it, and nothing else in
 // the loop notices. `refuted` is the case worth stopping over: those dependents may
 // be void rather than unblocked.
 
-for (const assumption of assumptions) {
-  if (assumption.status === 'open') continue;
-  const resolvedToday = assumption.header.resolved === today;
-  const changedThisSession = (git('diff', BASE, '--name-only') || '').includes(`${ASSUMPTIONS.dir}/`);
-  if (!resolvedToday && !changedThisSession) continue;
-  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(assumption.id));
+// A decision taken unblocks its dependents the same way; it cannot void them.
+const settled = [
+  ...assumptions.map((x) => ({ x, dir: ASSUMPTIONS.dir, date: x.header.resolved, verb: 'resolved' })),
+  ...decisions.map((x) => ({ x, dir: DECISIONS.dir, date: x.header.decided, verb: 'decided' })),
+];
+const changed = git('diff', BASE, '--name-only') || '';
+for (const { x, dir, date, verb } of settled) {
+  if (x.status === 'open') continue;
+  const settledToday = date === today;
+  if (!settledToday && !changed.includes(`${dir}/`)) continue;
+  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(x.id));
   if (dependents.length === 0) continue;
   const ids = dependents.map((d) => `${d.id} (${d.status})`).join(', ');
-  add(assumption.status === 'refuted' ? 'alert' : 'info',
-    `${assumption.id} is \`${assumption.status}\`${resolvedToday ? ' (resolved today)' : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
-    assumption.status === 'refuted'
+  add(x.status === 'refuted' ? 'alert' : 'info',
+    `${x.id} is \`${x.status}\`${settledToday ? ` (${verb} today)` : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
+    x.status === 'refuted'
       ? 'A refutation can VOID dependents rather than unblock them — re-read each against the new truth, and check whether anything already shipped on the false assumption. Deep pass: /triage groom.'
       : 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.');
 }
 
+// ── 5. Choices waiting on the user ───────────────────────────────────────────
+// Not findings: an open decision is not something a session left dangling, and an
+// audit that can never come back clean teaches people to skip it. Listed apart, so
+// the questions only the user can unblock reach them at the start of every session.
+
+const waitingOnUser = decisions
+  .filter((d) => d.status === 'open' && (d.header.waiting_on ?? '').split(/,\s*/).includes('user'))
+  .map((d) => {
+    const held = backlog.filter((e) => idsOf(e, 'depends_on').includes(d.id)).map((e) => e.id);
+    const also = idsOf(d, 'waiting_on');
+    return { id: d.id, title: d.header.title ?? '', alsoWaitingOn: also, holds: held };
+  });
+const waitingLines = waitingOnUser.map((w) =>
+  `  ${w.id} — ${w.title}` +
+    (w.alsoWaitingOn.length ? ` (also waiting on ${w.alsoWaitingOn.join(', ')})` : '') +
+    (w.holds.length ? ` — holds back ${w.holds.join(', ')}` : ''));
+const waitingBlock = waitingOnUser.length
+  ? `\nWaiting on the user — choices only they can make (docs/decisions/); raise them:\n${waitingLines.join('\n')}\n`
+  : '';
+
 // ── Report ───────────────────────────────────────────────────────────────────
 
 if (asJson) {
-  console.log(JSON.stringify({ base: BASE, findings }, null, 2));
+  console.log(JSON.stringify({ base: BASE, findings, waitingOnUser }, null, 2));
   process.exit(findings.length ? 1 : 0);
 }
 
@@ -185,9 +211,10 @@ const LABEL = { alert: 'ALERT', warn: 'CHECK', info: 'note ' };
 findings.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 
 if (findings.length === 0) {
-  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.`);
+  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.${waitingBlock}`);
   process.exit(0);
 }
 console.log(`session-audit: ${findings.length} item(s) left dangling — resolve before starting new work (base ${BASE})\n`);
 for (const f of findings) console.log(`  [${LABEL[f.severity]}] ${f.what}\n           → ${f.action}\n`);
+if (waitingBlock) console.log(waitingBlock.trimStart());
 process.exit(1);

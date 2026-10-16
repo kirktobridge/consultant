@@ -40,7 +40,9 @@ from a broken tool is indistinguishable from a true negative.
 Grading claims one sentence at a time still leaves the *asserted* ones unindexed, so
 [docs/assumptions/](docs/assumptions/README.md) is the standing register of them —
 assumptions the project rests on that nobody has verified. Never build on an unverified
-figure.
+figure. Its sibling, [docs/decisions/](docs/decisions/README.md), holds the choices only
+the product owner can make, so they stop hiding inside features; an open one blocks the
+same way.
 
 ## The loop
 
@@ -108,6 +110,7 @@ docs/
   backlog/                    features, one file per P#  ← written only by /ship
     QUEUE.md                  what's next — the queue and nothing else
   assumptions/                unverified assumptions, one file per A-n — no single pen
+  decisions/                  the product owner's choices, one file per D-n ← written only by /ship
   LESSONS.md                  the expensive failures, each with the rule it bought
   dev_notes/OPEN_IDEAS.md     your raw dump              ← human-only, hook-blocked
 scripts/

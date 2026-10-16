@@ -2,7 +2,8 @@
 
 Five skills, one loop. **triage** sorts an idea in: things we'd *build* become backlog
 entries and go to **implement**, then **verify** in the running app; things we're
-merely *assuming* become open assumptions, which block whatever depends on them. Work
+merely *assuming* become open assumptions, and choices only you can make become open
+decisions; both block whatever depends on them. Work
 ends the same way: **land** the branch on main → **ship** the docs. Each tracking file has exactly one skill that writes it, so nothing goes stale
 or gets double-edited.
 
@@ -12,17 +13,19 @@ whether these skills' own prose still works. See [The checks](#the-checks-behind
 ## The skills
 
 ### /triage — "I have an idea"
-Sorts a raw idea into the backlog or the decisions register, and drafts the entry.
+Sorts a raw idea into the backlog, the assumptions register or the decisions register,
+and drafts the entry.
 Writes nothing until you approve.
 
 ```
 /triage add a sound when an item is placed
 /triage I think the API caps us at 100 req/min
+/triage should exports count toward the disk cap?
 /triage groom                  ← re-check blockers, sweep resolved assumptions, spot what's about to block
 triage the dev notes
 ```
 
-→ You get: feature or **open assumption**? already tracked? + a ready draft. Approve it
+→ You get: feature, **assumption** or **decision**? already tracked? + a ready draft. Approve it
 and /ship writes it in.
 
 **Groom mode** is the other half. The schema check *detects* rot — stale entries,
@@ -72,8 +75,9 @@ land this branch
 
 ### /ship — "sync the docs"
 The pen for the tracked docs — nothing else writes the backlog (`docs/backlog/`),
-BUILD_ORDER.md, or ARCHITECTURE.md, and it writes them **on main only**. Flips statuses
-(claims + terminal), records assumption resolutions and sweeps what they unblocked,
+the decisions register (`docs/decisions/`), BUILD_ORDER.md, or ARCHITECTURE.md, and it
+writes them **on main only**. Flips statuses (claims + terminal), records the decisions
+you take and assumption resolutions and sweeps what they unblocked,
 refreshes the queue (`docs/backlog/QUEUE.md`), writes approved /triage drafts in as new
 entry files. Usually runs as /land's last step.
 
@@ -82,6 +86,7 @@ entry files. Usually runs as /land's last step.
 mark P5 partial — first milestone landed
 yes, ship P5                   ← your acceptance; the only way an entry reaches shipped
 resolve A-3 — the real limit is 40/min
+we decided D-1: exports count toward the cap
 ```
 
 It will *propose* spec changes to you but never edit them — those are yours.
@@ -94,7 +99,9 @@ git, an uncommitted tree, a spike that found an answer but didn't record it, a
 resolution nobody swept). Start rather than end, because a session that crashed or was
 just closed never runs an end-of-session step.
 
-The audit computes; the session and you decide what to do about each finding.
+The audit computes; the session and you decide what to do about each finding. Below
+the findings it lists every open decision waiting on you, with what it holds back —
+not a finding, since nothing was left dangling, but the questions only you can unblock.
 
 ### History — `npm run history [P#]`
 What happened to an entry, read from git: each commit that names the ID in its subject
@@ -163,6 +170,13 @@ honest limits are in [evals/README.md](../evals/README.md).
       A-n's Resolution + sweeps what it unblocked
 ```
 
+**A choice only you can make:**
+```
+/triage <choice>  →  D-n registered (options, waiting_on: user)  →  blocks what depends on it
+   →  every session's audit lists it  →  you decide  →  /ship records Decided / Why /
+      leads_to  →  the P# it leads to is built
+```
+
 **Parallel sessions** (2–3 at once):
 
 - **One session = one branch = one worktree.** The main checkout belongs to whichever
@@ -188,7 +202,7 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 
 | File | Only writer | Where |
 |---|---|---|
-| `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship | **main only** |
+| `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `docs/decisions/`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship (you decide; it records) | **main only** |
 | `docs/assumptions/` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
 | `src/`, `tests/` | /implement | branch |

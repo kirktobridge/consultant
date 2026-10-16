@@ -63,11 +63,12 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 |---|---|---|
 | `P#` | product backlog IDs | `docs/backlog/`, `scripts/entries.mjs`, all skills, schema check |
 | `A-n` | load-bearing assumptions nobody has verified | `docs/assumptions/`, `scripts/entries.mjs`, schema check |
+| `D-n` | the product owner's decisions | `docs/decisions/`, `scripts/entries.mjs`, schema check, session audit |
 | `L#` | lessons | LESSONS.md |
 | `docs/SPEC.md` | your human-owned source of truth | blocklist, /ship, /implement |
 | `main` | integration branch | /land, /implement, session-audit, history |
 
-Keep `P#` and `A-n` **globally unique** — the schema check enforces it, and the
+Keep `P#`, `A-n` and `D-n` **globally unique** — the schema check enforces it, and the
 cross-pointers (`depends_on: A-3`, `resolves: A-3`) are unparseable without it.
 
 ## Step 3 — seed the open-decisions register

@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature or an assumption, and draft the backlog entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open assumptions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
+description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature, an assumption or a decision, and draft the entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open assumptions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
 ---
 
 # Triage — idea intake & classification
@@ -14,7 +14,7 @@ classification + draft + which skill should write it.
 - [docs/dev_notes/OPEN_IDEAS.md](../../../docs/dev_notes/OPEN_IDEAS.md) — the human's
   raw dump. **Read-only** (edit-guard enforces it) and explicitly not a source of
   truth: ideas in it may already be shipped, deferred, or dead. Always check the
-  backlog and the decisions register (step 2's search) before drafting — don't
+  backlog and the assumptions and decisions registers (step 2's search) before drafting — don't
   re-propose what exists.
 - Ideas raised in conversation, code review, or the fallout of a build.
 
@@ -22,7 +22,8 @@ classification + draft + which skill should write it.
 
 One question routes everything:
 
-> **Is this something we'd *build*, or something we're currently *assuming*?**
+> **Is this something we'd *build*, something we're currently *assuming*, or
+> something the product owner has to *choose*?**
 
 - **Something to build** → **product feature**. Draft with the product shape
   [docs/backlog/README.md](../../../docs/backlog/README.md) documents — a header (title
@@ -36,10 +37,18 @@ One question routes everything:
   has hit, "users won't do Y". Nothing ships; there's a fact to establish. Draft an assumption,
   and **name the entries it blocks** — an assumption nobody depends on is trivia; an assumption with
   dependents is a gate.
+- **A choice the product owner makes between real options** → a **decision** (`D-n`,
+  [docs/decisions/](../../../docs/decisions/README.md)). The tell: no observation
+  settles it, because both answers are true of the world — what's missing is someone
+  choosing. It needs at least two named `## Options` and what it is `waiting_on:` (IDs
+  it waits on, and/or `user`). If the user can answer on the spot, ask, and draft it
+  decided. An open decision is never spiked: if it waits on the user, ask them; if it
+  waits on a fact, that fact is an assumption and follows its own route.
 - **Both** (a feature resting on an unchecked assumption) → **split it**: the
   assumption becomes an `A-n`; the delivery becomes a product draft whose `depends_on:`
   names it. This pairing is the system's main idiom — it's how a feature stops shipping
-  on a premise nobody checked.
+  on a premise nobody checked. A feature that can't be built until a choice is made
+  splits the same way, into a `D-n` and a feature whose `depends_on:` names it.
 
 ## Drafting `Accept:` — what "right" means, before the build
 
@@ -72,10 +81,10 @@ whether X" is usually an **assumption**, not a feature. If you can't name a conc
 would settle it (its `How to verify`), you don't have an assumption either — you have a wish. Say
 so rather than filing it.
 
-**Blocked-not-rejected:** an idea that's a fine feature but rests on an open assumption is
-drafted *and* marked `depends_on: A-n`, not rejected. It sits in the pool legitimately
-— the schema check permits that deliberately. What it forbids is that entry appearing
-in the queue or going `in-progress` while the assumption is open. Say this in the output, so
+**Blocked-not-rejected:** an idea that's a fine feature but rests on an open assumption
+or decision is drafted *and* marked `depends_on: A-n` / `D-n`, not rejected. It sits in
+the pool legitimately — the schema check permits that deliberately. What it forbids is
+that entry appearing in the queue or going `in-progress` while that is open. Say this in the output, so
 the user knows the entry exists and where it's allowed to sit.
 
 ## Steps
@@ -83,7 +92,7 @@ the user knows the entry exists and where it's allowed to sit.
 2. Check for an existing entry:
    ```
    node scripts/grep-checked.mjs -i --control '^status:' '<keyword>' \
-     docs/backlog docs/assumptions
+     docs/backlog docs/assumptions docs/decisions
    ```
    If one exists, the output is "already tracked as `<ID>` — update it via its owner"
    — not a duplicate draft. Use the checked search rather than a bare grep: a false
@@ -92,16 +101,18 @@ the user knows the entry exists and where it's allowed to sit.
    [L1](../../../docs/LESSONS.md)). **Exit 2 means you learned nothing** — re-run
    before concluding the idea is new.
 3. Draft the entry in the destination's template, including where it slots (epic for a
-   feature; nothing to slot for an assumption — the register isn't ordered).
+   feature; nothing to slot for an assumption or a decision — those registers aren't
+   ordered).
 4. Present draft + destination to the user; on approval, hand to **/ship** to write it.
    (An assumption draft also goes to /ship as the pen, though the register has no single
-   writer — only an enforced shape.)
+   writer — only an enforced shape. A decision's pen is /ship alone.)
 
 ## Groom mode (`/triage groom`, "groom the backlog")
 
 The schema check *detects* rot and then waits for someone to care. This mode is the
 someone. It reads, proposes, and writes nothing — same contract as the rest of the
-skill. Run it periodically, and always after an assumption resolves.
+skill. Run it periodically, and always after an assumption resolves or a decision is
+taken.
 
 1. **Re-check every blocked item's blocker.** For each entry with a `depends_on:`,
    resolve each ID's current status. A dependency that has gone terminal since the
@@ -110,7 +121,10 @@ skill. Run it periodically, and always after an assumption resolves.
 2. **Sweep assumption resolutions.** For each assumption that flipped to `verified`/`refuted` since the
    last groom, list every entry naming it. A `refuted` assumption is the urgent case: entries
    resting on it are not merely unblocked, they may be **void or wrong**, and anything
-   already shipped on that assumption needs a fresh look.
+   already shipped on that assumption needs a fresh look. **Decisions waiting on the
+   user** are the user's own queue: list each open `D-n` whose `waiting_on:` includes
+   `user`, with the entries it holds back. A decision taken unblocks its dependents the
+   same way a verified assumption does.
 3. **Spot the assumptions about to bite.** Cross-reference every `open` assumption against
    the queue (`docs/backlog/QUEUE.md`) and the entries just behind it. An assumption blocking something at the head of
    the queue is about to stop work; an assumption blocking only entries deep in the pool costs

@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // ── The registers ────────────────────────────────────────────────────────────
 // PORTING: adjust directories and ID namespaces; keep the shapes.
 
-const ID = /^(P\d+|A-\d+)$/;
+const ID = /^(P\d+|A-\d+|D-\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Value types. Each returns an error message, or null when the value is good.
@@ -48,6 +48,11 @@ const TYPES = {
     if (v === '—') return null;
     const bad = v.split(/,\s*/).filter((x) => !ID.test(x));
     return bad.length ? `not a comma-separated ID list (or —): "${v}" — prose belongs in the body` : null;
+  },
+  // What an open decision waits on: IDs, and/or `user` for the product owner.
+  waits: (v) => {
+    const bad = v.split(/,\s*/).filter((x) => x !== 'user' && !ID.test(x));
+    return bad.length ? `not a comma-separated list of IDs and/or \`user\`: "${v}" — prose belongs in the body` : null;
   },
 };
 
@@ -82,7 +87,23 @@ export const ASSUMPTIONS = {
   },
 };
 
-export const REGISTERS = [BACKLOG, ASSUMPTIONS];
+export const DECISIONS = {
+  dir: 'docs/decisions',
+  readme: 'docs/decisions/README.md',
+  idPattern: /^D-\d+$/,
+  keys: {
+    id: 'id',
+    title: 'text',
+    status: 'word',
+    raised: 'date',
+    waiting_on: 'waits',
+    decided: 'date',
+    leads_to: 'ids',
+    superseded_by: 'ids',
+  },
+};
+
+export const REGISTERS = [BACKLOG, ASSUMPTIONS, DECISIONS];
 
 /** Files in a register directory that are not entries. */
 const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);

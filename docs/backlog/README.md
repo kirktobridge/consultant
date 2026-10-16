@@ -4,7 +4,8 @@ Curated pool of everything we intend to **build** — the shippable, user-facing
 the project. One file per entry (`P#.md`) in this directory. Its sibling is
 [../assumptions/](../assumptions/README.md), which holds what we're currently *assuming*:
 this register is work, that one is doubt. An idea that's really "we should find out
-whether X" belongs there, not here.
+whether X" belongs there, not here. A choice only the product owner can make belongs in
+[../decisions/](../decisions/README.md).
 
 A backlog is a **prioritized pool, not a committed plan** — its dependency-ready head is
 [QUEUE.md](QUEUE.md) (the authoritative "what's next to build"); the shipped build
@@ -63,7 +64,7 @@ and only these keys exist:
 | `status` | a word from the vocab above |
 | `epic` | the group it belongs to (below) |
 | `drafted` | `YYYY-MM-DD` — when its claims were last established; required while open |
-| `depends_on` | comma-separated `P#` / `A-n`, or `—` |
+| `depends_on` | comma-separated `P#` / `A-n` / `D-n`, or `—` |
 | `resolves` | the `A-n` a spike answers (see [../assumptions/](../assumptions/README.md)) |
 | `shipped` | `YYYY-MM-DD` the user accepted it |
 
@@ -82,7 +83,7 @@ would know it was built right, in their words. The schema check enforces the *co
 (so the field can't degrade into one unfalsifiable sentence), never the wording — /ship
 copies it verbatim, and a criterion that looks wrong is the user's to rewrite.
 
-An entry may sit here `proposed` while it depends on an **open** `A-n` — that's how a
+An entry may sit here `proposed` while it depends on an **open** `A-n` or `D-n` — that's how a
 blocked idea gets filed rather than lost. It may **not** appear in the queue or go
 `in-progress` in that state; the schema check enforces the line.
 
