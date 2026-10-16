@@ -40,16 +40,17 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
    **R2 is what's next** — /land reports per criterion and `shipped` becomes a flip
    the user authorizes. Still the highest payoff: the loop doesn't close back to the
    product owner until R2 does.
-2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
+2. **P14** — test subprocesses inherit git's hook environment. Small, and it makes the
+   commit gate reject correct work on every `git commit -a` — a gate that is wrong
+   teaches `--no-verify`.
+3. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
    after.
-3. **P5** — defects as a third intake class. Extends the same schema-check surface P4
-   touches, so it goes third by preference rather than by dependency.
-4. **P6** — split "merged" from "released". Independent of the others; available to
+4. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+   touches, so it follows P9 by preference rather than by dependency.
+5. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
-5. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
-   because nothing else waits on it.
 
 Note what is *absent*: P7 is the higher-payoff idea of the two remaining, and is
 deliberately not queued — it depends on P4 and P6, so the queue would be claiming a
@@ -298,6 +299,30 @@ user-facing, but a silent failure in it is invisible everywhere else.
 - **Notes:** Found during P4 R1. Not live here since this repo consolidated on `main`
   (2026-10-15); a portability defect for porters. Filed as a feature because P5's
   defect class isn't built.
+
+### P14 — Test subprocesses inherit git's hook environment
+- **Status:** proposed
+- **Drafted:** 2026-10-15
+- **Value:** the pre-commit gate stops rejecting good commits. Under `git commit -a`,
+  git hands the hook `GIT_INDEX_FILE`; the suite's subprocesses inherit it, so fixture
+  repos commit against the outer repo's index and 3 tests fail on correct code. A gate
+  that is red for the wrong reason teaches people `--no-verify`, which then skips it
+  when it's right.
+- **Scope:**
+  - In: every subprocess the tests start (fixture git calls, the scripts they run
+    against fixture repos, the hook runs) gets an environment with git's `GIT_*`
+    variables removed — once, in the shared test helper, not per call site.
+  - In: a regression test that runs a fixture with `GIT_INDEX_FILE` set.
+  - Out: the scripts' own runtime behaviour outside tests.
+- **Accept:**
+  - `GIT_INDEX_FILE=.git/index.fake npm test` passes, same as without it.
+  - `git commit -a` on a change that leaves the suite green is accepted by the
+    pre-commit hook.
+  - Removing the env stripping makes the new regression test fail — it bites.
+- **Depends on:** —
+- **Notes:** Found during P4 R2; *verified* by reproduction (`GIT_INDEX_FILE` set →
+  5 failures across process and session-audit tests; unset → all pass). Filed as a
+  feature because P5's defect class isn't built.
 
 ---
 
