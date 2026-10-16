@@ -293,7 +293,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 ---
 
 ### P18 — Retire /checkpoint and the handoff file; history comes from git
-- **Status:** proposed
+- **Status:** in-progress
 - **Drafted:** 2026-10-16
 - **Value:** sessions end when the work ends, with no closing ritual and no file to
   manage. The dangling-state audit still runs, at the start of every session,
