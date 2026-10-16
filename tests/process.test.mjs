@@ -196,6 +196,25 @@ describe('the entry lookup returns the whole contract', () => {
   });
 });
 
+describe('the suite is immune to the hook environment that runs it', () => {
+  // The pre-commit hook runs this suite under whatever git exported to it, and
+  // `git commit -a` exports GIT_INDEX_FILE. Fixture repos inherited it and failed on
+  // correct code — a gate that is red for the wrong reason teaches --no-verify. The
+  // index points into a temp dir, so a regression cannot write into this repo's .git.
+  test('a test file that commits in fixture repos passes with GIT_INDEX_FILE set', () => {
+    const r = spawnSync(process.execPath, ['--test', join(REPO, 'tests', 'session-audit.test.mjs')], {
+      cwd: REPO,
+      encoding: 'utf8',
+      // NODE_TEST_CONTEXT, inherited from this runner, puts the child in nested mode:
+      // it prints nothing and exits 0 whatever happens — a pass that proves nothing.
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined, GIT_INDEX_FILE: join(tempDir(), 'missing', 'index') },
+    });
+    const passed = Number(r.stdout.match(/^ℹ pass (\d+)/m)?.[1] ?? 0);
+    assert.ok(passed > 0, `the child ran no tests, so this proves nothing (L3):\n${r.stdout}${r.stderr}`);
+    assert.equal(r.status, 0, `fixture git inherited GIT_INDEX_FILE:\n${r.stdout.split('\n').filter((l) => /✖/.test(l)).join('\n')}`);
+  });
+});
+
 describe('every skill handoff points at a skill that exists', () => {
   test('skills reference only real skills', () => {
     const bad = [];

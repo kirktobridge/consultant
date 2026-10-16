@@ -16,6 +16,13 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Git exports repo-locating variables to the hooks it runs — under `git commit -a`,
+// GIT_INDEX_FILE points at the outer repo's temporary index. The pre-commit hook runs
+// this suite, every subprocess inherits process.env, and a fixture repo's `git commit`
+// then writes against the wrong index and fails on correct code. Every test file
+// imports this module, so clearing them here, once, covers every spawn.
+for (const k of Object.keys(process.env)) if (k.startsWith('GIT_')) delete process.env[k];
+
 export const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const script = (name) => join(REPO, 'scripts', name);
 
