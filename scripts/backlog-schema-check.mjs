@@ -34,6 +34,11 @@
 //   node scripts/backlog-schema-check.mjs --all     same, explicit
 //   node scripts/backlog-schema-check.mjs --fields  print every required section and
 //                                                   header key as JSON (tests walk them)
+//   node scripts/backlog-schema-check.mjs --graph   what blocks what: open entries with no
+//                                                   open blocker (most-unblocking first),
+//                                                   the chain behind each blocked one, and
+//                                                   prose blockers; add --json for the
+//                                                   contract documented in .claude/GUIDE.md
 //   (PostToolUse hook)                              reads hook JSON on stdin; exits
 //                                                   0 fast unless the edited file is in
 //                                                   a register, else checks and exits 2
@@ -128,7 +133,15 @@ if (argv.includes('--fields')) {
   ]))));
   process.exit(0);
 }
-const explicit = argv.includes('--all');
+// `--graph`: what blocks what, read from the same parse the checks use (see Graph,
+// below). It is an explicit run, never a hook one.
+const graphMode = argv.includes('--graph');
+const jsonMode = argv.includes('--json');
+if (jsonMode && !graphMode) {
+  console.error('backlog-schema: --json goes with --graph');
+  process.exit(2);
+}
+const explicit = argv.includes('--all') || graphMode;
 let hookMode = false;
 let run = explicit || process.stdin.isTTY === true;
 
@@ -469,6 +482,120 @@ if (queueReg && readIf(queueReg.queue) !== null) {
 const all = loaded.flatMap((l) => l.entries.map((e) => e.id).filter(Boolean));
 const dupes = [...new Set(all.filter((id, i) => all.indexOf(id) !== i))];
 if (dupes.length) fail(`duplicate IDs across files: ${dupes.join(', ')}`);
+
+// ── Graph ────────────────────────────────────────────────────────────────────
+//
+// The dependency graph as written, ported from photocull's `doc_check.py --graph` so
+// one renderer can read either repo: the JSON shape is the contract, documented in
+// .claude/GUIDE.md and held to it by tests/graph.test.mjs. Change both together, and
+// bump GRAPH_VERSION when a consumer would break.
+//
+// `from` blocks `to`, and `field` is the header the edge is written in — on `to`, for
+// both fields here. Edges and prose cover every entry as written, closed ones
+// included; `open` says whether the entry's status is an open one in its register.
+// Dangling IDs are left out: they are the checks' to report.
+
+const GRAPH_VERSION = 1;
+const GRAPH_FIELDS = ['depends_on', 'waiting_on'];
+
+function graph() {
+  const entries = [];
+  const edges = [];
+  const prose = [];
+  for (const { reg, entries: es } of loaded) {
+    for (const e of es) {
+      if (!e.id) continue;
+      entries.push({ id: e.id, register: reg.kind, status: e.status, open: reg.open.has(e.status ?? ''), title: e.header.title ?? '' });
+      for (const field of GRAPH_FIELDS) {
+        for (const id of idsOf(e, field)) {
+          if (byId.has(id) && id !== e.id) edges.push({ from: id, to: e.id, field });
+        }
+        // `user` is the one non-ID a header may name (`waiting_on:`): a blocker with
+        // no entry to follow, so it is listed, never chased.
+        const v = e.header[field];
+        if (v && v.split(/,\s*/).includes('user')) prose.push({ id: e.id, field, text: 'user' });
+      }
+    }
+  }
+  return { version: GRAPH_VERSION, entries, edges, prose };
+}
+
+/** The text view of graph(): what can start now, the chain behind what can't, and the prose blockers. */
+function renderGraph(g) {
+  const meta = new Map(g.entries.map((e) => [e.id, e]));
+  const order = new Map(g.entries.map((e, n) => [e.id, n]));
+  const live = new Set(g.entries.filter((e) => e.open).map((e) => e.id));
+  const blockers = new Map([...live].map((i) => [i, []]));
+  const unblocks = new Map([...live].map((i) => [i, []]));
+  for (const { from: a, to: b } of g.edges) {
+    if (live.has(a) && live.has(b) && !blockers.get(b).includes(a)) {
+      blockers.get(b).push(a);
+      unblocks.get(a).push(b);
+    }
+  }
+  const prose = new Map();
+  for (const p of g.prose) if (live.has(p.id)) prose.set(p.id, [...(prose.get(p.id) ?? []), p.text]);
+  const byOrder = (a, b) => order.get(a) - order.get(b);
+
+  // Everything downstream, not just the next hop: unblocking one entry that unblocks
+  // three is worth more than unblocking two dead ends.
+  const downstream = (i) => {
+    const seen = new Set();
+    const todo = [...unblocks.get(i)];
+    while (todo.length) {
+      const j = todo.pop();
+      if (!seen.has(j) && j !== i) { seen.add(j); todo.push(...unblocks.get(j)); }
+    }
+    return [...seen].sort(byOrder);
+  };
+  const tag = (i) => (['proposed', 'open'].includes(meta.get(i).status) ? '' : ` [${meta.get(i).status}]`);
+
+  const ready = [...live].filter((i) => !blockers.get(i).length)
+    .map((i) => [i, downstream(i)])
+    .sort(([a, da], [b, db]) => db.length - da.length || byOrder(a, b));
+  const out = ['Start now (no open blocker), most-unblocking first:'];
+  const w = Math.max(3, ...[...live].map((i) => i.length));
+  for (const [i, down] of ready) {
+    out.push(
+      `  ${i.padEnd(w)}  ` + (down.length ? `unblocks ${down.length} (${down.join(', ')}): ` : '') +
+        meta.get(i).title + tag(i) + (prose.get(i) ?? []).map((t) => `  [waiting on: ${t}]`).join(''),
+    );
+  }
+
+  const chain = (i, depth, seen) => {
+    const pad = '    ' + '   '.repeat(depth);
+    for (const b of blockers.get(i)) {
+      const again = seen.has(b) && (blockers.get(b).length || prose.has(b));
+      out.push(`${pad}<- ${b} (${meta.get(b).status})${again ? ' (chain shown above)' : ''}`);
+      if (!seen.has(b)) { seen.add(b); chain(b, depth + 1, seen); }
+    }
+    for (const t of prose.get(i) ?? []) out.push(`${pad}<- "${t}"`);
+  };
+  const blocked = [...live].filter((i) => blockers.get(i).length).sort(byOrder);
+  out.push(blocked.length ? '\nBlocked, with the chain behind each:' : '\nBlocked: none');
+  for (const i of blocked) {
+    out.push(`  ${i} — ${meta.get(i).title}${tag(i)}`);
+    chain(i, 0, new Set());
+  }
+  const pros = g.prose.filter((p) => live.has(p.id));
+  out.push(pros.length ? '\nBlockers written as prose (no entry to follow; settle them by hand):' : '\nBlockers written as prose: none');
+  for (const p of pros) out.push(`  ${p.id} ${p.field}: ${p.text}`);
+  return out.join('\n');
+}
+
+// The graph prints whatever the check found — a malformed tree still has a graph worth
+// reading — but says so on stderr, since a broken header can drop an edge.
+if (graphMode) {
+  const g = graph();
+  console.log(jsonMode ? JSON.stringify(g, null, 2) : renderGraph(g));
+  if (problems.length) {
+    console.error(
+      `backlog-schema: the check has ${problems.length} violation(s); the graph may be wrong ` +
+        `until they're fixed (npm run check:docs)`,
+    );
+  }
+  process.exit(0);
+}
 
 // ── Report ───────────────────────────────────────────────────────────────────
 //
