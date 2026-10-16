@@ -301,7 +301,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
   defect class isn't built.
 
 ### P14 — Test subprocesses inherit git's hook environment
-- **Status:** proposed
+- **Status:** in-progress
 - **Drafted:** 2026-10-15
 - **Value:** the pre-commit gate stops rejecting good commits. Under `git commit -a`,
   git hands the hook `GIT_INDEX_FILE`; the suite's subprocesses inherit it, so fixture
