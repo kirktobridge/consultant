@@ -15,13 +15,7 @@ developer dump; this register is the curated version. Rules → [../SPEC.md](../
 structure → [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
 Status vocab: `proposed` / `in-progress` (being built this session/branch) / `partial`
-(some milestones shipped) / `shipped` / `released` / `deferred` / `abandoned`.
-
-`shipped` and `released` are two events, in that order. **`shipped`** means the user
-accepted it: merged, and judged against its `Accept:` — it says nothing about whether
-anyone can reach it yet. **`released`** means it is actually live: deployed, reachable
-by its users. Merged-but-unaccepted stays `in-progress`. `released` is optional — a
-project with no deploy step stops at `shipped`, and nothing ever asks for more.
+(some milestones shipped) / `shipped` / `deferred` / `abandoned`.
 
 **Written only by /ship**, on main only. See `.claude/GUIDE.md`.
 
@@ -73,7 +67,6 @@ and only these keys exist:
 | `depends_on` | comma-separated `P#` / `A-n` / `D-n`, or `—` |
 | `resolves` | the `A-n` a spike answers (see [../assumptions/](../assumptions/README.md)) |
 | `shipped` | `YYYY-MM-DD` the user accepted it |
-| `released` | `YYYY-MM-DD` it went live — a `released` entry carries both dates, and this one is never the earlier |
 
 An unknown key, a line that isn't `key: value`, or a value of the wrong type fails the
 check with the file and line. ID lists hold IDs only — *why* something depends on

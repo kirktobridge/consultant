@@ -38,14 +38,6 @@ describe('the clean path', () => {
     assert.equal(r.code, CLEAN, out(r));
     assert.match(r.stdout, /clean \(base main\)/);
   });
-
-  // P6: `released` is optional. A project that never deploys must never be nagged for it.
-  test('shipped entries that were never released still report clean', () => {
-    const { dir } = repo({ backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(1) })] });
-    const r = audit(dir);
-    assert.equal(r.code, CLEAN, out(r));
-    assert.doesNotMatch(r.stdout, /releas/i);
-  });
 });
 
 describe('working tree', () => {
