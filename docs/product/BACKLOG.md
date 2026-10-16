@@ -409,7 +409,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
   report in 38ca310.
 
 ### P16 — Hooks guard the worktree a session is in, not the checkout it launched from
-- **Status:** proposed
+- **Status:** in-progress
 - **Drafted:** 2026-10-15
 - **Value:** human-owned docs stay protected in parallel sessions. In a worktree
   session today, the hooks run main's scripts (OD-7, refuted): anything under
