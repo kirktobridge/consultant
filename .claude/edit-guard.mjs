@@ -44,7 +44,7 @@ function commonDirOf(root) {
  * The checkout of `home`'s repository that contains `filePath` — the main checkout or
  * any linked worktree, nearest first. Falls back to `home`.
  *
- * This exists because the hooks run from wherever the session was launched (OD-7):
+ * This exists because the hooks run from wherever the session was launched (A-7):
  * in a worktree session, `home` is the main checkout, and a worktree under
  * `.claude/worktrees/` is just a subfolder of it. Judged against `home`, a folder
  * pattern like `docs/dev_notes/` never matches the worktree's copy. Checkouts of
