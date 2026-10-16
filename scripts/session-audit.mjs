@@ -26,7 +26,7 @@
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
 import { readFileSync, existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -43,22 +43,41 @@ const DECISIONS = 'docs/OPEN_DECISIONS.md';
 const findings = [];
 const add = (severity, what, action) => findings.push({ severity, what, action });
 
-const git = (cmd) => {
+// Two things break git when a Windows `claude` audits a repo inside WSL
+// (\\wsl.localhost\…), and both read as "not a git repository":
+//   - a shell. execSync runs cmd.exe, which cannot start in a UNC directory and
+//     silently falls back to C:\Windows. execFileSync runs git directly.
+//   - git's ownership check. Windows sees the WSL files as another user's and refuses
+//     the repo. safe.directory=* lifts it for these calls only. That trusts this
+//     repository's git config, which adds nothing: whoever runs this is already
+//     running a script from the same repository.
+// And one that makes it lie rather than fail: Windows has no executable bit, so every
+// committed hook script reads as modified (755 → 644) — a dirty-tree finding at every
+// session start. filemode=false is set on Windows only, so Linux still catches a
+// real mode change.
+const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
+let lastError = '';
+const git = (...args) => {
   try {
-    return execSync(`git ${cmd}`, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  } catch {
+    return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...args], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (e) {
+    lastError = String(e.stderr ?? e.message ?? '').trim();
     return null;
   }
 };
 
-if (git('rev-parse --git-dir') === null) {
-  console.error('session-audit: not a git repository — nothing to audit.');
+if (git('rev-parse', '--git-dir') === null) {
+  // Pass git's own reason on: "not a repository" and "git refused this one" need
+  // different fixes, and one message for both sends the reader after the wrong one.
+  console.error(`session-audit: not a git repository, or git refused it — nothing to audit.${lastError ? `\n  git: ${lastError.split('\n')[0]}` : ''}`);
   process.exit(2);
 }
 
 // The integration branch. Guessing wrong would make every merge-state check lie, so
 // this resolves against branches that actually exist rather than assuming `main`.
-const branches = (git(`for-each-ref --format='%(refname:short)' refs/heads`) || '').split('\n').filter(Boolean);
+const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
 const BASE = baseArg || ['main', 'master', 'trunk'].find((b) => branches.includes(b)) || null;
 if (!BASE) {
   console.error(
@@ -108,7 +127,7 @@ const today = new Date().toISOString().slice(0, 10);
 
 // ── 1. Working tree ──────────────────────────────────────────────────────────
 
-const status = git('status --porcelain') || '';
+const status = git('status', '--porcelain') || '';
 const dirty = status.split('\n').filter(Boolean);
 if (dirty.length) {
   const untrackedCode = dirty
@@ -145,15 +164,17 @@ for (const e of backlog) {
 // last milestone — the user's acceptance, since /land never flips `shipped`) or
 // abandoned (needs clearing), and these look identical from the doc alone.
 
-const unmerged = (git(`branch --no-merged ${BASE} --format='%(refname:short)'`) || '')
+const unmerged = (git('branch', '--no-merged', BASE, '--format=%(refname:short)') || '')
   .split('\n').filter(Boolean);
-const merged = (git(`branch --merged ${BASE} --format='%(refname:short)'`) || '')
+const merged = (git('branch', '--merged', BASE, '--format=%(refname:short)') || '')
   .split('\n').filter(Boolean).filter((b) => b !== BASE);
 
 for (const e of backlog.filter((x) => x.status === 'in-progress')) {
-  const num = e.id.toLowerCase();
-  const onUnmerged = unmerged.some((b) => b.toLowerCase().includes(num));
-  const onMerged = merged.some((b) => b.toLowerCase().includes(num));
+  // A word match, not a substring: `includes('p1')` read feat/p18-… as P1's branch,
+  // which hid an abandoned P1 claim behind any branch whose ID starts with 1.
+  const names = new RegExp(`\\b${e.id}\\b`, 'i');
+  const onUnmerged = unmerged.some((b) => names.test(b));
+  const onMerged = merged.some((b) => names.test(b));
   if (onUnmerged) continue; // legitimately in flight
   if (onMerged) {
     add('warn', `${e.id} is \`in-progress\` but its branch is already merged into ${BASE}.`,
@@ -173,7 +194,7 @@ for (const od of decisions) {
   if (od.status === 'open') continue;
   const res = od.field('Resolution');
   const resolvedToday = res.includes(today);
-  const changedThisSession = (git(`diff ${BASE} --name-only`) || '').includes(DECISIONS);
+  const changedThisSession = (git('diff', BASE, '--name-only') || '').includes(DECISIONS);
   if (!resolvedToday && !changedThisSession) continue;
   const dependents = backlog.filter((e) => new RegExp(`\\b${od.id}\\b`).test(e.field('Depends on')));
   if (dependents.length === 0) continue;

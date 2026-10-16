@@ -104,6 +104,15 @@ describe('claims that no longer match reality', () => {
     assert.match(r.stdout, /a stale claim is worse than no claim/);
     assert.match(r.stdout, /`shipped` once the user accepts it/);
   });
+
+  test('a branch for a longer ID does not hide an abandoned claim', () => {
+    // The check once matched by substring, so feat/p18-… counted as P1's branch.
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P18')] });
+    g.checkout('feat/p18-other', true);
+    g.commitAll('work');
+    g.checkout('main');
+    assert.match(audit(dir).stdout, /P1 is `in-progress` but no branch names it/);
+  });
 });
 
 describe('spikes in flight', () => {
@@ -244,6 +253,27 @@ describe('an audit that could not run is NOT a clean audit (L3)', () => {
     assert.equal(r.code, CANNOT_AUDIT);
     assert.match(r.stderr, /not a git repository/);
     assert.doesNotMatch(out(r), /clean/);
+  });
+
+  test('when git refuses a repo, its own reason is passed on', () => {
+    // A Windows git refusing a WSL repo ("dubious ownership") used to read as "not a
+    // git repository", which sends the reader after the wrong fix. A .git file
+    // pointing nowhere is a portable way to make git refuse with a reason of its own.
+    const dir = tempDir();
+    writeFileSync(join(dir, '.git'), 'gitdir: /nonexistent/gitdir\n');
+    const r = audit(dir);
+    assert.equal(r.code, CANNOT_AUDIT);
+    assert.match(r.stderr, /\n  git: fatal: .*nonexistent/);
+  });
+
+  test('git is run without a shell — cmd.exe cannot start in a WSL (UNC) directory', () => {
+    // Under a Windows `claude`, execSync ran git from C:\Windows and every check
+    // came back "not a git repository". The fix is execFileSync; hold it in place.
+    for (const name of ['session-audit.mjs', 'history.mjs']) {
+      const src = readFileSync(join(REPO, 'scripts', name), 'utf8');
+      assert.doesNotMatch(src, /import\s*\{[^}]*\bexecSync\b/, `${name} shells out to git`);
+      assert.match(src, /safe\.directory=\*/, `${name} must lift git's ownership check (Windows git on WSL files)`);
+    }
   });
 
   test('a repo with no recognisable integration branch exits 2 and says how to fix it', () => {
