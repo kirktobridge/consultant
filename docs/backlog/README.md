@@ -100,7 +100,7 @@ ranks on every refresh by one rule: the dependency-ready entry that unblocks the
 open entries goes first, counted transitively through the `depends_on` graph. Ties keep
 their existing order, so an entry already in the queue stays ahead of a newcomer. Each
 item's *why* names what it unblocks. The user can still overrule any ranking. Until
-P23 lands, this ranking is *asserted*, not checked.
+P24 lands, this ranking is *asserted*, not checked; P24 generates it from the graph.
 
 ## Epics
 
