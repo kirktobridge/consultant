@@ -70,6 +70,7 @@ export const BACKLOG = {
     depends_on: 'ids',
     resolves: 'ids',
     shipped: 'date',
+    released: 'date',
   },
 };
 
