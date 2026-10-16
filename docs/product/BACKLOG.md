@@ -36,23 +36,19 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P4** — R0, R1 and R2 (the acceptance handshake) have all landed; R2 landed
-   2026-10-15 (merge 9517b50). **Awaiting your acceptance** — the entry stays
-   `in-progress` until you say "ship it" against the per-criterion report.
-2. **P14** — test subprocesses inherit git's hook environment. Its single milestone
-   landed 2026-10-15 (merge 8fd218c). **Awaiting your acceptance** — the entry stays
-   `in-progress` until you say "ship it" against the per-criterion report.
-3. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
+1. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
    after.
-4. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
    touches, so it follows P9 by preference rather than by dependency.
-5. **P6** — split "merged" from "released". Independent of the others; available to
+3. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
+4. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
+   because nothing else waits on it.
 
-Note what is *absent*: P7 is the higher-payoff idea of the two remaining, and is
-deliberately not queued — it depends on P4 and P6, so the queue would be claiming a
+Note what is *absent*: P7 is a high-payoff idea, and is
+deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
 readiness it doesn't have. (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
@@ -66,7 +62,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
      fields. -->
 
 ### P4 — Acceptance criteria, and the acceptance handshake
-- **Status:** in-progress
+- **Status:** shipped
 - **Drafted:** 2026-08-03
 - **Value:** you say what "right" means before the build, in your own words, and the
   loop closes by reporting against those words. Today it closes without you: the agent
@@ -91,6 +87,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
     than summarising the diff.
   - No entry reaches `shipped` without me saying so.
 - **Depends on:** —
+- **Shipped:** 2026-10-15 — accepted by the user against the R2 per-criterion report; criteria 1–3 observed, criterion 4 accepted *not observed* (the eval was deliberately not run).
 - **Notes:** R0 landed as the first claimant of the entry-shape/schema-check surface, so
   **P5** now *extends* that checker rather than building it. R1 landed 2026-10-15:
   /implement and /verify now consume Accept, and both read entries heading-to-heading
@@ -183,7 +180,8 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   - It names what is in flight and how long it has been there.
   - It names what is blocked and which assumption is blocking it.
   - Running it leaves every tracked file unchanged.
-- **Depends on:** P4, P6, P11 — none terminal, so this entry is *blocked-not-rejected*. It
+- **Depends on:** P4, P6, P11 — P4 shipped 2026-10-15; P6 and P11 are not terminal, so
+  this entry is still *blocked-not-rejected*. It
   reports on acceptance state and released-vs-merged. P4's R0 gave the criteria a place
   to live, but nothing records whether one was *met* until P4 R1/R2; released-vs-merged
   doesn't exist at all. It stays in the pool legitimately and may not enter `## Next up`
@@ -303,7 +301,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
   defect class isn't built.
 
 ### P14 — Test subprocesses inherit git's hook environment
-- **Status:** in-progress
+- **Status:** shipped
 - **Drafted:** 2026-10-15
 - **Value:** the pre-commit gate stops rejecting good commits. Under `git commit -a`,
   git hands the hook `GIT_INDEX_FILE`; the suite's subprocesses inherit it, so fixture
@@ -322,6 +320,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
     pre-commit hook.
   - Removing the env stripping makes the new regression test fail — it bites.
 - **Depends on:** —
+- **Shipped:** 2026-10-15 — accepted by the user; all three criteria observed.
 - **Notes:** Found during P4 R2; *verified* by reproduction (`GIT_INDEX_FILE` set →
   5 failures across process and session-audit tests; unset → all pass). Filed as a
   feature because P5's defect class isn't built. **Landed 2026-10-15** (merge 8fd218c),
