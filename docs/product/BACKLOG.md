@@ -36,10 +36,9 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P4** — R0 (the `Accept:` field) and R1 (/implement and /verify consume it) landed;
-   **R2 is what's next** — /land reports per criterion and `shipped` becomes a flip
-   the user authorizes. Still the highest payoff: the loop doesn't close back to the
-   product owner until R2 does.
+1. **P4** — R0, R1 and R2 (the acceptance handshake) have all landed; R2 landed
+   2026-10-15 (merge 9517b50). **Awaiting your acceptance** — the entry stays
+   `in-progress` until you say "ship it" against the per-criterion report.
 2. **P14** — test subprocesses inherit git's hook environment. Small, and it makes the
    commit gate reject correct work on every `git commit -a` — a gate that is wrong
    teaches `--no-verify`.
@@ -97,7 +96,10 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   /implement and /verify now consume Accept, and both read entries heading-to-heading
   (the old `grep -A12` cut off mid-Scope on longer entries, so Accept never reached the
   builder — a process test runs each skill's lookup verbatim against the real backlog).
-  **R2 remains:** /land still flips `shipped` without the user saying yes. Per-criterion
+  **R2 landed 2026-10-15** (merge 9517b50): /land reads the per-criterion report from
+  the feature commit, runs /ship for `partial` / Next up only, and asks "Ship it?";
+  `shipped` is the user's flip. **Awaiting the user's acceptance** — criterion (4) is
+  not observed (its /eval cases were not run, at the user's request). Per-criterion
   at R1 land: (1) observed; (2) observed *as worded*, but a loophole was found — one
   unfalsifiable sentence split across two bullets passes the 2–4 count, so the check
   holds the count, not falsifiability; (3) observed once, in the R1 session; (4) not
