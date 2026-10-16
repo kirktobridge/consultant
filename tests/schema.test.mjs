@@ -454,6 +454,57 @@ describe('decisions — choices only the product owner makes (P10)', () => {
   });
 });
 
+// `shipped` is the user's acceptance; `released` is the later event of it going live.
+// The second is optional, so the checks must hold the order without ever demanding it.
+describe('released — downstream of shipped, never required (P6)', () => {
+  const released = (over = {}) => P('P2', { status: 'released', shipped: daysAgo(3), released: daysAgo(1), ...over });
+
+  test('a project with no deploy step passes with nothing ever released', () => {
+    passes(project({ backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(1) })] }));
+  });
+
+  test('a released entry carrying both dates passes', () => {
+    passes(project({ backlog: [P('P1'), released()] }));
+  });
+
+  test('released without the acceptance date fails: it skipped `shipped`', () => {
+    fails(project({ backlog: [P('P1'), released({ shipped: null })] }), /released P2 has no `shipped:` in the header/);
+  });
+
+  test('released without its own date fails', () => {
+    fails(project({ backlog: [P('P1'), released({ released: null })] }), /released P2 has no `released:` in the header/);
+  });
+
+  test('released before it shipped fails: release follows acceptance', () => {
+    fails(
+      project({ backlog: [P('P1'), released({ shipped: daysAgo(1), released: daysAgo(3) })] }),
+      /P2 released .*, before it shipped .*never precedes it/,
+    );
+  });
+
+  test('a release date on an entry that is not released fails', () => {
+    fails(
+      project({ backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(3), released: daysAgo(1) })] }),
+      /P2 is `shipped` but carries `released:`/,
+    );
+  });
+
+  test('released is terminal: it cannot sit in the queue', () => {
+    fails(project({ backlog: [P('P1'), released()], nextUp: ['P2'] }), /Next-up P2 is terminal \("released"\)/);
+  });
+
+  test('a decision leading to a released feature passes: the consequence landed', () => {
+    passes(project({ backlog: [P('P1'), released()], decisions: [decidedD('D-1', { leadsTo: 'P2' })] }));
+  });
+
+  test('a released spike whose assumption is still open fails, as a shipped one does', () => {
+    fails(
+      project({ backlog: [P('P1'), released({ resolves: 'A-1' })], assumptions: [A('A-1')] }),
+      /P2 shipped and resolves A-1, but A-1 is still `open`/,
+    );
+  });
+});
+
 describe('a moved assumption is a forwarding address (P10)', () => {
   const moved = (to) => A('A-1', { status: 'moved', resolved: daysAgo(1), movedTo: to });
 

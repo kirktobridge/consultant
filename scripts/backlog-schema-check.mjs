@@ -58,7 +58,13 @@ const REGISTERS = [
     ...BACKLOG,
     kind: 'product',
     open: new Set(['proposed', 'in-progress', 'partial']),
-    terminal: new Set(['shipped', 'deferred', 'abandoned']),
+    terminal: new Set(['shipped', 'released', 'deferred', 'abandoned']),
+    // Terminal statuses where the work reached its owner, as opposed to being dropped.
+    // `released` is downstream of `shipped` (accepted), never instead of it: an entry
+    // only goes live after the user accepted it, so it owes both dates. Optional —
+    // a project with no deploy step simply never uses it, and nothing asks for it.
+    landed: new Set(['shipped', 'released']),
+    onStatus: { released: { keys: ['shipped', 'released'], sections: [] } },
     // Body sections every entry carries, and those only *open* entries carry.
     // NB: product `Scope` means "what's in, what's out" — the unit /implement
     // builds against. Don't confuse it with a measurement's context.
@@ -402,6 +408,11 @@ for (const { reg: b, entries } of loaded) {
         if (!e.header[key]) fail(`${e.file}: open ${e.id} has no \`${key}:\` in the header`);
       }
     }
+    // A release date is the claim "this is live"; on any other status it contradicts
+    // the status line, and a reader of either one is misled.
+    if (b.landed?.has('released') && e.header.released && e.status !== 'released') {
+      fail(`${e.file}: ${e.id} is \`${e.status}\` but carries \`released:\` — only a released entry has a release date`);
+    }
     const owes = b.onStatus?.[e.status ?? ''];
     if (!owes) continue;
     for (const key of owes.keys) {
@@ -416,6 +427,13 @@ for (const { reg: b, entries } of loaded) {
         fail(`${e.file}: ${e.id} is moved, but \`moved_to:\` must name the entry that is its new home`);
       }
     }
+    if (e.status === 'released' && e.header.released && e.header.shipped &&
+        e.header.released < e.header.shipped) {
+      fail(
+        `${e.file}: ${e.id} released ${e.header.released}, before it shipped ${e.header.shipped} — ` +
+          `\`released\` follows the user's acceptance, never precedes it.`,
+      );
+    }
     if (e.status === 'superseded' && e.header.superseded_by) {
       const by = idsOf(e, 'superseded_by');
       if (!by.length || by.some((id) => !/^D-/.test(id))) {
@@ -425,7 +443,7 @@ for (const { reg: b, entries } of loaded) {
     if (e.status === 'decided') {
       for (const id of idsOf(e, 'leads_to')) {
         const t = byId.get(id);
-        if (t && isTerminal(t) && t.status !== 'shipped') {
+        if (t && isTerminal(t) && !regOf(t).landed?.has(t.status)) {
           fail(
             `${e.file}: ${e.id} leads to ${id}, which is \`${t.status}\` — the decision's ` +
               `consequence was dropped. Supersede ${e.id}, or repoint \`leads_to:\` at what ` +
@@ -457,7 +475,7 @@ for (const { reg: b, entries } of loaded) {
         );
       }
       // Spike shipped, assumption still open: the answer never made it back.
-      if (e.status === 'shipped' && assumption.status === 'open') {
+      if (b.landed?.has(e.status) && assumption.status === 'open') {
         fail(
           `${e.file}: ${e.id} shipped and resolves ${aId}, but ${aId} is still \`open\` — ` +
             `write what the spike found into its **Resolution**, then sweep the entries ` +

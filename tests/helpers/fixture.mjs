@@ -62,6 +62,7 @@ export function P(id, over = {}) {
     dependsOn: [],
     resolves: null,
     shipped: null,
+    released: null,
     notes: null,
     ...over,
   };
@@ -143,6 +144,7 @@ const renderP = (e) =>
       key('depends_on', e.dependsOn.length ? e.dependsOn.join(', ') : '—'),
       key('resolves', e.resolves),
       key('shipped', e.shipped),
+      key('released', e.released),
     ],
     [section('Value', e.value), section('Scope', e.scope), list('Accept', e.accept), section('Notes', e.notes)],
   );
@@ -201,7 +203,7 @@ const renderD = (d) =>
 export function renderFiles({ backlog = [P('P1')], assumptions = [], decisions = [], nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
-      '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
+      '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `released` / `deferred` / `abandoned`.\n',
     'docs/backlog/QUEUE.md':
       '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
   };
