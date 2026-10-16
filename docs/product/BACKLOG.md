@@ -36,10 +36,10 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P9** — anchor the field probes. Landed on main 2026-10-16; `in-progress` until
-   you accept it.
-2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
-   touches, so it follows P9 by preference rather than by dependency.
+1. **P20** — entries as files, the queue in its own file. Ahead of P5 and P6 because
+   both add backlog fields that P20 would otherwise have to migrate; P10 depends on it.
+2. **P5** — defects as a third intake class. Extends the schema-check surface, so it
+   follows P20 by preference rather than by dependency.
 3. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
 4. **P8** — a review step in the loop. Placement, not construction, so it's cheap;
@@ -357,7 +357,7 @@ The suite's own tooling — the checks the skills orient off. Work here is not
 user-facing, but a silent failure in it is invisible everywhere else.
 
 ### P9 — Anchor the field probes, and decide about non-entry headings
-- **Status:** in-progress
+- **Status:** shipped
 - **Drafted:** 2026-10-16
 - **Value:** two silent-failure classes leave the keystone check. An entry that
   *describes* a field stops being read as *carrying* it, and a prose section
@@ -386,6 +386,11 @@ user-facing, but a silent failure in it is invisible everywhere else.
   - A genuinely malformed entry heading (an ID with no em-dash) is still
     reported — the parser must not go quiet to achieve the above.
 - **Depends on:** —
+- **Shipped:** 2026-10-16 — accepted by the user; all four criteria observed. Accepted
+  with two known limits: an indented `- **Field:**` sub-bullet still reads as the
+  field, and a section heading whose first word has a digit is reported as an entry.
+  Merge ae27a00; per-criterion report in 2ee863a's message. The remaining instances
+  of the class are held by P20.
 - **Notes:** found mid-build during P4 R0, which fixed the `Accept` probe only
   and left a test as the idiom. Severity is not uniform — rank `Depends on:`
   first: it drives the OD-blocking gate, and `labelled` takes the *first* match,
