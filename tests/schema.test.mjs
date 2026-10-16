@@ -454,6 +454,48 @@ describe('decisions — choices only the product owner makes (P10)', () => {
   });
 });
 
+describe('a moved assumption is a forwarding address (P10)', () => {
+  const moved = (to) => A('A-1', { status: 'moved', resolved: daysAgo(1), movedTo: to });
+
+  test('moved to an existing entry passes, and the stub stays countable', () => {
+    passes(project({ assumptions: [moved('D-1')], decisions: [D('D-1')] }));
+  });
+
+  test('moved with no `moved_to:` fails', () => {
+    fails(project({ assumptions: [moved(null)] }), /moved A-1 has no `moved_to:`/);
+  });
+
+  test('moved to an entry that does not exist fails', () => {
+    fails(project({ assumptions: [moved('D-4')] }), /A-1 moved_to D-4, which has no entry/);
+  });
+
+  test('moved to itself, or to nothing, fails', () => {
+    fails(project({ assumptions: [moved('A-1')] }), /`moved_to:` must name the entry that is its new home/);
+    fails(project({ assumptions: [moved('—')] }), /`moved_to:` must name the entry that is its new home/);
+  });
+
+  test('an open entry still depending on a moved assumption fails, even parked in the pool', () => {
+    fails(
+      project({
+        backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+        assumptions: [moved('D-1')],
+        decisions: [D('D-1')],
+      }),
+      /P2 depends on A-1, which was moved to D-1 — depend on its new home instead/,
+    );
+  });
+
+  test('a shipped entry that depended on it before the move is history, not a failure', () => {
+    passes(
+      project({
+        backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(30), dependsOn: ['A-1'] })],
+        assumptions: [moved('D-1')],
+        decisions: [D('D-1')],
+      }),
+    );
+  });
+});
+
 describe('identity and ID hygiene', () => {
   test('an ID outside its register namespace fails', () => {
     fails(project({ backlog: [P('P1')], assumptions: [A('P5')] }), /docs\/assumptions\/P5\.md: ID out of namespace: P5/);

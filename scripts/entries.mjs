@@ -84,6 +84,7 @@ export const ASSUMPTIONS = {
     raised: 'date',
     resolved: 'date',
     spiked_as: 'ids',
+    moved_to: 'ids',
   },
 };
 

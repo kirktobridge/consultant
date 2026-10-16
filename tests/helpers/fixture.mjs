@@ -80,6 +80,7 @@ export function A(id, over = {}) {
     // `resolved` is the header date; `resolution` the body text saying what was found.
     resolved: null,
     resolution: null,
+    movedTo: null,
     ...over,
   };
 }
@@ -148,7 +149,14 @@ const renderP = (e) =>
 
 const renderA = (d) =>
   entry(
-    [key('id', d.id), key('title', d.title), key('status', d.status), key('raised', d.raised), key('resolved', d.resolved)],
+    [
+      key('id', d.id),
+      key('title', d.title),
+      key('status', d.status),
+      key('raised', d.raised),
+      key('resolved', d.resolved),
+      key('moved_to', d.movedTo),
+    ],
     [
       section('Assumption', d.assumption),
       section('Why it matters', d.why),
@@ -199,7 +207,7 @@ export function renderFiles({ backlog = [P('P1')], assumptions = [], decisions =
   };
   for (const e of backlog) files[`docs/backlog/${e.id}.md`] = renderP(e);
   if (assumptions.length) {
-    files['docs/assumptions/README.md'] = '# Assumptions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot`.\n';
+    files['docs/assumptions/README.md'] = '# Assumptions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot` / `moved`.\n';
     for (const d of assumptions) files[`docs/assumptions/${d.id}.md`] = renderA(d);
   }
   if (decisions.length) {

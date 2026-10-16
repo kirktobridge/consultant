@@ -100,7 +100,7 @@ exactly when it's about to stop you.
 
 ## Status vocab
 
-Status vocab: `open` / `verified` / `refuted` / `moot`.
+Status vocab: `open` / `verified` / `refuted` / `moot` / `moved`.
 
 | status | meaning |
 |--------|---------|
@@ -108,10 +108,17 @@ Status vocab: `open` / `verified` / `refuted` / `moot`.
 | `verified` | checked against reality; the assumption held. Record **how**. |
 | `refuted` | checked; the assumption was **wrong**. Record what it actually is, and what that broke. |
 | `moot` | the question stopped mattering (design changed, feature dropped) |
+| `moved` | not an assumption after all; `moved_to:` names its new home |
 
 `refuted` is the valuable one. Never quietly rewrite a refuted assumption into a verified one
 describing the new truth — the record that we believed something false, and for how
 long, is what calibrates how much to trust the *rest* of this list.
+
+`moved` is for a misfiled entry: a choice (now a decision), whether our own code works
+(now a feature's `Accept`, a test or a /verify run), or a quantity to measure. Don't
+delete it: older commits and entries cite its ID, so it stays as a stub whose
+`moved_to:` points at the new home. The schema check holds that the home exists, and
+fails any open entry still depending on the moved ID.
 
 ---
 
@@ -142,7 +149,8 @@ assumption — you have a wish. Say so rather than filing it.
 The header is strict, as in the backlog: every line is a known `key: value`. The keys
 are `id` (must match the file name), `title`, `status`, `raised`, `resolved` (the
 `YYYY-MM-DD` it closed), and `spiked_as` (the `P#` settling it, so the pairing is
-readable from this side too; the schema check reads the spike's `resolves:` half).
+readable from this side too; the schema check reads the spike's `resolves:` half), and
+`moved_to` (the new home of a `moved` entry).
 Required sections: `Assumption` always; `Why it matters` and `How to verify` while
 open. On close, add `resolved:` and a `## Resolution` section — what was found, how,
 and what it broke.

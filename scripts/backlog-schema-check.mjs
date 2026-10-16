@@ -77,9 +77,12 @@ const REGISTERS = [
     ...ASSUMPTIONS,
     kind: 'assumptions',
     open: new Set(['open']),
-    terminal: new Set(['verified', 'refuted', 'moot']),
+    terminal: new Set(['verified', 'refuted', 'moot', 'moved']),
     always: ['Assumption'],
     whileOpen: ['Why it matters', 'How to verify'],
+    // `moved`: not an assumption after all (a choice, a feature's acceptance, a
+    // quantity). It stays as a stub so the ID still resolves, pointing at its new home.
+    onStatus: { moved: { keys: ['moved_to'], sections: [] } },
     dated: 'raised',
     closed: 'resolved',
   },
@@ -345,6 +348,15 @@ for (const { reg: b, entries } of loaded) {
       // A dangling reference is wrong at any status: a terminal entry citing a
       // nonexistent assumption or decision is a broken audit trail, not a harmless leftover.
       if (!dep) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
+      // A moved assumption is a forwarding address, not a dependency: whatever this
+      // entry waits on now lives at the new home, which has its own status.
+      if (dep.status === 'moved' && b.open.has(e.status ?? '')) {
+        fail(
+          `${e.file}: ${e.id} depends on ${depId}, which was moved to ` +
+            `${idsOf(dep, 'moved_to').join(', ') || 'a new home'} — depend on its new home instead.`,
+        );
+        continue;
+      }
       if (dep.status !== 'open') continue;
       const claimed = e.status === 'in-progress' || e.status === 'partial';
       if (!claimed && !queued.has(e.id)) continue; // parked in the pool — fine
@@ -367,7 +379,7 @@ for (const { reg: b, entries } of loaded) {
   // landing; an abandoned or deferred one is the consequence quietly dropped while the
   // decision still reads as in force.
   for (const e of entries) {
-    for (const key of ['waiting_on', 'leads_to', 'superseded_by']) {
+    for (const key of ['waiting_on', 'leads_to', 'superseded_by', 'moved_to']) {
       for (const id of idsOf(e, key)) {
         if (!byId.has(id)) fail(`${e.file}: ${e.id} ${key} ${id}, which has no entry`);
       }
@@ -384,6 +396,12 @@ for (const { reg: b, entries } of loaded) {
     }
     for (const s of owes.sections) {
       if (!e.sections.has(s)) fail(`${e.file}: ${e.status} ${e.id} missing **${s}**`);
+    }
+    if (e.status === 'moved' && e.header.moved_to) {
+      const to = idsOf(e, 'moved_to');
+      if (!to.length || to.includes(e.id)) {
+        fail(`${e.file}: ${e.id} is moved, but \`moved_to:\` must name the entry that is its new home`);
+      }
     }
     if (e.status === 'superseded' && e.header.superseded_by) {
       const by = idsOf(e, 'superseded_by');
