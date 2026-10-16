@@ -97,5 +97,12 @@ state: that dependency usually moved the very code the entry describes. A flag m
 
 ## Conventions
 
+- **Code over prose, wherever code can decide it** (user preference, 2026-10-16). When
+  a rule can be settled deterministically from the repo's files, make it a script or a
+  check, not an instruction — a check holds every session, an instruction holds only
+  the ones that read it closely. Prose keeps what code can't decide: judgment, the
+  *why*, and the product owner's words. When you write a rule as prose that could have
+  been code, say so and propose the check (README's "three enforcement layers").
+
 <!-- PORTING: naming, coordinates, units, formatting — the small stuff that causes
      churn when it's implicit. -->
