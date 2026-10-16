@@ -36,10 +36,8 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
-   timing: both of those write documentation prose *about* new field names, which is
-   the exact input that makes P9's silent failure live. Cheap, and cheaper now than
-   after.
+1. **P9** — anchor the field probes. Landed on main 2026-10-16; `in-progress` until
+   you accept it.
 2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
    touches, so it follows P9 by preference rather than by dependency.
 3. **P6** — split "merged" from "released". Independent of the others; available to
