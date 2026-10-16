@@ -2,7 +2,7 @@
 
 Curated pool of everything we intend to **build** — the shippable, user-facing side of
 the project. One file per entry (`P#.md`) in this directory. Its sibling is
-[../decisions/](../decisions/README.md), which holds what we're currently *assuming*:
+[../assumptions/](../assumptions/README.md), which holds what we're currently *assuming*:
 this register is work, that one is doubt. An idea that's really "we should find out
 whether X" belongs there, not here.
 
@@ -32,7 +32,7 @@ title: A status view for the product owner
 status: proposed
 epic: Product-owner interface
 drafted: YYYY-MM-DD
-depends_on: P4, OD-3
+depends_on: P4, A-3
 ---
 
 ## Value
@@ -63,15 +63,15 @@ and only these keys exist:
 | `status` | a word from the vocab above |
 | `epic` | the group it belongs to (below) |
 | `drafted` | `YYYY-MM-DD` — when its claims were last established; required while open |
-| `depends_on` | comma-separated `P#` / `OD-n`, or `—` |
-| `resolves` | the `OD-n` a spike answers (see [../decisions/](../decisions/README.md)) |
+| `depends_on` | comma-separated `P#` / `A-n`, or `—` |
+| `resolves` | the `A-n` a spike answers (see [../assumptions/](../assumptions/README.md)) |
 | `shipped` | `YYYY-MM-DD` the user accepted it |
 
 An unknown key, a line that isn't `key: value`, or a value of the wrong type fails the
 check with the file and line. ID lists hold IDs only — *why* something depends on
 something goes in the body (a `## Depends on` section is the convention). That is the
 whole point of the split: **nothing in the body is ever read as a field**, so an entry
-can describe `status: shipped` or `depends_on: OD-3` in prose without becoming it.
+can describe `status: shipped` or `depends_on: A-3` in prose without becoming it.
 
 **The body** is `## ` sections. Required: `Value` always; `Scope` and `Accept` while
 open. Anything else (`Notes`, `Depends on`, `Shipped`) is free.
@@ -82,7 +82,7 @@ would know it was built right, in their words. The schema check enforces the *co
 (so the field can't degrade into one unfalsifiable sentence), never the wording — /ship
 copies it verbatim, and a criterion that looks wrong is the user's to rewrite.
 
-An entry may sit here `proposed` while it depends on an **open** `OD-n` — that's how a
+An entry may sit here `proposed` while it depends on an **open** `A-n` — that's how a
 blocked idea gets filed rather than lost. It may **not** appear in the queue or go
 `in-progress` in that state; the schema check enforces the line.
 

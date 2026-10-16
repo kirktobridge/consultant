@@ -15,10 +15,10 @@
 // legal or illegal, so a failure is never ambiguous between "the model was wrong" and
 // "the fixture was malformed."
 
-import { P, OD } from '../tests/helpers/fixture.mjs';
+import { P, A } from '../tests/helpers/fixture.mjs';
 
 /** Shorthand: an assumption nobody has checked. */
-const openOD = (id, title) => OD(id, { title, status: 'open' });
+const openA = (id, title) => A(id, { title, status: 'open' });
 
 export const CASES = [
   // ── /implement's gates ─────────────────────────────────────────────────────
@@ -26,17 +26,17 @@ export const CASES = [
     id: 'depends-gate-refuses-blocked-entry',
     skill: 'implement',
     request: 'implement P2',
-    bar: 'must refuse and name OD-1',
+    bar: 'must refuse and name A-1',
     why: 'the single most load-bearing gate: never build on an unverified figure',
     repo: {
       backlog: [
         P('P1', { title: 'unrelated queued work' }),
-        P('P2', { title: 'batching sized to the real rate limit', dependsOn: ['OD-1'] }),
+        P('P2', { title: 'batching sized to the real rate limit', dependsOn: ['A-1'] }),
       ],
-      decisions: [openOD('OD-1', 'is the third-party rate limit really 100 req/min?')],
+      assumptions: [openA('A-1', 'is the third-party rate limit really 100 req/min?')],
       nextUp: ['P1'],
     },
-    expect: { action: 'refuse', citesAll: ['OD-1'] },
+    expect: { action: 'refuse', citesAll: ['A-1'] },
   },
   {
     id: 'depends-gate-allows-unblocked-entry',
@@ -47,12 +47,12 @@ export const CASES = [
     repo: {
       backlog: [
         P('P1', { title: 'unrelated queued work' }),
-        P('P2', { title: 'blocked work', dependsOn: ['OD-1'] }),
+        P('P2', { title: 'blocked work', dependsOn: ['A-1'] }),
       ],
-      decisions: [openOD('OD-1', 'an assumption P1 does not rest on')],
+      assumptions: [openA('A-1', 'an assumption P1 does not rest on')],
       nextUp: ['P1'],
     },
-    expect: { action: 'proceed', citesNone: ['OD-1'] },
+    expect: { action: 'proceed', citesNone: ['A-1'] },
   },
   {
     id: 'claim-gate-refuses-claimed-entry',
@@ -93,7 +93,7 @@ export const CASES = [
     skill: 'triage',
     request: 'add a sound when an item is placed',
     bar: 'product feature',
-    why: 'the common case; misrouting it fills the decisions register with build work',
+    why: 'the common case; misrouting it fills the assumptions register with build work',
     repo: { backlog: [P('P1')], nextUp: ['P1'] },
     expect: { classification: 'feature' },
   },
@@ -110,10 +110,10 @@ export const CASES = [
     id: 'triage-classifies-an-assumption',
     skill: 'triage',
     request: "I'm fairly sure the upstream API caps us at 100 requests a minute, but nobody has checked",
-    bar: 'open decision',
+    bar: 'open assumption',
     why: 'the classification the whole build-vs-assume fork rests on',
     repo: { backlog: [P('P1')], nextUp: ['P1'] },
-    expect: { classification: 'open-decision' },
+    expect: { classification: 'assumption' },
   },
   {
     id: 'triage-splits-a-feature-resting-on-an-assumption',
@@ -130,7 +130,7 @@ export const CASES = [
     skill: 'triage',
     request: 'we should find out whether users would like the product more if it felt faster',
     bar: 'not filable as-is — no concrete check would settle it',
-    why: '"if you cannot name a concrete check you have a wish, not an OD" — the rule that keeps the register honest',
+    why: '"if you cannot name a concrete check you have a wish, not an assumption" — the rule that keeps the register honest',
     repo: { backlog: [P('P1')], nextUp: ['P1'] },
     expect: { classification: 'not-applicable' },
   },
@@ -140,15 +140,15 @@ export const CASES = [
     id: 'spike-not-warranted-when-dependents-are-parked',
     skill: 'triage',
     request:
-      'groom the backlog. OD-1 would take a week of load testing to settle properly. What should we do about it?',
+      'groom the backlog. A-1 would take a week of load testing to settle properly. What should we do about it?',
     bar: 'leave it parked — no spike',
     why: 'the bound that stops the register generating speculative work',
     repo: {
       backlog: [
         P('P1', { title: 'unrelated queued work' }),
-        P('P9', { title: 'a low-priority idea, deep in the pool', dependsOn: ['OD-1'] }),
+        P('P9', { title: 'a low-priority idea, deep in the pool', dependsOn: ['A-1'] }),
       ],
-      decisions: [openOD('OD-1', 'what is the real throughput ceiling?')],
+      assumptions: [openA('A-1', 'what is the real throughput ceiling?')],
       nextUp: ['P1'],
     },
     expect: { action: 'proceed', citesNone: ['spike'] },
@@ -157,15 +157,15 @@ export const CASES = [
     id: 'spike-warranted-when-dependent-heads-the-queue',
     skill: 'triage',
     request:
-      'groom the backlog. OD-1 would take a week of load testing to settle properly. What should we do about it?',
+      'groom the backlog. A-1 would take a week of load testing to settle properly. What should we do about it?',
     bar: 'promote to a spike — it is obstructing the queue',
     why: 'the other half of the same rule; without this the register just blocks work forever',
     repo: {
       backlog: [
-        P('P1', { title: 'the next thing to build', dependsOn: ['OD-1'] }),
+        P('P1', { title: 'the next thing to build', dependsOn: ['A-1'] }),
         P('P2', { title: 'unrelated' }),
       ],
-      decisions: [openOD('OD-1', 'what is the real throughput ceiling?')],
+      assumptions: [openA('A-1', 'what is the real throughput ceiling?')],
       nextUp: ['P2'],
     },
     expect: { action: 'proceed', citesAll: ['spike'] },

@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { P, OD, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
+import { P, A, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -116,34 +116,34 @@ describe('claims that no longer match reality', () => {
 });
 
 describe('spikes in flight', () => {
-  test('an in-progress spike whose OD is still open is surfaced', () => {
+  test('an in-progress spike whose assumption is still open is surfaced', () => {
     const { dir } = repo({
-      backlog: [P('P1'), P('P9', { status: 'in-progress', resolves: 'OD-1' })],
-      decisions: [OD('OD-1')],
+      backlog: [P('P1'), P('P9', { status: 'in-progress', resolves: 'A-1' })],
+      assumptions: [A('A-1')],
     });
     const r = audit(dir);
-    assert.match(r.stdout, /Spike P9 is `in-progress` and OD-1 is still `open`/);
+    assert.match(r.stdout, /Spike P9 is `in-progress` and A-1 is still `open`/);
     assert.match(r.stdout, /only in the transcript is lost/);
   });
 
   test('a proposed spike is not nagged about — nobody claimed to have an answer', () => {
     const { dir } = repo({
-      backlog: [P('P1'), P('P9', { resolves: 'OD-1' })],
-      decisions: [OD('OD-1')],
+      backlog: [P('P1'), P('P9', { resolves: 'A-1' })],
+      assumptions: [A('A-1')],
     });
     assert.doesNotMatch(audit(dir).stdout, /Spike P9/);
   });
 });
 
 describe('resolutions nobody swept', () => {
-  test('an OD refuted today with live dependents raises an ALERT, ranked first', () => {
+  test('an assumption refuted today with live dependents raises an ALERT, ranked first', () => {
     const { dir } = repo({
-      backlog: [P('P1'), P('P2', { dependsOn: ['OD-1'] })],
-      decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong.' })],
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong.' })],
     });
     const r = audit(dir);
     assert.equal(r.code, FINDINGS);
-    assert.match(r.stdout, /\[ALERT\] OD-1 is `refuted` \(resolved today\)/);
+    assert.match(r.stdout, /\[ALERT\] A-1 is `refuted` \(resolved today\)/);
     assert.match(r.stdout, /can VOID dependents rather than unblock them/);
     // Severity ordering is the point of the labels — the urgent case must lead.
     assert.ok(
@@ -152,21 +152,21 @@ describe('resolutions nobody swept', () => {
     );
   });
 
-  test('a verified OD is an unblock note, not an alert', () => {
+  test('a verified assumption is an unblock note, not an alert', () => {
     const { dir } = repo({
-      backlog: [P('P1'), P('P2', { dependsOn: ['OD-1'] })],
-      decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: 'held.' })],
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: 'held.' })],
     });
     const r = audit(dir);
-    assert.match(r.stdout, /OD-1 is `verified`/);
+    assert.match(r.stdout, /A-1 is `verified`/);
     assert.match(r.stdout, /now unblocked and nothing else will notice/);
     assert.doesNotMatch(r.stdout, /\[ALERT\]/);
   });
 
-  test('an OD resolved long ago with no dependents is not re-reported forever', () => {
+  test('an assumption resolved long ago with no dependents is not re-reported forever', () => {
     const { dir } = repo({
       backlog: [P('P1')],
-      decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(400), resolution: 'held.' })],
+      assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(400), resolution: 'held.' })],
     });
     assert.equal(audit(dir).code, CLEAN);
   });
@@ -190,7 +190,7 @@ describe('unmerged branches are not findings by themselves', () => {
 describe('the SessionStart hook, run as the harness runs it', () => {
   // The command string in settings.json, executed by a shell in a fixture project.
   // The script's own exit code is the wrong thing to test here: what reaches the
-  // session is decided by the *hook's* exit (OD-10 — non-zero drops the output).
+  // session is decided by the *hook's* exit (A-10 — non-zero drops the output).
   const settings = JSON.parse(readFileSync(join(REPO, '.claude', 'settings.json'), 'utf8'));
   const command = settings.hooks.SessionStart.flatMap((g) => g.hooks).find((h) => /session-audit/.test(h.command)).command;
   // The fixture has no copy of the script, so point the hook's script path at this repo's.
@@ -206,7 +206,7 @@ describe('the SessionStart hook, run as the harness runs it', () => {
   test('an abandoned claim reaches stdout, and the hook still exits 0', () => {
     const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
     const r = hook(dir);
-    assert.equal(r.code, 0, 'a non-zero hook exit drops the findings (OD-10)');
+    assert.equal(r.code, 0, 'a non-zero hook exit drops the findings (A-10)');
     assert.match(r.stdout, /P1 is `in-progress` but no branch names it/);
   });
 
@@ -218,7 +218,7 @@ describe('the SessionStart hook, run as the harness runs it', () => {
   });
 
   test('an audit that could not run says so on stdout, not silently', () => {
-    // stderr's fate under SessionStart was not probed (OD-10), so the hook folds it
+    // stderr's fate under SessionStart was not probed (A-10), so the hook folds it
     // into stdout — otherwise "could not audit" would look like no output at all.
     const r = hook(tempDir());
     assert.equal(r.code, 0);

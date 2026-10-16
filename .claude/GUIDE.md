@@ -2,7 +2,7 @@
 
 Five skills, one loop. **triage** sorts an idea in: things we'd *build* become backlog
 entries and go to **implement**, then **verify** in the running app; things we're
-merely *assuming* become open decisions, which block whatever depends on them. Work
+merely *assuming* become open assumptions, which block whatever depends on them. Work
 ends the same way: **land** the branch on main → **ship** the docs. Each tracking file has exactly one skill that writes it, so nothing goes stale
 or gets double-edited.
 
@@ -18,11 +18,11 @@ Writes nothing until you approve.
 ```
 /triage add a sound when an item is placed
 /triage I think the API caps us at 100 req/min
-/triage groom                  ← re-check blockers, sweep resolved ODs, spot what's about to block
+/triage groom                  ← re-check blockers, sweep resolved assumptions, spot what's about to block
 triage the dev notes
 ```
 
-→ You get: feature or **open decision**? already tracked? + a ready draft. Approve it
+→ You get: feature or **open assumption**? already tracked? + a ready draft. Approve it
 and /ship writes it in.
 
 **Groom mode** is the other half. The schema check *detects* rot — stale entries,
@@ -41,7 +41,7 @@ claim; writes code + tests only, never the docs.
 pick up P3 R1
 ```
 
-Also how a **spike** gets built — an entry whose header carries `resolves: OD-n`, whose deliverable
+Also how a **spike** gets built — an entry whose header carries `resolves: A-n`, whose deliverable
 is the answer to an assumption rather than a feature.
 
 ### /verify — "does it actually work?"
@@ -73,7 +73,7 @@ land this branch
 ### /ship — "sync the docs"
 The pen for the tracked docs — nothing else writes the backlog (`docs/backlog/`),
 BUILD_ORDER.md, or ARCHITECTURE.md, and it writes them **on main only**. Flips statuses
-(claims + terminal), records open-decision resolutions and sweeps what they unblocked,
+(claims + terminal), records assumption resolutions and sweeps what they unblocked,
 refreshes the queue (`docs/backlog/QUEUE.md`), writes approved /triage drafts in as new
 entry files. Usually runs as /land's last step.
 
@@ -81,7 +81,7 @@ entry files. Usually runs as /land's last step.
 /ship                          ← figure out what shipped from git
 mark P5 partial — first milestone landed
 yes, ship P5                   ← your acceptance; the only way an entry reaches shipped
-resolve OD-3 — the real limit is 40/min
+resolve A-3 — the real limit is 40/min
 ```
 
 It will *propose* spec changes to you but never edit them — those are yours.
@@ -158,9 +158,9 @@ honest limits are in [evals/README.md](../evals/README.md).
 
 **Assumption discovered → settled:**
 ```
-/triage <assumption>  →  OD-n registered  →  (it blocks P4, which is next up)
+/triage <assumption>  →  A-n registered  →  (it blocks P4, which is next up)
    →  /triage groom says spike it  →  /implement P9  →  /land  →  /ship writes
-      OD-n's Resolution + sweeps what it unblocked
+      A-n's Resolution + sweeps what it unblocked
 ```
 
 **Parallel sessions** (2–3 at once):
@@ -189,7 +189,7 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 | File | Only writer | Where |
 |---|---|---|
 | `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship | **main only** |
-| `docs/decisions/` | *no single pen* — shape enforced by the schema check | anywhere |
+| `docs/assumptions/` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
 | `src/`, `tests/` | /implement | branch |
 | *(nothing tracked — scratchpad scripts, gitignored eval runs)* | /verify, /triage, /eval | — |
@@ -203,7 +203,7 @@ until it merges, which is exactly when the claim was supposed to prevent duplica
 work. One pen per file, and doc edits on main only, makes both problems structurally
 impossible rather than merely discouraged.
 
-The two exceptions prove the rule. `docs/decisions/` has no owner because an
+The two exceptions prove the rule. `docs/assumptions/` has no owner because an
 assumption is settled by whoever hits it — assigning one would just mean the list
 never gets worked. `LESSONS.md` has none because a scar belongs to whoever earned it.
 Neither is a queue, so neither has a queue file to conflict over; what's enforced is

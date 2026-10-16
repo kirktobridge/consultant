@@ -12,7 +12,7 @@
 //   title: Entries as files
 //   status: proposed
 //   drafted: 2026-10-16
-//   depends_on: P9, OD-3
+//   depends_on: P9, A-3
 //   ---
 //
 //   ## Value
@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // ── The registers ────────────────────────────────────────────────────────────
 // PORTING: adjust directories and ID namespaces; keep the shapes.
 
-const ID = /^(P\d+|OD-\d+)$/;
+const ID = /^(P\d+|A-\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Value types. Each returns an error message, or null when the value is good.
@@ -68,10 +68,10 @@ export const BACKLOG = {
   },
 };
 
-export const DECISIONS = {
-  dir: 'docs/decisions',
-  readme: 'docs/decisions/README.md',
-  idPattern: /^OD-\d+$/,
+export const ASSUMPTIONS = {
+  dir: 'docs/assumptions',
+  readme: 'docs/assumptions/README.md',
+  idPattern: /^A-\d+$/,
   keys: {
     id: 'id',
     title: 'text',
@@ -82,7 +82,7 @@ export const DECISIONS = {
   },
 };
 
-export const REGISTERS = [BACKLOG, DECISIONS];
+export const REGISTERS = [BACKLOG, ASSUMPTIONS];
 
 /** Files in a register directory that are not entries. */
 const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);

@@ -67,8 +67,8 @@ export function P(id, over = {}) {
   };
 }
 
-/** An open decision. Defaults are a minimal *valid* open OD. */
-export function OD(id, over = {}) {
+/** An open assumption. Defaults are a minimal *valid* open assumption. */
+export function A(id, over = {}) {
   return {
     id,
     title: `${id} example`,
@@ -113,7 +113,7 @@ const renderP = (e) =>
     [section('Value', e.value), section('Scope', e.scope), list('Accept', e.accept), section('Notes', e.notes)],
   );
 
-const renderOD = (d) =>
+const renderA = (d) =>
   entry(
     [key('id', d.id), key('title', d.title), key('status', d.status), key('raised', d.raised), key('resolved', d.resolved)],
     [
@@ -134,9 +134,9 @@ const renderOD = (d) =>
  * list of P ids; pass [] deliberately to test the empty-queue failure. The READMEs
  * carry the status vocab lines verbatim because the checker reads its vocabulary *from
  * them* — a fixture that omitted them would be testing a different contract than the
- * real docs have. The decisions register is only written when it has entries.
+ * real docs have. The assumptions register is only written when it has entries.
  */
-export function renderFiles({ backlog = [P('P1')], decisions = [], nextUp = ['P1'] } = {}) {
+export function renderFiles({ backlog = [P('P1')], assumptions = [], nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
       '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
@@ -144,9 +144,9 @@ export function renderFiles({ backlog = [P('P1')], decisions = [], nextUp = ['P1
       '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
   };
   for (const e of backlog) files[`docs/backlog/${e.id}.md`] = renderP(e);
-  if (decisions.length) {
-    files['docs/decisions/README.md'] = '# Open Decisions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot`.\n';
-    for (const d of decisions) files[`docs/decisions/${d.id}.md`] = renderOD(d);
+  if (assumptions.length) {
+    files['docs/assumptions/README.md'] = '# Assumptions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot`.\n';
+    for (const d of assumptions) files[`docs/assumptions/${d.id}.md`] = renderA(d);
   }
   return files;
 }

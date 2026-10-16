@@ -18,7 +18,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 | [docs/SPEC.md](docs/SPEC.md) | **Source of truth for behavior.** Human-owned — propose diffs, never edit. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, folder layout, key types, the *why*. |
 | [docs/backlog/](docs/backlog/README.md) | **Product/feature backlog** — the pool of shippable work, one file per entry; [QUEUE.md](docs/backlog/QUEUE.md) is what's next. |
-| [docs/decisions/](docs/decisions/README.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
+| [docs/assumptions/](docs/assumptions/README.md) | **Load-bearing assumptions** (`A-n`) nobody has verified. An `open` assumption blocks work that depends on it. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
 | [.claude/GUIDE.md](.claude/GUIDE.md) | The five loop skills, how they hand off, and the checks behind them. |
 
@@ -26,7 +26,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 
 - **Single source of truth per fact:** behavior → SPEC, structure/why → ARCHITECTURE,
   plan → BUILD_ORDER, features → `docs/backlog/`, unverified assumptions →
-  `docs/decisions/`. Once code exists, **code + tests own the *what*; docs
+  `docs/assumptions/`. Once code exists, **code + tests own the *what*; docs
   keep the *why*.**
 - **ARCHITECTURE code blocks are illustrative sketches** — when they diverge from the
   source, the source wins; don't sync every signature back into the doc.
@@ -60,7 +60,7 @@ ships must have written its answer back** into the assumption it was built to se
 A finding nobody recorded is inventory, not value.
 
 **An unverified assumption blocks work in proportion to how close that work is.** An
-entry parked in the pool may rest on an `open` OD — that's the intended way to file a
+entry parked in the pool may rest on an `open` assumption — that's the intended way to file a
 blocked idea. The same entry in the queue or flipped `in-progress` is a failure: the
 queue means *dependency-ready*, and in-progress means someone is building on it right
 now. Graduating the severity is what keeps the check credible; a check that's

@@ -1,6 +1,6 @@
 ---
 name: ship
-description: The sole pen for the tracked docs — flip product-backlog statuses (claims and terminal), record open-decision resolutions, tick the build plan, keep the architecture doc's *why* current, and append approved /triage drafts — minimally, without restating code. Runs on main, usually as /land's last step. Use for "mark X shipped", "we shipped Y, update docs", "add the approved draft to the backlog", "flip P# to in-progress", "resolve OD-3", "/ship".
+description: The sole pen for the tracked docs — flip product-backlog statuses (claims and terminal), record assumption resolutions, tick the build plan, keep the architecture doc's *why* current, and append approved /triage drafts — minimally, without restating code. Runs on main, usually as /land's last step. Use for "mark X shipped", "we shipped Y, update docs", "add the approved draft to the backlog", "flip P# to in-progress", "resolve A-3", "/ship".
 ---
 
 # Ship — the pen for the product docs
@@ -49,7 +49,7 @@ every entry file in [docs/backlog/](../../../docs/backlog/README.md), plus its
 [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md). It writes **nothing else** — the
 spec is human-owned (propose diffs, never edit).
 
-[docs/decisions/](../../../docs/decisions/README.md) is the exception: it has **no
+[docs/assumptions/](../../../docs/assumptions/README.md) is the exception: it has **no
 single pen** — an assumption gets settled by whoever hits it — and this skill is simply
 the usual hand doing the writing. What's enforced there is the *shape*, by the schema
 check, not the author.
@@ -69,14 +69,14 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 | What shipped | Doc | Edit |
 |---|---|---|
 | Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
-| A spike landed (`resolves: OD-n`) | `docs/decisions/OD-n.md` | write the OD's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
+| A spike landed (`resolves: A-n`) | `docs/assumptions/A-n.md` | write the assumption's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | A build phase completed | [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md) | tick / delete the phase (it's disposable). |
 | Structure/architecture changed | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) | update the *why* **only** — not signatures (its code blocks are illustrative sketches; the source wins). |
 | Rules / spec changed | *(human-only)* | **do not edit** the spec — it's human-owned and edit-guard blocks it. Propose the exact diff to the user, and flag that ARCHITECTURE needs its matching update once applied. |
 
-3. **Sweep what a resolution unblocked.** If this pass wrote an OD's Resolution, name
+3. **Sweep what a resolution unblocked.** If this pass wrote an assumption's Resolution, name
    every entry whose `depends_on:` cites it — they just changed state and nothing else
-   notices. A `verified` OD unblocks them; a **`refuted`** one may have *voided* them,
+   notices. A `verified` assumption unblocks them; a **`refuted`** one may have *voided* them,
    which is the case worth stopping over. Report the list; the deep pass is
    `/triage groom`.
 4. **Verify:** relative links resolve; no stale `proposed`/`deferred`/`partial` left on
@@ -143,11 +143,11 @@ improvement, it is quietly editing the definition of done. Same standing as the 
 if a criterion looks wrong, say so and let the user rewrite it. The schema check holds
 the count (2–4 bullets), never the meaning.
 
-An approved **OD** draft becomes a new `docs/decisions/OD-n.md` with `status: open` and
+An approved **assumption** draft becomes a new `docs/assumptions/A-n.md` with `status: open` and
 today's `raised:` date. No other changes — /triage classifies and drafts; this skill is
 just the pen.
 
-A drafted entry whose `depends_on:` names an open OD goes **into the pool, not into
+A drafted entry whose `depends_on:` names an open assumption goes **into the pool, not into
 the queue**. That's not a workaround — the queue means dependency-ready, and this
 one isn't. The schema check enforces the distinction.
 

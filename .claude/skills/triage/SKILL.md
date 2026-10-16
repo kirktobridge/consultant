@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature or an open decision, and draft the backlog entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open decisions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
+description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature or an assumption, and draft the backlog entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open assumptions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
 ---
 
 # Triage — idea intake & classification
@@ -29,15 +29,15 @@ One question routes everything:
   / `status: proposed` / epic / drafted / depends_on) and a body (Value / Scope /
   **Accept**). Destination: a new `docs/backlog/P#.md` under the right epic, written by
   **/ship** (Intake).
-- **Something we're assuming** → an **open decision** (`OD-n`,
-  [docs/decisions/](../../../docs/decisions/README.md)). The tell: the idea's real
+- **Something we're assuming** → an **open assumption** (`A-n`,
+  [docs/assumptions/](../../../docs/assumptions/README.md)). The tell: the idea's real
   content is *"we're currently acting as if X is true"* about something largely outside
   our control — a third party's behavior, a constant from a doc page, a limit nobody
-  has hit, "users won't do Y". Nothing ships; there's a fact to establish. Draft an OD,
-  and **name the entries it blocks** — an OD nobody depends on is trivia; an OD with
+  has hit, "users won't do Y". Nothing ships; there's a fact to establish. Draft an assumption,
+  and **name the entries it blocks** — an assumption nobody depends on is trivia; an assumption with
   dependents is a gate.
 - **Both** (a feature resting on an unchecked assumption) → **split it**: the
-  assumption becomes an OD; the delivery becomes a product draft whose `depends_on:`
+  assumption becomes an `A-n`; the delivery becomes a product draft whose `depends_on:`
   names it. This pairing is the system's main idiom — it's how a feature stops shipping
   on a premise nobody checked.
 
@@ -68,14 +68,14 @@ Scope restated", say so to the user and ask what they'd actually check — don't
 field to satisfy the checker.
 
 A note on the boundary, because it's the one people get wrong: "we should find out
-whether X" is usually an **OD**, not a feature. If you can't name a concrete check that
-would settle it (its `How to verify`), you don't have an OD either — you have a wish. Say
+whether X" is usually an **assumption**, not a feature. If you can't name a concrete check that
+would settle it (its `How to verify`), you don't have an assumption either — you have a wish. Say
 so rather than filing it.
 
-**Blocked-not-rejected:** an idea that's a fine feature but rests on an open OD is
-drafted *and* marked `depends_on: OD-n`, not rejected. It sits in the pool legitimately
+**Blocked-not-rejected:** an idea that's a fine feature but rests on an open assumption is
+drafted *and* marked `depends_on: A-n`, not rejected. It sits in the pool legitimately
 — the schema check permits that deliberately. What it forbids is that entry appearing
-in the queue or going `in-progress` while the OD is open. Say this in the output, so
+in the queue or going `in-progress` while the assumption is open. Say this in the output, so
 the user knows the entry exists and where it's allowed to sit.
 
 ## Steps
@@ -83,7 +83,7 @@ the user knows the entry exists and where it's allowed to sit.
 2. Check for an existing entry:
    ```
    node scripts/grep-checked.mjs -i --control '^status:' '<keyword>' \
-     docs/backlog docs/decisions
+     docs/backlog docs/assumptions
    ```
    If one exists, the output is "already tracked as `<ID>` — update it via its owner"
    — not a duplicate draft. Use the checked search rather than a bare grep: a false
@@ -92,28 +92,28 @@ the user knows the entry exists and where it's allowed to sit.
    [L1](../../../docs/LESSONS.md)). **Exit 2 means you learned nothing** — re-run
    before concluding the idea is new.
 3. Draft the entry in the destination's template, including where it slots (epic for a
-   feature; nothing to slot for an OD — the register isn't ordered).
+   feature; nothing to slot for an assumption — the register isn't ordered).
 4. Present draft + destination to the user; on approval, hand to **/ship** to write it.
-   (An OD draft also goes to /ship as the pen, though the register has no single
+   (An assumption draft also goes to /ship as the pen, though the register has no single
    writer — only an enforced shape.)
 
 ## Groom mode (`/triage groom`, "groom the backlog")
 
 The schema check *detects* rot and then waits for someone to care. This mode is the
 someone. It reads, proposes, and writes nothing — same contract as the rest of the
-skill. Run it periodically, and always after an OD resolves.
+skill. Run it periodically, and always after an assumption resolves.
 
 1. **Re-check every blocked item's blocker.** For each entry with a `depends_on:`,
    resolve each ID's current status. A dependency that has gone terminal since the
    entry was drafted means this entry is **unblocked** — say so; that's the highest-
    value output of the pass, because nothing else notices.
-2. **Sweep OD resolutions.** For each OD that flipped to `verified`/`refuted` since the
-   last groom, list every entry naming it. A `refuted` OD is the urgent case: entries
+2. **Sweep assumption resolutions.** For each assumption that flipped to `verified`/`refuted` since the
+   last groom, list every entry naming it. A `refuted` assumption is the urgent case: entries
    resting on it are not merely unblocked, they may be **void or wrong**, and anything
    already shipped on that assumption needs a fresh look.
-3. **Spot the assumptions about to bite.** Cross-reference every `open` OD against
-   the queue (`docs/backlog/QUEUE.md`) and the entries just behind it. An OD blocking something at the head of
-   the queue is about to stop work; an OD blocking only entries deep in the pool costs
+3. **Spot the assumptions about to bite.** Cross-reference every `open` assumption against
+   the queue (`docs/backlog/QUEUE.md`) and the entries just behind it. An assumption blocking something at the head of
+   the queue is about to stop work; an assumption blocking only entries deep in the pool costs
    nothing yet. **This is the trigger for the spike decision below** — and nothing else
    in the loop looks for it, because the schema check only fires once the entry has
    *already* been queued or claimed.
@@ -134,15 +134,15 @@ skill. Run it periodically, and always after an OD resolves.
 Output is a short report: unblocked, newly-void, about-to-block, stale, and abandoned —
 each with the one action it needs. Nothing is written until the user picks.
 
-## The spike decision (when an OD is about to block real work)
+## The spike decision (when an assumption is about to block real work)
 
-An OD is a unit of **doubt**, not a unit of work. It has no owner by design: it gets
+An assumption is a unit of **doubt**, not a unit of work. It has no owner by design: it gets
 settled by whoever runs into it, at the moment it actually costs something. So the
 question is never "who should verify this?" — it's **"is this assumption obstructing
 the queue yet?"**
 
 ```
-An open OD blocks something
+An open assumption blocks something
   ├─ cheap to settle (one API call, one probe, one grep)?
   │      → do it now; write its Resolution, then sweep what it unblocked
   ├─ expensive, and its dependents are in / entering the queue?
@@ -160,12 +160,12 @@ paying to settle exactly when it's about to stop you.
 - `## Value` names the entries it unblocks. That satisfies the required Value field
   honestly: unblocking queued work *is* user-facing value, one step removed. Don't
   invent a user story for a probe.
-- `resolves: OD-n` in the header — the back-pointer. This is a structured field rather than a
+- `resolves: A-n` in the header — the back-pointer. This is a structured field rather than a
   sentence because an obligation buried in prose is unenforceable by construction
   (LESSONS [L2](../../../docs/LESSONS.md)); the schema check pairs the two and fails if
   the spike ships without the answer being written back.
 
-Say plainly which branch you took and why — "OD-3 is expensive but only P7 depends on
+Say plainly which branch you took and why — "A-3 is expensive but only P7 depends on
 it, and P7 is nowhere near the queue, so it stays parked" is a complete and correct
 groom output.
 
@@ -173,5 +173,5 @@ groom output.
 - Writing the entry → **/ship** (Intake).
 - Deciding *when* to build it → /ship ranks the queue by the rule in
   [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue).
-- Settling an OD → whoever hits the block. If it needs building, it's a spike P# and
+- Settling an assumption → whoever hits the block. If it needs building, it's a spike P# and
   goes through **/implement** like any other entry.

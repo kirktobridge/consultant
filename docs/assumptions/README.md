@@ -1,14 +1,19 @@
-# Open Decisions
+# Assumptions
 
-The register of **load-bearing assumptions** — facts the project's correctness depends
-on that nobody has actually verified. One file per entry (`OD-n.md`) in this directory.
+The register of **load-bearing assumptions** — yes/no facts about the outside world
+that the project's correctness depends on, settled by observation, that nobody has
+actually verified. One file per entry (`A-n.md`) in this directory.
 
-Not features — those are [../backlog/](../backlog/README.md). An **OD** is
+*Provenance:* until 2026-10-16 this was `docs/decisions/`, "Open Decisions", with IDs
+`OD-n`. Numbers were kept (OD-9 is A-9), so an `OD-n` in older commits, older
+entries' prose, or a code comment means `A-n`.
+
+Not features — those are [../backlog/](../backlog/README.md). An **assumption** is
 something you are currently *assuming* and would have to change code over if the
 assumption is wrong: a third-party API's real behavior, a constant taken from a blog
 post, a limit nobody has hit yet, "users won't do X".
 
-**An OD is a unit of doubt, not a unit of work.** Everything else tracked here is
+**An assumption is a unit of doubt, not a unit of work.** Everything else tracked here is
 something you'd do; this is something you're standing on without having looked down.
 That's why the register has no owner and no priority order — see *Who settles one*
 below.
@@ -21,7 +26,7 @@ takes three features with it. This register is that index: the standing list of 
 we're standing on.
 
 **Written by:** /triage drafts, /ship usually holds the pen, but unlike the backlog this
-register has **no single writer** — an OD is settled by whoever hits it. What's enforced is
+register has **no single writer** — an assumption is settled by whoever hits it. What's enforced is
 the *shape*, by the schema check.
 
 ---
@@ -46,8 +51,8 @@ anything touching an open assumption would make filing a blocked idea impossible
 The lower two fail the schema check, and /implement's DEPENDS GATE refuses to pick up
 any of the three — by the time you're building, parked is no longer where you are.
 
-The counterpart obligation: **when an OD resolves, sweep the blocked work.** A resolved
-OD usually unblocks several entries, and nothing else will notice. /ship does the
+The counterpart obligation: **when an assumption resolves, sweep the blocked work.** A resolved
+assumption usually unblocks several entries, and nothing else will notice. /ship does the
 immediate sweep at resolution time; /triage's groom mode and the session-start audit catch the rest.
 
 ---
@@ -61,11 +66,11 @@ count what you're standing on) and the **refuted record** (how often we're wrong
 both pay off even if nothing is ever verified. Only the block creates pressure, and it
 applies that pressure exactly when it matters.
 
-So when an OD does block something, the exit depends on cost and on proximity to the
+So when an assumption does block something, the exit depends on cost and on proximity to the
 queue:
 
 ```
-An open OD blocks something
+An open assumption blocks something
   ├─ cheap to settle?          → do it now; write its Resolution, sweep the dependents
   ├─ expensive, dependents at
   │  or near the queue         → promote to a spike P# (below)
@@ -77,7 +82,7 @@ An open OD blocks something
 ### Spikes
 
 A **spike** is a product entry whose deliverable is *the answer*, not a feature. It
-carries `resolves: OD-n` in its header, and its `## Value` names the entries it unblocks —
+carries `resolves: A-n` in its header, and its `## Value` names the entries it unblocks —
 which is honest value, one step removed. It's built through /implement like anything
 else.
 
@@ -104,7 +109,7 @@ Status vocab: `open` / `verified` / `refuted` / `moot`.
 | `refuted` | checked; the assumption was **wrong**. Record what it actually is, and what that broke. |
 | `moot` | the question stopped mattering (design changed, feature dropped) |
 
-`refuted` is the valuable one. Never quietly rewrite a refuted OD into a verified one
+`refuted` is the valuable one. Never quietly rewrite a refuted assumption into a verified one
 describing the new truth — the record that we believed something false, and for how
 long, is what calibrates how much to trust the *rest* of this list.
 
@@ -114,7 +119,7 @@ long, is what calibrates how much to trust the *rest* of this list.
 
 ```markdown
 ---
-id: OD-1
+id: A-1
 title: <the question, as a question>
 status: open
 raised: YYYY-MM-DD
@@ -131,7 +136,7 @@ what breaks if it's false — name the entries or code that rest on it.
 ## How to verify
 
 the concrete check that would settle it. If you can't name one, you don't have an
-OD — you have a wish. Say so rather than filing it.
+assumption — you have a wish. Say so rather than filing it.
 ```
 
 The header is strict, as in the backlog: every line is a known `key: value`. The keys

@@ -62,34 +62,34 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 | Placeholder | Means | Where |
 |---|---|---|
 | `P#` | product backlog IDs | `docs/backlog/`, `scripts/entries.mjs`, all skills, schema check |
-| `OD-n` | open decisions (unverified assumptions) | `docs/decisions/`, `scripts/entries.mjs`, schema check |
+| `A-n` | load-bearing assumptions nobody has verified | `docs/assumptions/`, `scripts/entries.mjs`, schema check |
 | `L#` | lessons | LESSONS.md |
 | `docs/SPEC.md` | your human-owned source of truth | blocklist, /ship, /implement |
 | `main` | integration branch | /land, /implement, session-audit, history |
 
-Keep `P#` and `OD-n` **globally unique** — the schema check enforces it, and the
-cross-pointers (`depends_on: OD-3`, `resolves: OD-3`) are unparseable without it.
+Keep `P#` and `A-n` **globally unique** — the schema check enforces it, and the
+cross-pointers (`depends_on: A-3`, `resolves: A-3`) are unparseable without it.
 
 ## Step 3 — seed the open-decisions register
 
-[docs/decisions/](docs/decisions/README.md) is the cheapest high-value thing to
+[docs/assumptions/](docs/assumptions/README.md) is the cheapest high-value thing to
 fill in, and it works on day one — unlike the backlog, you already know its contents.
 
 Spend twenty minutes listing what your project currently *assumes* and nobody has
 checked: a third-party API's real rate limit or error semantics, a constant someone
 took from a blog post, a scaling limit never actually hit, "users won't do X". Each
-becomes an `docs/decisions/OD-n.md` file with a `## How to verify` section. If you can't name a concrete check, you
-don't have an OD — you have a wish; leave it out.
+becomes an `docs/assumptions/A-n.md` file with a `## How to verify` section. If you can't name a concrete check, you
+don't have an assumption — you have a wish; leave it out.
 
 Three things make it more than a wiki page:
-- an `open` OD **blocks** work that depends on it, graded by how close that work is
+- an `open` assumption **blocks** work that depends on it, graded by how close that work is
   (see *What NOT to change*) — enforced by the schema check and /implement's DEPENDS
   GATE;
-- `/triage groom` sweeps resolutions, so settling one OD surfaces everything it
+- `/triage groom` sweeps resolutions, so settling one assumption surfaces everything it
   unblocked, and flags assumptions about to start blocking. Nothing else in the loop
   notices either;
 - an assumption that's expensive *and* blocking the queue becomes a **spike** `P#`,
-  paired to the OD by its `resolves:` header and held by the schema check.
+  paired to the assumption by its `resolves:` header and held by the schema check.
 
 Keep `refuted` entries as `refuted`. Rewriting one into a `verified` entry describing
 the new truth destroys the most useful signal in the file — that we believed something
@@ -185,10 +185,10 @@ format exists to avoid.
 
 These look arbitrary and are not. Each was paid for.
 
-**Graduated OD blocking, not all-or-nothing.** An entry may sit `proposed` in the pool
+**Graduated assumption blocking, not all-or-nothing.** An entry may sit `proposed` in the pool
 while resting on an `open` assumption; the same entry in the queue or flipped
 `in-progress` fails. The obvious implementation — block anything that depends on an
-open OD — makes it impossible to *file* a blocked idea, which is exactly what /triage
+open assumption — makes it impossible to *file* a blocked idea, which is exactly what /triage
 is told to do. A check that's permanently red teaches people to ignore it, and then it
 stops holding the case it was built for.
 

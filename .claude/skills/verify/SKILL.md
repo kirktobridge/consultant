@@ -102,6 +102,6 @@ looks fine".
   not duplicate it here.
 - Judging code quality → a code-review skill.
 - Merging or doc flips → **/land**, **/ship**.
-- Settling an open decision → that's a **spike** `P#` built through /implement. This
+- Settling an assumption → that's a **spike** `P#` built through /implement. This
   skill observes *your change* working; a spike investigates something you didn't
   build. The habit is the same, the trigger isn't.

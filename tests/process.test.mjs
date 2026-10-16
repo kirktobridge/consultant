@@ -237,13 +237,13 @@ describe('the migration to one file per entry lost nothing (P20)', () => {
   // none of these may go missing.
   const BEFORE = [
     'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16', 'P17',
-    'P18', 'P19', 'P20', 'P21', 'OD-3', 'OD-4', 'OD-5', 'OD-6', 'OD-7', 'OD-8', 'OD-9', 'OD-10',
+    'P18', 'P19', 'P20', 'P21', 'A-3', 'A-4', 'A-5', 'A-6', 'A-7', 'A-8', 'A-9', 'A-10',
   ];
 
   test('all 26 entries still exist, each in its own file under its own id', () => {
     assert.equal(BEFORE.length, 26);
     const missing = BEFORE.filter((id) => {
-      const f = join(REPO, 'docs', id.startsWith('P') ? 'backlog' : 'decisions', `${id}.md`);
+      const f = join(REPO, 'docs', id.startsWith('P') ? 'backlog' : 'assumptions', `${id}.md`);
       return !existsSync(f) || !new RegExp(`^id: ${id}$`, 'm').test(read(f));
     });
     assert.deepEqual(missing, []);
@@ -275,9 +275,9 @@ describe('the retired closeout stays retired (P18)', () => {
   // run a skill that is gone, or to wait on a file nobody writes any more.
   //
   // Backlog and decision entries are exempt — they are the record of the retirement
-  // itself (P18, OD-10), and rewriting history to pass a check is the inversion the
+  // itself (P18, A-10), and rewriting history to pass a check is the inversion the
   // CLAUDE.md format rule forbids. The registers' READMEs and the queue are not.
-  const isRecord = (f) => /^docs\/(backlog\/P\d+|decisions\/OD-\d+)\.md$/.test(rel(f).replaceAll('\\', '/'));
+  const isRecord = (f) => /^docs\/(backlog\/P\d+|assumptions\/A-\d+)\.md$/.test(rel(f).replaceAll('\\', '/'));
 
   test('no skill or doc mentions /checkpoint or the handoff file', () => {
     const live = DOCS.filter((f) => !isRecord(f));
@@ -292,13 +292,13 @@ describe('the retired closeout stays retired (P18)', () => {
   });
 
   test('the session audit is wired to run at session start, and its output survives findings', () => {
-    // OD-10: a SessionStart hook's stdout reaches the session on exit 0 only, and the
+    // A-10: a SessionStart hook's stdout reaches the session on exit 0 only, and the
     // audit exits 1 exactly when it has findings — so the hook must force 0.
     const settings = JSON.parse(read(join(REPO, '.claude', 'settings.json')));
     const cmds = (settings.hooks?.SessionStart ?? []).flatMap((g) => g.hooks ?? []).map((h) => h.command ?? '');
     const audit = cmds.find((c) => /scripts\/session-audit\.mjs/.test(c));
     assert.ok(audit, 'no SessionStart hook runs session-audit.mjs');
-    assert.match(audit, /\|\|\s*true\s*$/, 'the hook must force exit 0, or findings are dropped (OD-10)');
+    assert.match(audit, /\|\|\s*true\s*$/, 'the hook must force exit 0, or findings are dropped (A-10)');
   });
 });
 
@@ -377,7 +377,7 @@ describe('links resolve', () => {
 
 describe("the README's promised output is what the commands actually print", () => {
   // This has now drifted twice: "OK (4 entries across 2 backlog(s))" survived the
-  // research-track removal, and "5 entries" survived adding OD-3. A number in a fenced
+  // research-track removal, and "5 entries" survived adding A-3. A number in a fenced
   // "here's what you'll see" block reads as verified and nothing held it — the exact
   // failure the suite exists to prevent, in its own front door. The schema check's
   // entry count is no longer shown at all: it changes on every intake, and a reader
@@ -464,7 +464,7 @@ describe('the evals stay evals', () => {
 
     test('grades right answers up and wrong answers down', () => {
       const dir = emitted();
-      reply(dir, REFUSE, json({ action: 'refuse', classification: 'not-applicable', cites: ['OD-1'], reason: 'x' }));
+      reply(dir, REFUSE, json({ action: 'refuse', classification: 'not-applicable', cites: ['A-1'], reason: 'x' }));
       reply(dir, PROCEED, json({ action: 'proceed', classification: 'not-applicable', cites: ['P1'], reason: 'x' }));
       assert.equal(eval_('--grade', dir).status, 0);
 
@@ -477,7 +477,7 @@ describe('the evals stay evals', () => {
 
     test('an unparseable reply fails; it is never skipped', () => {
       const dir = emitted();
-      reply(dir, REFUSE, 'I refuse, because OD-1 is open.'); // right call, no JSON block
+      reply(dir, REFUSE, 'I refuse, because A-1 is open.'); // right call, no JSON block
       reply(dir, PROCEED, json({ action: 'proceed', classification: 'not-applicable', cites: ['P1'], reason: 'x' }));
       const r = eval_('--grade', dir);
       assert.equal(r.status, 1);
@@ -489,7 +489,7 @@ describe('the evals stay evals', () => {
       // Both directions of the same failure: a denominator that silently disagrees with
       // the run. Dropping unanswered reps would raise the pass rate — LESSONS L3.
       const dir = emitted();
-      reply(dir, REFUSE, json({ action: 'refuse', classification: 'not-applicable', cites: ['OD-1'], reason: 'x' }));
+      reply(dir, REFUSE, json({ action: 'refuse', classification: 'not-applicable', cites: ['A-1'], reason: 'x' }));
       const missing = eval_('--grade', dir);
       assert.equal(missing.status, 2);
       assert.match(missing.stderr, /replies are missing/);

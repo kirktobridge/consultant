@@ -80,7 +80,7 @@ if (!run) {
     } catch { /* unparseable → no-op */ }
     run = WATCHED.some((w) => file.replaceAll('\\', '/').endsWith(w));
     // Check the checkout the edit landed in. In a worktree session the hook still
-    // runs from the launch checkout (OD-7), which would validate main's copy.
+    // runs from the launch checkout (A-7), which would validate main's copy.
     if (run) ROOT = checkoutOf(file, ROOT);
   }
 }
@@ -150,7 +150,7 @@ if (settings) {
  * string contains it — so narrowing a guard to `Edit` would look fully armed while
  * leaving `Write` open and `MultiEdit` covered only by accident of spelling.
  *
- * Whether the harness itself anchors is recorded as OD-3 and is not yet verified. This
+ * Whether the harness itself anchors is recorded as A-3 and is not yet verified. This
  * check takes the conservative reading on purpose: if the harness turns out to be
  * unanchored we are merely strict — we demand `Edit|Write|MultiEdit` be spelled out,
  * which is clearer anyway. Assuming the other way round would leave a real hole and

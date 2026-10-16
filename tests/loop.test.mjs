@@ -15,12 +15,12 @@
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { P, OD, project, schema, out, cleanupAll, daysAgo } from './helpers/fixture.mjs';
+import { P, A, project, schema, out, cleanupAll, daysAgo } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
 /** The whole project state, as data. A "transition" returns the next state. */
-const state = (over = {}) => ({ backlog: [], decisions: [], nextUp: [], ...over });
+const state = (over = {}) => ({ backlog: [], assumptions: [], nextUp: [], ...over });
 
 const legal = (s, why) => {
   const r = schema(project(s));
@@ -36,15 +36,15 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   // The cast. `feature` is what we actually want; `assumption` is what it rests on;
   // `spike` is the work that settles the assumption.
   const feature = (over) => P('P2', { title: 'batching, sized to the real limit', ...over });
-  const spike = (over) => P('P3', { title: 'measure the real rate limit', resolves: 'OD-1', ...over });
+  const spike = (over) => P('P3', { title: 'measure the real rate limit', resolves: 'A-1', ...over });
   const other = P('P1', { title: 'unrelated queued work' });
 
   test('1. /triage files a feature that rests on an unchecked assumption', () => {
     // Blocked-not-rejected: it exists, it names its blocker, it sits in the pool.
     legal(
       state({
-        backlog: [other, feature({ dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1')],
+        backlog: [other, feature({ dependsOn: ['A-1'] })],
+        assumptions: [A('A-1')],
         nextUp: ['P1'],
       }),
       'a blocked draft must be filable, or the register can only ever reject ideas',
@@ -54,8 +54,8 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   test('2. …but it may not be queued while the assumption is open', () => {
     illegal(
       state({
-        backlog: [other, feature({ dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1')],
+        backlog: [other, feature({ dependsOn: ['A-1'] })],
+        assumptions: [A('A-1')],
         nextUp: ['P1', 'P2'],
       }),
       'the queue claims dependency-ready',
@@ -66,8 +66,8 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   test('3. …and it may not be claimed either', () => {
     illegal(
       state({
-        backlog: [other, feature({ status: 'in-progress', dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1')],
+        backlog: [other, feature({ status: 'in-progress', dependsOn: ['A-1'] })],
+        assumptions: [A('A-1')],
         nextUp: ['P1'],
       }),
       'nobody may build on an unverified figure',
@@ -80,8 +80,8 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
     // the feature it serves stays parked.
     legal(
       state({
-        backlog: [other, feature({ dependsOn: ['OD-1'] }), spike()],
-        decisions: [OD('OD-1')],
+        backlog: [other, feature({ dependsOn: ['A-1'] }), spike()],
+        assumptions: [A('A-1')],
         nextUp: ['P1', 'P3'],
       }),
       'a spike must be queueable even though the assumption it answers is open',
@@ -91,8 +91,8 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   test('5. the spike is built and claimed', () => {
     legal(
       state({
-        backlog: [other, feature({ dependsOn: ['OD-1'] }), spike({ status: 'in-progress' })],
-        decisions: [OD('OD-1')],
+        backlog: [other, feature({ dependsOn: ['A-1'] }), spike({ status: 'in-progress' })],
+        assumptions: [A('A-1')],
         nextUp: ['P1', 'P3'],
       }),
       'building the spike is exactly what should be allowed here',
@@ -102,20 +102,20 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   test('6. shipping the spike WITHOUT writing the answer back is refused', () => {
     illegal(
       state({
-        backlog: [other, feature({ dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
-        decisions: [OD('OD-1')],
+        backlog: [other, feature({ dependsOn: ['A-1'] }), spike({ status: 'shipped' })],
+        assumptions: [A('A-1')],
         nextUp: ['P1'],
       }),
       'the whole point of the spike was the answer',
-      /P3 shipped and resolves OD-1, but OD-1 is still `open`/,
+      /P3 shipped and resolves A-1, but A-1 is still `open`/,
     );
   });
 
   test('7. /ship writes the Resolution and closes the pair', () => {
     legal(
       state({
-        backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
-        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
+        backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['A-1'] }), spike({ status: 'shipped' })],
+        assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'spike and assumption must be able to close together',
@@ -130,8 +130,8 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
     // /triage groom's job, and is a re-read, never a date bump to quiet the check.
     illegal(
       state({
-        backlog: [other, feature({ drafted: daysAgo(30), dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
-        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
+        backlog: [other, feature({ drafted: daysAgo(30), dependsOn: ['A-1'] }), spike({ status: 'shipped' })],
+        assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'resolving an assumption must force a re-read of what was written under it',
@@ -140,10 +140,10 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   });
 
   test('8. re-read and re-dated, the feature is queueable — ONLY because of step 7', () => {
-    const resolved = OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' });
+    const resolved = A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' });
     const queued = state({
-      backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
-      decisions: [resolved],
+      backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['A-1'] }), spike({ status: 'shipped' })],
+      assumptions: [resolved],
       nextUp: ['P1', 'P2'],
     });
     legal(queued, 'a resolved assumption must actually unblock its dependents');
@@ -151,7 +151,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
     // The counterfactual is the real assertion. Same queue, assumption still open →
     // illegal. Without this, step 8 could be passing for an unrelated reason.
     illegal(
-      { ...queued, decisions: [OD('OD-1')] },
+      { ...queued, assumptions: [A('A-1')] },
       'if this passes, step 8 proved nothing about the resolution',
       /P2 is in Next up/,
     );
@@ -162,10 +162,10 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
       state({
         backlog: [
           other,
-          feature({ status: 'in-progress', drafted: daysAgo(0), dependsOn: ['OD-1'] }),
+          feature({ status: 'in-progress', drafted: daysAgo(0), dependsOn: ['A-1'] }),
           spike({ status: 'shipped' }),
         ],
-        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
+        assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'the feature was unblocked in step 7 and may now be built',
@@ -177,10 +177,10 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
       state({
         backlog: [
           other,
-          feature({ status: 'shipped', drafted: daysAgo(0), dependsOn: ['OD-1'] }),
+          feature({ status: 'shipped', drafted: daysAgo(0), dependsOn: ['A-1'] }),
           spike({ status: 'shipped' }),
         ],
-        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
+        assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1', 'P2'],
       }),
       '/ship must refresh Next up on a terminal flip',
@@ -193,10 +193,10 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
       state({
         backlog: [
           other,
-          feature({ status: 'shipped', drafted: daysAgo(0), dependsOn: ['OD-1'] }),
+          feature({ status: 'shipped', drafted: daysAgo(0), dependsOn: ['A-1'] }),
           spike({ status: 'shipped' }),
         ],
-        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
+        assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'the terminal state of a completed loop must be representable',
@@ -208,8 +208,8 @@ describe('the refutation branch: the assumption was wrong', () => {
   test('a spike may close by REFUTING, and the pair still closes', () => {
     legal(
       state({
-        backlog: [P('P1'), P('P3', { status: 'shipped', resolves: 'OD-1' })],
-        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong, it is 10/min.' })],
+        backlog: [P('P1'), P('P3', { status: 'shipped', resolves: 'A-1' })],
+        assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong, it is 10/min.' })],
         nextUp: ['P1'],
       }),
       'refuting is a legitimate close — it is the most valuable one',
@@ -221,10 +221,10 @@ describe('the refutation branch: the assumption was wrong', () => {
       state({
         backlog: [
           P('P1'),
-          P('P2', { drafted: daysAgo(30), dependsOn: ['OD-1'] }),
-          P('P3', { status: 'shipped', resolves: 'OD-1' }),
+          P('P2', { drafted: daysAgo(30), dependsOn: ['A-1'] }),
+          P('P3', { status: 'shipped', resolves: 'A-1' }),
         ],
-        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(1), resolution: 'wrong.' })],
+        assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(1), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
       'an entry written under a premise that has since been disproved must not pass silently',
