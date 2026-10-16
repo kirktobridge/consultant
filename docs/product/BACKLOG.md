@@ -52,7 +52,8 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
 
 Note what is *absent*: P7 is a high-payoff idea, and is
 deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
-readiness it doesn't have. P15 is absent for the same reason: it waits on P16.
+readiness it doesn't have. P15 is absent for the same reason: it waits on P16. P17
+waits on P15 and on an open assumption (OD-8).
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
@@ -254,6 +255,34 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   2026-10-15). The main checkout becomes integration-only; hand-edit it while sessions
   run and landings stop at the clean-tree check. P12 doesn't block this, but if it
   lands first, the lock and claim helpers use its trunk command rather than `main`.
+
+### P17 — An orchestrator that builds non-conflicting entries in parallel
+- **Status:** proposed
+- **Drafted:** 2026-10-15
+- **Value:** one request builds several entries at once. P15 lets you run parallel
+  sessions, but you still pick the entries, start each session, and keep track of
+  them. Here one session does the picking, the dispatching, and the landing order.
+- **Scope:**
+  - Pick: from `## Next up`, the entries whose claim gate passes and whose predicted
+    footprints don't overlap (OD-8). Say what was picked and what was skipped, and why.
+  - Dispatch: one worktree-isolated subagent per picked entry, running /implement →
+    /verify. P15's machinery handles the claim and the worktree.
+  - Gates that need the owner (a rescope, a milestone choice, a stale premise): the
+    subagent stops and returns the question instead of guessing. The orchestrator
+    relays it while the others keep going.
+  - Land: through P15's lock, one at a time, collecting each per-criterion report.
+  - Out: auto-shipping (acceptance stays yours); picking from outside `## Next up`.
+- **Accept:**
+  - I say "build what's ready" once; it names which entries it picked, which it
+    skipped and why, and starts one subagent per picked entry.
+  - None of the entries it ran together hits a merge conflict when landing.
+  - When a subagent reaches a gate that needs me, I get the question from the
+    orchestrator and the other builds keep going.
+  - Each landed entry comes back with its per-criterion report, and none is flipped
+    `shipped` without my word.
+- **Depends on:** P15, OD-8, OD-9
+- **Notes:** If subagents are handed /implement as pasted text rather than invoking
+  it, OD-4 applies to them too.
 
 ---
 

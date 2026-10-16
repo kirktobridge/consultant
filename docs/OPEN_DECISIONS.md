@@ -220,3 +220,37 @@ is readable from this side too. The schema check reads the `Resolves:` half.
   files, and the PostToolUse checks validate main's docs instead of the branch's.
   Exact-path patterns still hold through the guard's suffix rule. Not tested: a
   session launched from inside the worktree directory. Fix filed as P16.
+
+### OD-8 — Can a build's footprint be predicted from its backlog entry?
+- **Status:** open
+- **Raised:** 2026-10-15
+- **Assumption:** an agent reading an entry's Scope can name the files its build will
+  touch, well enough that two entries predicted not to overlap won't conflict.
+- **Why it matters:** P17's "non-conflicting" pick rests on it. If predictions miss,
+  P15's conflict rule still recovers, so the cost is wasted rebuilds, not broken main.
+- **How to verify:** for each merged entry in history, predict touched files from the
+  entry text as it stood when claimed, then compare with the merge's `--name-only`
+  diff. Report recall per entry.
+- **Resolution:** —
+
+### OD-9 — Can a subagent run the loop's forked skills?
+- **Status:** verified
+- **Raised:** 2026-10-15
+- **Assumption:** a worktree-isolated subagent can invoke /implement, and from inside
+  it /verify and /land, which run `context: fork`, i.e. as subagents of their own.
+- **Why it matters:** P17 hands each build to a subagent. If a subagent can't start a
+  forked skill, it can't run /verify or /land, and P17's design needs reshaping (e.g.
+  the orchestrator runs /verify and /land itself).
+- **How to verify:** spawn one worktree-isolated general-purpose subagent; have it
+  invoke a forked skill on a trivial target and report whether it ran.
+- **Resolution:** 2026-10-15 — held for /verify. A general-purpose subagent spawned
+  with `isolation: "worktree"` (its worktree at main's 37cb726) had the Skill tool,
+  called `verify P14`, and got back `Skill "verify" completed (forked execution)` with
+  only the final report in its context. Its worktree and branch were auto-removed
+  afterwards (*verified*: `git worktree list` and `git branch` on main). Not tested:
+  /land from a subagent. An isolated session is refused git aimed at another checkout
+  (P15 Notes), so a subagent's /land would presumably be refused too; P17 keeps
+  landing in the orchestrator. Two side findings: the caller's "write no files"
+  instruction didn't reach the fork, which wrote logs to the shared session
+  scratchpad; and the isolation guard refused compound commands that the `rtk` hook
+  rewrites to `rtk git`, while plain single git commands ran.
