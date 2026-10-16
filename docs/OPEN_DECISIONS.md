@@ -254,3 +254,17 @@ is readable from this side too. The schema check reads the `Resolves:` half.
   instruction didn't reach the fork, which wrote logs to the shared session
   scratchpad; and the isolation guard refused compound commands that the `rtk` hook
   rewrites to `rtk git`, while plain single git commands ran.
+
+### OD-10 — Does a SessionStart hook's output reach the session?
+- **Status:** open
+- **Raised:** 2026-10-16
+- **Assumption:** stdout from a `SessionStart` command hook in .claude/settings.json is
+  added to the new session's context, so the agent sees the audit's findings without
+  anyone running a command.
+- **Why it matters:** P18 moves the session audit from /checkpoint to session start.
+  If the output only reaches a log, the findings are invisible and the audit needs
+  another trigger (e.g. /implement's gates).
+- **How to verify:** start a headless session with a SessionStart hook that prints a
+  unique marker, ask it what context it was given at startup, and see whether the
+  marker comes back.
+- **Resolution:** —

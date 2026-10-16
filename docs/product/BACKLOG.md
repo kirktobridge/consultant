@@ -36,23 +36,23 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P16** — hooks guard the worktree a session is in. Landed on main 2026-10-16;
-   awaiting your acceptance against its per-criterion report. P15 waits on it.
-2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
+1. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
    after.
-3. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
    touches, so it follows P9 by preference rather than by dependency.
-4. **P6** — split "merged" from "released". Independent of the others; available to
+3. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
-5. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
+4. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
    because nothing else waits on it.
 
 Note what is *absent*: P7 is a high-payoff idea, and is
 deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
-readiness it doesn't have. P15 is absent for the same reason: it waits on P16's acceptance. P17
-waits on P15 and on an open assumption (OD-8).
+readiness it doesn't have. P15 is dependency-ready now that P16 has shipped, but it is held behind P18 by
+preference: its R2 and R3 lean on HANDOFF and /checkpoint, which P18 retires, so
+building it second means writing it once.
+P17 waits on P15 and on an open assumption (OD-8). P18 waits on OD-10.
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
@@ -215,7 +215,7 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 
 ### P15 — The loop drives git; parallel sessions get worktrees automatically
 - **Status:** proposed
-- **Drafted:** 2026-10-15
+- **Drafted:** 2026-10-16
 - **Value:** you never manage the git tree. Today you choose when to take a worktree,
   when to /land, and what to clean up, and running sessions in parallel depends on you
   following the GUIDE's rules by hand. Those rules become things the loop does.
@@ -254,6 +254,9 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   2026-10-15). The main checkout becomes integration-only; hand-edit it while sessions
   run and landings stop at the clean-tree check. P12 doesn't block this, but if it
   lands first, the lock and claim helpers use its trunk command rather than `main`.
+  Re-read 2026-10-16 after P16 shipped: P16 settled the dependency and moved nothing
+  else described here. R2's HANDOFF lock and R3's /checkpoint audit change if P18
+  lands first.
 
 ### P17 — An orchestrator that builds non-conflicting entries in parallel
 - **Status:** proposed
@@ -282,6 +285,36 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
 - **Depends on:** P15, OD-8, OD-9
 - **Notes:** If subagents are handed /implement as pasted text rather than invoking
   it, OD-4 applies to them too.
+
+---
+
+### P18 — Retire /checkpoint and the handoff file; history comes from git
+- **Status:** proposed
+- **Drafted:** 2026-10-16
+- **Value:** sessions end when the work ends, with no closing ritual and no file to
+  manage. The dangling-state audit still runs, at the start of every session,
+  including after one that crashed.
+- **Scope:**
+  - In: delete the /checkpoint skill and `.claude/HANDOFF.md`, including every
+    reference in skills, GUIDE, README, PORTING, and tests. The loop goes from six
+    skills to five.
+  - In: the session audit runs automatically when a session starts, and drops its
+    "branch with no handoff" check.
+  - In: a history command that lists each P#'s commits and close reports in date
+    order, plus unmerged branches with their latest commit message.
+  - Out: a hand-written journal.
+- **Accept:**
+  - Landing a branch never asks about a handoff file.
+  - Starting a session while an abandoned `in-progress` claim exists shows the audit
+    finding without anyone running a command.
+  - Running the history command for P16 shows its claim, build commit with close
+    report, merge, and landing note, in order.
+  - No skill or doc mentions /checkpoint or `.claude/HANDOFF.md`.
+- **Depends on:** OD-10
+- **Notes:** Raised 2026-10-16 after /land refused P16 for a missing HANDOFF section
+  the user never maintains; most sessions are self-contained. Overlaps P15, whose R2
+  lock covers HANDOFF writes and whose R3 hands cleanup checks to /checkpoint's audit;
+  whichever lands second adapts.
 
 ---
 
@@ -408,7 +441,7 @@ user-facing, but a silent failure in it is invisible everywhere else.
   report in 38ca310.
 
 ### P16 — Hooks guard the worktree a session is in, not the checkout it launched from
-- **Status:** in-progress
+- **Status:** shipped
 - **Drafted:** 2026-10-15
 - **Value:** human-owned docs stay protected in parallel sessions. In a worktree
   session today, the hooks run main's scripts (OD-7, refuted): anything under
@@ -427,11 +460,12 @@ user-facing, but a silent failure in it is invisible everywhere else.
     flagged by the in-session check.
   - Removing the fix makes the new test fail.
 - **Depends on:** —
-- **Notes:** Found by the OD-7 probe, 2026-10-15. Live without P15, since the GUIDE
-  already recommends worktrees. Filed as a feature because P5's defect class isn't
-  built.
-  Landed 2026-10-16 (merge 05a73ff); stays `in-progress` until accepted. The
-  per-criterion report is in commit 85c4eaf's message.
+- **Shipped:** 2026-10-16 — accepted by the user; all three criteria observed, against
+  scripts run the way OD-7 found the harness runs them, not a live EnterWorktree
+  session. Accepted knowingly: "current worktree" means the checkout holding the
+  edited file; a session launched from inside a worktree is untested.
+- **Notes:** Found by the OD-7 probe, 2026-10-15. Merge 05a73ff; per-criterion report
+  in 85c4eaf's message.
 
 ---
 
