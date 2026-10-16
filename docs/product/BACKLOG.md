@@ -51,7 +51,7 @@ check fails CI if any ID here is missing, terminal, or resting on an open assump
 Note what is *absent*: P7 is a high-payoff idea, and is
 deliberately not queued — it depends on P6 (P4 has shipped), so the queue would be claiming a
 readiness it doesn't have. P17 waits on P15 and on an open assumption (OD-8). P19's P18 half has shipped; it
-still waits on P11's graph (which waits on P10).
+still waits on P11's graph (which waits on P10, which waits on P20).
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 
@@ -500,6 +500,43 @@ user-facing, but a silent failure in it is invisible everywhere else.
 - **Notes:** Found by the OD-7 probe, 2026-10-15. Merge 05a73ff; per-criterion report
   in 85c4eaf's message.
 
+### P20 — Entries as files: a strict field header, a prose body, the queue on its own
+- **Status:** proposed
+- **Drafted:** 2026-10-16
+- **Value:** the checker stops guessing which `**Depends on:**` is the field and which
+  is prose about it. P9 patched that class one instance at a time and surfaced three
+  more; this removes the class. Per-entry files also end same-file edit collisions
+  between parallel sessions.
+- **Scope:**
+  - One file per entry (`docs/backlog/P#.md`, `docs/decisions/OD-n.md`). Machine-read
+    fields (id, status, drafted/raised, depends_on, resolves, shipped / resolution
+    date) live in a header block where every line is a `key: value` field. Human
+    fields (Value, Scope, Accept; Assumption, Why it matters, How to verify,
+    Resolution text) stay markdown in the body.
+  - `## Next up` moves to its own file, which is the queue and nothing else.
+  - A small strict header reader with no dependencies (the repo forbids them).
+  - Doc, checker and consumers move in one commit per register: the format docs,
+    backlog-schema-check, every skill's lookup, session-audit, history, and the
+    eval/test fixtures. The migration preserves the entry count (24 today), and a
+    test pins that.
+  - Out: changing which fields exist or what they mean, and a database or JSON source
+    of truth. This changes where fields live, not what they are.
+- **Accept:**
+  - An entry whose prose says `status: shipped` or `depends_on: OD-3` is unaffected —
+    only the header is read, and the real dependency still blocks.
+  - A header line that isn't a known field is rejected, and the message names the file
+    and the line.
+  - The queue lives in its own file; queuing an ID with no entry, a terminal entry, or
+    one resting on an open OD fails the check, as it does today.
+  - The skills' orientation read ("what's next, what's claimed") costs no more output
+    than today's grep over BACKLOG.md — measured before and after.
+- **Depends on:** —
+- **Notes:** chosen after P9 (2026-10-16). Holds rather than files three items P9's
+  build found, all the same class, which this voids: session-audit's loose `field()`
+  and heading regex; `parse()` not ending an entry at a `##` heading; an indented
+  `- **Field:**` sub-bullet read as the field. User decision: the queue gets its own
+  file, not a per-entry field.
+
 ---
 
 ## Epic: What the loop tracks
@@ -534,7 +571,7 @@ The kinds of thing the tracked docs hold, and where each one goes.
     is waiting on.
   - The schema check rejects an entry that depends on an open decision being queued
     in Next up.
-- **Depends on:** —
+- **Depends on:** P20 (build its registers in P20's format rather than migrate them after)
 - **Notes:** waits on the same change landing in photocull and being exercised once
   per new shape (one measure run, one decision taken, one assumption resolved). The
   dependency is cross-repo, so it lives here in prose: the schema check would read a
