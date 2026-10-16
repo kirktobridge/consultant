@@ -14,7 +14,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, OD, project, schema, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
+import { P, OD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -351,5 +351,120 @@ describe('heading and ID hygiene', () => {
         '\n## Template\n\n```markdown\n### P1 — duplicate id inside a fence\n- **Status:** proposed\n```\n',
     );
     passes(dir); // would be a duplicate-ID cascade if fences were parsed
+  });
+});
+
+// P9. An entry that *describes* a field names it in prose; an unanchored probe reads
+// that prose as the field. These walk every probe the checker reports, so a field
+// added to its config later is covered without anyone adding a test for it.
+describe('field probes are anchored to field lines, not prose', () => {
+  const fields = JSON.parse(run('backlog-schema-check.mjs', ['--fields']).stdout);
+
+  // Drop the field's line (and its continuation lines) from the one entry in `rel`,
+  // and add a prose line that names it instead.
+  const proseOnly = (dir, rel, label) => {
+    const f = join(dir, rel);
+    const lines = readFileSync(f, 'utf8').split('\n');
+    const i = lines.findIndex((l) => l.startsWith(`- **${label}:**`));
+    assert.ok(i >= 0, `fixture has no ${label} line in ${rel}`);
+    let j = i + 1;
+    while (j < lines.length && /^\s+\S/.test(lines[j])) j++;
+    lines.splice(i, j - i, `- **Notes:** this entry describes the \`**${label}:**\` field.`);
+    writeFileSync(f, lines.join('\n'));
+  };
+
+  // Positive control: an empty or truncated list would make the walk below pass by
+  // walking nothing (L3).
+  test('the probe list covers both tracked docs', () => {
+    assert.ok(fields['docs/product/BACKLOG.md'].required.includes('Accept'));
+    assert.ok(fields['docs/OPEN_DECISIONS.md'].required.includes('Assumption'));
+    assert.ok(fields['docs/product/BACKLOG.md'].accessed.includes('Depends on'));
+  });
+
+  for (const [rel, { required }] of Object.entries(fields)) {
+    for (const label of required) {
+      test(`${rel}: naming **${label}:** in prose does not count as carrying it`, () => {
+        const dir = project({ backlog: [P('P1')], decisions: [OD('OD-1')] });
+        passes(dir); // the fixture is valid before the field is taken away
+        proseOnly(dir, rel, label);
+        fails(dir, new RegExp(`missing \\*\\*${label}\\*\\*`));
+      });
+    }
+  }
+
+  // The first entry most worth protecting: `labelled` takes the first match, so prose
+  // above the real field used to win — and the field it read drives the OD gate.
+  // BACKLOG.md's own P9 entry is the live case; this is its fixture twin.
+  test('prose naming **Depends on:** above the real field does not hide the real dependency', () => {
+    const accept = ['an entry whose prose names `**Depends on:** OD-2` still has its real dependency read.', 'it is still blocked.'];
+    fails(
+      project({
+        backlog: [P('P1'), P('P2', { accept, dependsOn: ['OD-1'] })],
+        decisions: [OD('OD-1'), OD('OD-2', { status: 'verified', resolution: `${daysAgo(40)} — held.` })],
+        nextUp: ['P1', 'P2'],
+      }),
+      /P2 is in `## Next up` but depends on OD-1, still `open`/,
+    );
+  });
+
+  test('prose naming **Resolves:** is not a spike pairing', () => {
+    passes(
+      project({
+        backlog: [P('P1', { scope: 'teach the checker the `**Resolves:** OD-1` field.' })],
+        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(40)} — held.` })],
+      }),
+    );
+  });
+});
+
+// P9. Which `###` lines are entries is a decision, not a side effect of the ID regex.
+describe('section headings are told apart from entry headings', () => {
+  const append = (dir, text) => {
+    const f = join(dir, 'docs/product/BACKLOG.md');
+    writeFileSync(f, readFileSync(f, 'utf8') + text);
+  };
+
+  test('a one-word section heading is skipped, not reported', () => {
+    const dir = project();
+    append(dir, '\n### Notes\n\nSome prose.\n');
+    assert.match(passes(dir), /OK \(1 entries/);
+  });
+
+  test('a several-word section heading is skipped, not reported', () => {
+    const dir = project();
+    append(dir, '\n### How these entries are ranked\n\nSome prose.\n');
+    assert.match(passes(dir), /OK \(1 entries/);
+  });
+
+  test("a section heading ends the entry above — its prose is not that entry's fields", () => {
+    const dir = project({ backlog: [P('P1', { accept: null })] });
+    append(dir, '\n### Example\n\n- **Accept:**\n  - shown here.\n  - as an example.\n');
+    fails(dir, /open P1 missing \*\*Accept\*\*/);
+  });
+
+  // Parse loosely, validate strictly: skipping section headings must not swallow a
+  // broken entry heading too.
+  test('an entry heading with no em-dash is still reported', () => {
+    const dir = project();
+    append(dir, '\n### P2 no dash here\n- **Status:** proposed\n');
+    fails(dir, /malformed entry heading .*### P2 no dash here/);
+  });
+
+  test('an entry-shaped heading with a digit-less ID is reported, not skipped', () => {
+    const dir = project();
+    append(dir, '\n### PX — typo in the id\n- **Status:** proposed\n');
+    fails(dir, /ID out of namespace: ### PX/);
+  });
+
+  test('an em-dash later in a prose heading does not make it an entry', () => {
+    const dir = project();
+    append(dir, '\n### Notes on ranking — part two\n\nSome prose.\n');
+    assert.match(passes(dir), /OK \(1 entries/);
+  });
+
+  test('a bare ID heading is reported, not mistaken for a one-word section', () => {
+    const dir = project();
+    append(dir, '\n### P2\n- **Status:** proposed\n');
+    fails(dir, /malformed entry heading .*### P2$/m);
   });
 });

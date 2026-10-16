@@ -28,6 +28,8 @@
 // Modes:
 //   node scripts/backlog-schema-check.mjs           check everything (CI / manual)
 //   node scripts/backlog-schema-check.mjs --all     same, explicit
+//   node scripts/backlog-schema-check.mjs --fields  print every probed field label as
+//                                                   JSON (tests walk the probes by it)
 //   (PostToolUse hook)                              reads hook JSON on stdin; exits
 //                                                   0 fast unless the edited file is
 //                                                   watched, else checks and exits 2
@@ -42,6 +44,15 @@ const DASH = '—'; // em-dash — the canonical heading + SHIPPED separator
 // ── Configuration ────────────────────────────────────────────────────────────
 // PORTING: adjust ID namespaces and file paths; keep the shapes.
 
+// Every field probe is anchored to a field LINE — `- **Label` at the start of a
+// bullet — never to the label appearing anywhere. An entry *about* a field names it
+// in prose, and an unanchored probe reads that prose as the field: a presence check
+// then passes an entry that carries nothing, and an accessor (`labelled` takes the
+// first match) reads the prose instead of the real field. `Depends on:` is the one
+// that bites hardest, since it drives the OD-blocking gate. So the config below
+// lists LABELS, and this is the only place a label becomes a regex.
+const fieldLine = (...labels) => new RegExp(`^\\s*-\\s+\\*\\*(?:${labels.join('|')})\\b`);
+
 const BACKLOGS = [
   {
     file: 'docs/product/BACKLOG.md',
@@ -52,21 +63,15 @@ const BACKLOGS = [
     // Fields every entry carries, and fields only *open* entries carry.
     // NB: product `Scope` means "what's in, what's out" — the unit /implement
     // builds against. Don't confuse it with a measurement's context.
-    always: [['Value', /\*\*Value:\*\*/]],
-    // NB the `Accept` probe is anchored to a field line (`- **Accept:**`) where the
-    // others are not. It has to be: an entry *about* the field mentions `**Accept:**`
-    // in its own Scope prose, and an unanchored probe reads that as the field being
-    // present — the entry then passes while carrying no criteria at all. Anchoring
-    // also keeps `labelled` from locking onto the prose line and counting the wrong
-    // block's bullets.
-    whileOpen: [['Scope', /\*\*Scope\b/], ['Accept', /^\s*-\s+\*\*Accept\b/]],
+    always: ['Value'],
+    whileOpen: ['Scope', 'Accept'],
     // `Accept:` is the product owner's definition of done, written before the build.
     // Counted rather than merely present, because the failure mode this field has is
     // not absence — it's degrading into ceremony, a restatement of Value as one
     // unfalsifiable sentence. A bound forces the author to enumerate *separable*
     // checks; a lower bound of 1 would accept "it works" and a high ceiling would
     // accept a spec dump nobody drives.
-    criteria: { label: 'Accept', re: /^\s*-\s+\*\*Accept\b/, min: 2, max: 4 },
+    criteria: { label: 'Accept', min: 2, max: 4 },
   },
 ];
 
@@ -79,14 +84,32 @@ const DECISIONS = {
   kind: 'decisions',
   open: new Set(['open']),
   terminal: new Set(['verified', 'refuted', 'moot']),
-  always: [['Assumption', /\*\*Assumption:\*\*/]],
-  whileOpen: [
-    ['Why it matters', /\*\*Why it matters:\*\*/],
-    ['How to verify', /\*\*How to verify:\*\*/],
-  ],
+  always: ['Assumption'],
+  whileOpen: ['Why it matters', 'How to verify'],
+};
+
+// Fields read by an accessor rather than checked for presence. Listed beside the
+// required ones so `--fields` reports every probe, and a test can walk them all.
+// The accessors below read their labels from here, so this cannot drift from them.
+const ACCESSED = {
+  status: ['Status'],
+  drafted: ['Drafted', 'Raised'],
+  terminal: ['Shipped', 'Closed', 'Landed'],
+  resolution: ['Resolution'],
+  dependsOn: ['Depends on'],
+  resolves: ['Resolves'],
 };
 
 const HEADING = new RegExp(`^###\\s+\\S+\\s+${DASH}\\s+\\S`);
+
+// Which `###` lines are entries: the first word carries a digit (an ID always has
+// a number; a prose heading's first word does not), or is followed directly by the
+// em-dash (the entry shape, with a typo'd ID). Everything else is a section heading.
+// Deliberately loose: anything entry-shaped is taken as an entry and then
+// *validated* (HEADING, idPattern), so a broken entry heading is reported rather
+// than skipped. Tightening this to the exact heading shape would make broken
+// headings vanish silently — parse loosely, validate strictly.
+const ENTRY_LIKE = new RegExp(`^###\\s+(\\S*\\d|\\S+\\s+${DASH})`);
 
 /** Files whose edit should trigger the in-session (hook) run. */
 const WATCHED = [BACKLOGS[0].file, DECISIONS.file];
@@ -98,6 +121,18 @@ const WATCHED = [BACKLOGS[0].file, DECISIONS.file];
 // nothing and must never fail, even if a tracked doc is mid-rename or absent.
 
 const argv = process.argv.slice(2);
+
+// `--fields`: every probed label per doc, as JSON. Exists so tests can walk the
+// probes from this config instead of restating the list — a field added here is
+// covered without anyone remembering to add its test.
+if (argv.includes('--fields')) {
+  const fieldsOf = (b) => ({
+    required: [...b.always, ...b.whileOpen],
+    accessed: Object.values(ACCESSED).flat(),
+  });
+  console.log(JSON.stringify(Object.fromEntries([...BACKLOGS, DECISIONS].map((b) => [b.file, fieldsOf(b)]))));
+  process.exit(0);
+}
 const explicit = argv.includes('--all');
 let hookMode = false;
 let run = explicit || process.stdin.isTTY === true;
@@ -128,7 +163,7 @@ if (!run) process.exit(0);
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
-const has = (lines, re) => lines.some((l) => re.test(l));
+const has = (lines, ...labels) => lines.some((l) => fieldLine(...labels).test(l));
 
 /**
  * Status vocabulary is read *from the document itself* — the backtick-quoted
@@ -171,10 +206,13 @@ function parse(b) {
   for (const line of lines) {
     if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
     if (inFence) { if (cur) cur.body.push(line); continue; }
-    const h = line.match(/^###\s+(\S+)\s+/);
-    if (h) {
+    if (/^###(\s|$)/.test(line)) {
       if (cur) entries.push(cur);
-      cur = { id: h[1], heading: line, title: line.replace(/^###\s+\S+\s*/, ''), body: [] };
+      // A section heading ends the entry above it — its prose is not that entry's
+      // body — and is otherwise skipped, never reported.
+      cur = ENTRY_LIKE.test(line)
+        ? { id: line.split(/\s+/)[1], heading: line, title: line.replace(/^###\s+\S+\s*/, ''), body: [] }
+        : null;
     } else if (cur) {
       cur.body.push(line);
     }
@@ -182,7 +220,7 @@ function parse(b) {
   if (cur) entries.push(cur);
 
   for (const e of entries) {
-    const s = e.body.find((l) => /\*\*Status:\*\*/.test(l));
+    const s = e.body.find((l) => fieldLine(...ACCESSED.status).test(l));
     const tok = s?.match(/\*\*Status:\*\*\s*`?([a-z-]+)`?/i);
     e.statusToken = tok ? tok[1].toLowerCase() : null;
   }
@@ -200,8 +238,8 @@ function parseNextUp(lines) {
   return [...new Set(out)];
 }
 
-const labelled = (body, re) => {
-  const i = body.findIndex((l) => re.test(l));
+const labelled = (body, ...labels) => {
+  const i = body.findIndex((l) => fieldLine(...labels).test(l));
   if (i < 0) return [];
   const out = [body[i]];
   for (let j = i + 1; j < body.length && /^\s+\S/.test(body[j]); j++) out.push(body[j]);
@@ -211,16 +249,16 @@ const labelled = (body, re) => {
 // Sub-bullets of a labelled block, which is how an enumerable field (`Accept:`) is
 // distinguished from a prose one. Only the label's own continuation lines are
 // considered, so the next field's bullets can never be counted as this field's.
-const subBullets = (body, re) => labelled(body, re).slice(1).filter((l) => /^\s+[-*]\s+\S/.test(l));
+const subBullets = (body, label) => labelled(body, label).slice(1).filter((l) => /^\s+[-*]\s+\S/.test(l));
 
 // Backlog entries are **Drafted:**; open decisions are **Raised:**. Same idea —
 // when this entry's claims were last established — so one accessor reads both.
 const draftedOn = (body) =>
-  body.find((l) => /\*\*(Drafted|Raised):\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+  body.find((l) => fieldLine(...ACCESSED.drafted).test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
 
 const terminalDateOf = (body) =>
-  body.find((l) => /\*\*(Shipped|Closed|Landed):\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
-  body.find((l) => /\*\*Resolution:\*\*/.test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
+  body.find((l) => fieldLine(...ACCESSED.terminal).test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
+  body.find((l) => fieldLine(...ACCESSED.resolution).test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
   null;
 
 // Deduped: a labelled block runs over its continuation lines, so prose that names
@@ -228,14 +266,14 @@ const terminalDateOf = (body) =>
 // otherwise raise one violation per mention. Inflating the count is not harmless —
 // the count is the positive control that a parser still works (LESSONS L3), so it
 // has to mean what it says.
-const idsIn = (body, re) => [
+const idsIn = (body, labels) => [
   ...new Set(
-    [...labelled(body, re).join(' ').matchAll(/\b(OD-\d+|P\d+)\b/g)].map((m) => m[1]),
+    [...labelled(body, ...labels).join(' ').matchAll(/\b(OD-\d+|P\d+)\b/g)].map((m) => m[1]),
   ),
 ];
 
-const dependsOn = (body) => idsIn(body, /\*\*Depends on:\*\*/);
-const resolvesOf = (body) => idsIn(body, /\*\*Resolves:\*\*/).filter((id) => /^OD-/.test(id));
+const dependsOn = (body) => idsIn(body, ACCESSED.dependsOn);
+const resolvesOf = (body) => idsIn(body, ACCESSED.resolves).filter((id) => /^OD-/.test(id));
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
@@ -261,7 +299,9 @@ for (const p of parsed) {
 
   // — heading shape, ID namespace, uniqueness —
   for (const e of p.entries) {
-    if (!HEADING.test(e.heading)) fail(`${p.file}: malformed heading: ${e.heading}`);
+    if (!HEADING.test(e.heading)) {
+      fail(`${p.file}: malformed entry heading (expected "### <ID> ${DASH} <title>"): ${e.heading}`);
+    }
     if (!b.idPattern.test(e.id)) fail(`${p.file}: ID out of namespace: ${e.heading}`);
     // SHIPPED is a canonical ` — SHIPPED` suffix, never baked into the title: a
     // status baked into a title is invisible to a status grep and survives the
@@ -285,12 +325,12 @@ for (const p of parsed) {
   // — required fields: always-fields on every entry, open-fields while open —
   // Terminal entries legitimately compress to a status + a one-line outcome.
   for (const e of p.entries) {
-    for (const [label, re] of b.always) {
-      if (!has(e.body, re)) fail(`${p.file}: ${e.id} missing **${label}**`);
+    for (const label of b.always) {
+      if (!has(e.body, label)) fail(`${p.file}: ${e.id} missing **${label}**`);
     }
     if (!b.open.has(e.statusToken ?? '')) continue;
-    for (const [label, re] of b.whileOpen) {
-      if (!has(e.body, re)) fail(`${p.file}: open ${e.id} missing **${label}**`);
+    for (const label of b.whileOpen) {
+      if (!has(e.body, label)) fail(`${p.file}: open ${e.id} missing **${label}**`);
     }
   }
 
@@ -299,11 +339,11 @@ for (const p of parsed) {
   // *drive*. Runs only where the field is present, so a missing one raises exactly
   // one violation rather than two saying the same thing.
   if (b.criteria) {
-    const { label, re, min, max } = b.criteria;
+    const { label, min, max } = b.criteria;
     for (const e of p.entries) {
       if (!b.open.has(e.statusToken ?? '')) continue;
-      if (!has(e.body, re)) continue; // the required-fields check owns that failure
-      const n = subBullets(e.body, re).length;
+      if (!has(e.body, label)) continue; // the required-fields check owns that failure
+      const n = subBullets(e.body, label).length;
       if (n < min || n > max) {
         fail(
           `${p.file}: open ${e.id} has ${n} **${label}** criteri${n === 1 ? 'on' : 'a'}, ` +
