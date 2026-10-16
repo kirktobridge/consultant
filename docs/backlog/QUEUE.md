@@ -1,6 +1,7 @@
 # Next up
 
-1. **P11** — unblocks two: P19 directly, and P7 together with P6.
+1. **P11** — landed on main, awaiting acceptance. Unblocks two: P19 directly, and P7
+   together with P6.
 2. **P6** — split "merged" from "released". Unblocks P7 (which still waits on P11).
 3. **P15** — the loop drives git. Unblocks P17 (which still waits on A-8).
 4. **P23** — feature dependencies gate the queue and claims. Unblocks P24, the
