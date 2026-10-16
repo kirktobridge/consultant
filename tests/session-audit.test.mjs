@@ -43,7 +43,7 @@ describe('the clean path', () => {
 describe('working tree', () => {
   test('uncommitted changes are noted', () => {
     const { dir } = repo();
-    writeFileSync(join(dir, 'docs', 'product', 'BACKLOG.md'), '# edited\n');
+    writeFileSync(join(dir, 'docs', 'backlog', 'QUEUE.md'), '# edited\n');
     const r = audit(dir);
     assert.equal(r.code, FINDINGS);
     assert.match(r.stdout, /uncommitted change/);
@@ -139,7 +139,7 @@ describe('resolutions nobody swept', () => {
   test('an OD refuted today with live dependents raises an ALERT, ranked first', () => {
     const { dir } = repo({
       backlog: [P('P1'), P('P2', { dependsOn: ['OD-1'] })],
-      decisions: [OD('OD-1', { status: 'refuted', resolution: `${daysAgo(0)} — wrong.` })],
+      decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong.' })],
     });
     const r = audit(dir);
     assert.equal(r.code, FINDINGS);
@@ -155,7 +155,7 @@ describe('resolutions nobody swept', () => {
   test('a verified OD is an unblock note, not an alert', () => {
     const { dir } = repo({
       backlog: [P('P1'), P('P2', { dependsOn: ['OD-1'] })],
-      decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — held.` })],
+      decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: 'held.' })],
     });
     const r = audit(dir);
     assert.match(r.stdout, /OD-1 is `verified`/);
@@ -166,7 +166,7 @@ describe('resolutions nobody swept', () => {
   test('an OD resolved long ago with no dependents is not re-reported forever', () => {
     const { dir } = repo({
       backlog: [P('P1')],
-      decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(400)} — held.` })],
+      decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(400), resolution: 'held.' })],
     });
     assert.equal(audit(dir).code, CLEAN);
   });

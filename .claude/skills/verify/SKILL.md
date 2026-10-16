@@ -14,8 +14,8 @@ from conversation state.
 **What to drive comes from the entry's `Accept:`, not the diff.** Take the backlog ID
 from the argument (`/verify P4`), or else from the branch name (`feat/p<#>-…`), and
 read the whole entry:
-`awk '/^##/{p = $1 == "###" && $2 == "<ID>"} p' docs/product/BACKLOG.md`. Its
-`Accept:` criteria are the flows — each is something the product owner said they could
+`cat docs/backlog/<ID>.md`. Its
+`Accept` criteria are the flows — each is something the product owner said they could
 watch pass or fail, so drive *that*, in their terms. The diff (`git diff`/`git log`)
 plays a supporting role: it tells you where a criterion's flow lives, and what else the
 change touched that might have broken. It never decides what "working" means — a flow

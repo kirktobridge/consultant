@@ -57,11 +57,12 @@ export function P(id, over = {}) {
     value: 'a user can do the thing.',
     scope: 'in: the thing. out: everything else.',
     // An array, not a string: the checker counts criteria, so a test that wants a
-    // bad count has to express it as a count. `accept: null` omits the field.
+    // bad count has to express it as a count. `accept: null` omits the section.
     accept: ['the thing is visible in the UI.', 'doing it twice is idempotent.'],
     dependsOn: [],
     resolves: null,
     shipped: null,
+    notes: null,
     ...over,
   };
 }
@@ -76,84 +77,92 @@ export function OD(id, over = {}) {
     assumption: 'we act as if this is true.',
     why: 'things rest on it.',
     howToVerify: 'run the probe.',
+    // `resolved` is the header date; `resolution` the body text saying what was found.
+    resolved: null,
     resolution: null,
     ...over,
   };
 }
 
 // A null field means the LINE IS ABSENT, not the line with the word "null" on it.
-// Rendering `- **Value:** null` still matches the checker's `**Value:**` probe, so a
-// missing-field test would have passed while proving nothing — the exact shape of
-// failure L3 warns about, produced by the test rather than the check.
-const line = (label, v) => (v == null ? null : `- **${label}:** ${v}`);
+// Rendering `status: null` would still be a header line, so a missing-field test would
+// pass while proving nothing — the exact shape of failure L3 warns about, produced by
+// the test rather than the check.
+const key = (k, v) => (v == null ? null : `${k}: ${v}`);
+const section = (name, text) => (text == null ? null : `## ${name}\n\n${text}`);
 
-// A labelled block whose value is a list of sub-bullets. Same null contract as
-// `line`: null omits the field entirely, and an empty array renders the label with
-// nothing under it — which is a real state the checker has to reject, not a bug here.
-const block = (label, items) =>
-  items == null ? null : [`- **${label}:**`, ...items.map((i) => `  - ${i}`)].join('\n');
+// A section whose value is a list of bullets. Same null contract: null omits the
+// section entirely, and an empty array renders the heading with nothing under it —
+// which is a real state the checker has to reject, not a bug here.
+const list = (name, items) => (items == null ? null : `## ${name}\n\n${items.map((i) => `- ${i}`).join('\n')}`);
+
+const entry = (header, body) =>
+  ['---', ...header.filter(Boolean), '---', '', body.filter(Boolean).join('\n\n')].join('\n') + '\n';
 
 const renderP = (e) =>
-  [
-    `### ${e.id} — ${e.title}`,
-    line('Status', e.status),
-    line('Drafted', e.drafted),
-    line('Value', e.value),
-    line('Scope', e.scope),
-    block('Accept', e.accept),
-    line('Depends on', e.dependsOn.length ? e.dependsOn.join(', ') : '—'),
-    line('Resolves', e.resolves),
-    line('Shipped', e.shipped),
-  ]
-    .filter(Boolean)
-    .join('\n');
+  entry(
+    [
+      key('id', e.id),
+      key('title', e.title),
+      key('status', e.status),
+      key('drafted', e.drafted),
+      key('depends_on', e.dependsOn.length ? e.dependsOn.join(', ') : '—'),
+      key('resolves', e.resolves),
+      key('shipped', e.shipped),
+    ],
+    [section('Value', e.value), section('Scope', e.scope), list('Accept', e.accept), section('Notes', e.notes)],
+  );
 
 const renderOD = (d) =>
-  [
-    `### ${d.id} — ${d.title}`,
-    line('Status', d.status),
-    line('Raised', d.raised),
-    line('Assumption', d.assumption),
-    line('Why it matters', d.why),
-    line('How to verify', d.howToVerify),
-    `- **Resolution:** ${d.resolution ?? '—'}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  entry(
+    [key('id', d.id), key('title', d.title), key('status', d.status), key('raised', d.raised), key('resolved', d.resolved)],
+    [
+      section('Assumption', d.assumption),
+      section('Why it matters', d.why),
+      section('How to verify', d.howToVerify),
+      section('Resolution', d.resolution),
+    ],
+  );
 
 // Rendered as text, not just written to disk: the eval harness feeds these exact
-// documents to a model as context. One renderer means the state a model reasons about
+// files to a model as context. One renderer means the state a model reasons about
 // and the state the checker validates can never drift apart — which matters, because a
 // disagreement between them would make an eval failure impossible to attribute.
 
-export const renderBacklog = ({ backlog = [P('P1')], nextUp = ['P1'] } = {}) =>
-  `# Product backlog\n\n` +
-  'Status vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n\n' +
-  `## Next up\n\n` +
-  (nextUp.length ? nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') : '_(empty)_') +
-  `\n\n---\n\n## Epic: Foundations\n\n` +
-  backlog.map(renderP).join('\n\n') +
-  '\n';
-
-export const renderDecisions = (decisions = []) =>
-  `# Open Decisions\n\n` +
-  'Status vocab: `open` / `verified` / `refuted` / `moot`.\n\n---\n\n## Register\n\n' +
-  decisions.map(renderOD).join('\n\n') +
-  '\n';
-
 /**
- * Write a project. `nextUp` is a list of P ids; pass [] deliberately to test the
- * empty-queue failure. Vocab lines are included verbatim because the checker reads
- * its status vocabulary *from the document* — a fixture that omitted them would be
- * testing a different contract than the real docs have.
+ * Every file of a project's registers, as `{ relative path: content }`. `nextUp` is a
+ * list of P ids; pass [] deliberately to test the empty-queue failure. The READMEs
+ * carry the status vocab lines verbatim because the checker reads its vocabulary *from
+ * them* — a fixture that omitted them would be testing a different contract than the
+ * real docs have. The decisions register is only written when it has entries.
  */
-export function project({ backlog = [P('P1')], decisions = [], nextUp = ['P1'] } = {}) {
-  const dir = tempDir();
-  mkdirSync(join(dir, 'docs', 'product'), { recursive: true });
-  writeFileSync(join(dir, 'docs', 'product', 'BACKLOG.md'), renderBacklog({ backlog, nextUp }));
+export function renderFiles({ backlog = [P('P1')], decisions = [], nextUp = ['P1'] } = {}) {
+  const files = {
+    'docs/backlog/README.md':
+      '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
+    'docs/backlog/QUEUE.md':
+      '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
+  };
+  for (const e of backlog) files[`docs/backlog/${e.id}.md`] = renderP(e);
   if (decisions.length) {
-    writeFileSync(join(dir, 'docs', 'OPEN_DECISIONS.md'), renderDecisions(decisions));
+    files['docs/decisions/README.md'] = '# Open Decisions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot`.\n';
+    for (const d of decisions) files[`docs/decisions/${d.id}.md`] = renderOD(d);
   }
+  return files;
+}
+
+/** Write a file map (from renderFiles) under `dir`. */
+export function writeFiles(dir, files) {
+  for (const [rel, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, rel)), { recursive: true });
+    writeFileSync(join(dir, rel), text);
+  }
+}
+
+/** A throwaway project holding the given registers. */
+export function project(state = {}) {
+  const dir = tempDir();
+  writeFiles(dir, renderFiles(state));
   return dir;
 }
 

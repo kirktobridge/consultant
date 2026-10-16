@@ -17,16 +17,16 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 |-----|------------|
 | [docs/SPEC.md](docs/SPEC.md) | **Source of truth for behavior.** Human-owned — propose diffs, never edit. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, folder layout, key types, the *why*. |
-| [docs/product/BACKLOG.md](docs/product/BACKLOG.md) | **Product/feature backlog** — the pool of shippable work. |
-| [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
+| [docs/backlog/](docs/backlog/README.md) | **Product/feature backlog** — the pool of shippable work, one file per entry; [QUEUE.md](docs/backlog/QUEUE.md) is what's next. |
+| [docs/decisions/](docs/decisions/README.md) | **Load-bearing assumptions** (`OD-n`) nobody has verified. An `open` OD blocks work that depends on it. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
 | [.claude/GUIDE.md](.claude/GUIDE.md) | The five loop skills, how they hand off, and the checks behind them. |
 
 ## Doc discipline (avoid the re-align treadmill)
 
 - **Single source of truth per fact:** behavior → SPEC, structure/why → ARCHITECTURE,
-  plan → BUILD_ORDER, features → `docs/product/BACKLOG.md`, unverified assumptions →
-  `docs/OPEN_DECISIONS.md`. Once code exists, **code + tests own the *what*; docs
+  plan → BUILD_ORDER, features → `docs/backlog/`, unverified assumptions →
+  `docs/decisions/`. Once code exists, **code + tests own the *what*; docs
   keep the *why*.**
 - **ARCHITECTURE code blocks are illustrative sketches** — when they diverge from the
   source, the source wins; don't sync every signature back into the doc.
@@ -61,21 +61,21 @@ A finding nobody recorded is inventory, not value.
 
 **An unverified assumption blocks work in proportion to how close that work is.** An
 entry parked in the pool may rest on an `open` OD — that's the intended way to file a
-blocked idea. The same entry in `## Next up` or flipped `in-progress` is a failure: the
+blocked idea. The same entry in the queue or flipped `in-progress` is a failure: the
 queue means *dependency-ready*, and in-progress means someone is building on it right
 now. Graduating the severity is what keeps the check credible; a check that's
 permanently red teaches people to ignore it.
 
 **Changing a doc format means changing its checker in the same commit.** The schema is
-documented in the doc, enforced by `scripts/backlog-schema-check.mjs`, and relied on by
-every skill's grep. Those three drift the moment one moves alone. So: to evolve a
+documented in each register's README, enforced by `scripts/backlog-schema-check.mjs`
+(reading through `scripts/entries.mjs`), and relied on by every skill's lookup. Those three drift the moment one moves alone. So: to evolve a
 format deliberately, update doc + checker together. **Never loosen the check to paper
 over a malformed entry** — that inverts the tool, turning the thing that catches drift
 into the thing that ratifies it. A failing check is either a bad entry (fix the entry)
 or a genuinely changed convention (change all three); it is never "the check is being
 annoying".
 
-**Every open entry is dated** (`- **Drafted:** YYYY-MM-DD`) — meaning *when its claims
+**Every open entry is dated** (`drafted: YYYY-MM-DD` in its header) — meaning *when its claims
 were last established*. Bumping it after a real re-read is the intended workflow;
 bumping it to quiet a failing check is the one abuse no check can catch. The schema
 check flags an open entry drafted **before** a dependency it names reached a terminal

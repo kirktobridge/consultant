@@ -41,7 +41,7 @@ claim; writes code + tests only, never the docs.
 pick up P3 R1
 ```
 
-Also how a **spike** gets built — an entry carrying `Resolves: OD-n`, whose deliverable
+Also how a **spike** gets built — an entry whose header carries `resolves: OD-n`, whose deliverable
 is the answer to an assumption rather than a feature.
 
 ### /verify — "does it actually work?"
@@ -71,10 +71,11 @@ land this branch
 ```
 
 ### /ship — "sync the docs"
-The pen for the tracked docs — nothing else writes BACKLOG.md, BUILD_ORDER.md, or
-ARCHITECTURE.md, and it writes them **on main only**. Flips statuses (claims +
-terminal), records open-decision resolutions and sweeps what they unblocked, refreshes
-`## Next up`, appends approved /triage drafts. Usually runs as /land's last step.
+The pen for the tracked docs — nothing else writes the backlog (`docs/backlog/`),
+BUILD_ORDER.md, or ARCHITECTURE.md, and it writes them **on main only**. Flips statuses
+(claims + terminal), records open-decision resolutions and sweeps what they unblocked,
+refreshes the queue (`docs/backlog/QUEUE.md`), writes approved /triage drafts in as new
+entry files. Usually runs as /land's last step.
 
 ```
 /ship                          ← figure out what shipped from git
@@ -167,9 +168,9 @@ honest limits are in [evals/README.md](../evals/README.md).
 - **One session = one branch = one worktree.** The main checkout belongs to whichever
   session is integrating (/land, /ship on main); branch sessions never
   edit it.
-- **Claims are read from main**, not your checkout — a worktree's BACKLOG.md copy
+- **Claims are read from main**, not your checkout — a worktree's copy of the backlog
   predates claims made since you branched. /implement's claim gate does this
-  (`git show main:…`).
+  (`git grep … main -- docs/backlog/`).
 - **End-to-end runs are serialized — one session at a time.** Browser automation
   reuses whatever server holds the port, so a parallel run silently tests the *other*
   worktree's code and passes anyway. Branch sessions run targeted tests only; the full
@@ -187,8 +188,8 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 
 | File | Only writer | Where |
 |---|---|---|
-| `docs/product/BACKLOG.md`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship | **main only** |
-| `docs/OPEN_DECISIONS.md` | *no single pen* — shape enforced by the schema check | anywhere |
+| `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship | **main only** |
+| `docs/decisions/` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
 | `src/`, `tests/` | /implement | branch |
 | *(nothing tracked — scratchpad scripts, gitignored eval runs)* | /verify, /triage, /eval | — |
@@ -196,14 +197,14 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 
 ## Why single-writer
 
-Two agents editing one backlog file produce merge conflicts on `## Next up` every
+Two agents editing the backlog produce merge conflicts on the queue every
 time, and — worse — a status flip made on a branch is invisible to every other session
 until it merges, which is exactly when the claim was supposed to prevent duplicate
 work. One pen per file, and doc edits on main only, makes both problems structurally
 impossible rather than merely discouraged.
 
-The two exceptions prove the rule. `OPEN_DECISIONS.md` has no owner because an
+The two exceptions prove the rule. `docs/decisions/` has no owner because an
 assumption is settled by whoever hits it — assigning one would just mean the list
 never gets worked. `LESSONS.md` has none because a scar belongs to whoever earned it.
-Neither is a queue, so neither has a `## Next up` to conflict over; what's enforced is
+Neither is a queue, so neither has a queue file to conflict over; what's enforced is
 their *shape*, not their author.

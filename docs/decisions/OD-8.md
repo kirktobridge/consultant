@@ -1,0 +1,22 @@
+---
+id: OD-8
+title: Can a build's footprint be predicted from its backlog entry?
+status: open
+raised: 2026-10-15
+---
+
+## Assumption
+
+an agent reading an entry's Scope can name the files its build will
+touch, well enough that two entries predicted not to overlap won't conflict.
+
+## Why it matters
+
+P17's "non-conflicting" pick rests on it. If predictions miss,
+P15's conflict rule still recovers, so the cost is wasted rebuilds, not broken main.
+
+## How to verify
+
+for each merged entry in history, predict touched files from the
+entry text as it stood when claimed, then compare with the merge's `--name-only`
+diff. Report recall per entry.

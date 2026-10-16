@@ -12,7 +12,7 @@
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { P, OD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
 
@@ -41,7 +41,7 @@ describe('baseline', () => {
 
   test('the entry count is reported — it is the positive control (L3)', () => {
     const o = passes(project({ backlog: [P('P1'), P('P2', { status: 'shipped' })] }));
-    assert.match(o, /OK \(2 entries across 1 file\(s\)\)/);
+    assert.match(o, /OK \(2 entries across 1 register\(s\)\)/);
   });
 });
 
@@ -67,7 +67,7 @@ describe('required fields', () => {
   });
 
   test('an open entry with no Drafted date fails', () => {
-    fails(project({ backlog: [P('P1', { drafted: null })] }), /no \*\*Drafted:\*\*/);
+    fails(project({ backlog: [P('P1', { drafted: null })] }), /no `drafted: YYYY-MM-DD`/);
   });
 
   test('a future-dated entry fails', () => {
@@ -99,9 +99,9 @@ describe('Accept criteria are counted, not just present', () => {
     fails(project({ backlog: [P('P1', { accept: [] })] }), /0 \*\*Accept\*\* criteria/);
   });
 
-  test('one unfalsifiable sentence on the label line fails — the ceremony case', () => {
+  test('one unfalsifiable sentence under the heading fails — the ceremony case', () => {
     const dir = project({ backlog: [P('P1', { accept: [] })] });
-    patch(dir, 'docs/product/BACKLOG.md', '- **Accept:**', '- **Accept:** it works.');
+    patch(dir, 'docs/backlog/P1.md', '## Accept', '## Accept\n\nit works.');
     fails(dir, /0 \*\*Accept\*\* criteria/);
   });
 
@@ -123,10 +123,15 @@ describe('Accept criteria are counted, not just present', () => {
     passes(project({ backlog: [P('P1'), P('P9', { status: 'shipped', accept: accept(1) })] }));
   });
 
-  test("a following field's bullets are not counted as Accept's", () => {
-    const dir = project({ backlog: [P('P1', { accept: accept(2) })] });
-    patch(dir, 'docs/product/BACKLOG.md', '- **Depends on:** —', '- **Depends on:**\n  - nothing\n  - really');
-    passes(dir);
+  test("a following section's bullets are not counted as Accept's", () => {
+    passes(project({ backlog: [P('P1', { accept: accept(2), notes: '- nothing\n- really\n- more' })] }));
+  });
+
+  // P9 left this open: an indented sub-bullet was read as a field. Here only top-level
+  // bullets are criteria, so detail under a criterion is never counted as another.
+  test('indented sub-bullets under a criterion are not criteria', () => {
+    const accept = ['one check.\n  - detail\n  - more detail\n  - still more', 'another check.'];
+    passes(project({ backlog: [P('P1', { accept })] }));
   });
 });
 
@@ -135,22 +140,20 @@ describe('status vocabulary is read from the document', () => {
     fails(project({ backlog: [P('P1', { status: 'wibble' })] }), /not in vocab/);
   });
 
-  test('an entry with no Status line fails', () => {
-    const dir = project();
-    patch(dir, 'docs/product/BACKLOG.md', '- **Status:** proposed', '- **State:** proposed');
-    fails(dir, /no \*\*Status:\*\* line for P1/);
+  test('an entry with no status in its header fails', () => {
+    fails(project({ backlog: [P('P1', { status: null })] }), /docs\/backlog\/P1\.md: no `status:` in the header/);
   });
 
   test('a doc with no documented vocab at all fails loudly', () => {
     const dir = project();
-    patch(dir, 'docs/product/BACKLOG.md', 'Status vocab:', 'Statuses we use:');
+    patch(dir, 'docs/backlog/README.md', 'Status vocab:', 'Statuses we use:');
     fails(dir, /no documented status vocabulary resolved/);
   });
 });
 
 describe('the Next up queue', () => {
   test('an empty queue fails', () => {
-    fails(project({ nextUp: [] }), /no `## Next up` IDs/);
+    fails(project({ nextUp: [] }), /QUEUE\.md has no queued IDs/);
   });
 
   test('a queued ID with no entry fails', () => {
@@ -176,7 +179,7 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
   test('QUEUED: the same entry in Next up → fails', () => {
     const o = fails(
       project({ backlog: [P('P1'), blocked('proposed')], decisions: [od()], nextUp: ['P1', 'P2'] }),
-      /P2 is in `## Next up` but depends on OD-1, still `open`/,
+      /P2 is in Next up but depends on OD-1, still `open`/,
     );
     assert.match(o, /dependency-ready/, 'the message must say why the queue is the line');
   });
@@ -201,7 +204,7 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
         // Resolution predates the entry, so the staleness rule below stays out of it
         // and this isolates the block itself.
         backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(10), dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(40)} — held.` })],
+        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
         nextUp: ['P1'],
       }),
     );
@@ -215,7 +218,7 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
     fails(
       project({
         backlog: [P('P1'), P('P2', { drafted: daysAgo(40), dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1', { status: 'refuted', resolution: `${daysAgo(10)} — wrong.` })],
+        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(10), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
       /presumptively stale/,
@@ -232,7 +235,7 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
     passes(
       project({
         backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(5), dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1', { status: 'refuted', resolution: `${daysAgo(30)} — wrong.` })],
+        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(30), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
     );
@@ -245,11 +248,11 @@ describe('graduated OD blocking — severity tracks proximity to the work', () =
     );
   });
 
-  test('an ID named several times in one Depends on block raises ONE violation', () => {
+  test('an ID listed twice in depends_on raises ONE violation', () => {
     // An inflated count is not cosmetic: the count is the positive control (L3).
     const o = fails(
       project({
-        backlog: [P('P1'), P('P2', { dependsOn: ['OD-1 — see OD-1, and note OD-1 again'] })],
+        backlog: [P('P1'), P('P2', { dependsOn: ['OD-1', 'OD-1'] })],
         decisions: [od()],
         nextUp: ['P1', 'P2'],
       }),
@@ -273,7 +276,7 @@ describe('spike ↔ assumption pairing', () => {
     fails(
       project({
         backlog: [P('P1'), P('P9', { resolves: 'OD-1' })],
-        decisions: [OD('OD-1', { status: 'refuted', resolution: `${daysAgo(1)} — wrong.` })],
+        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(1), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
       /open P9 resolves OD-1, but OD-1 is already `refuted`/,
@@ -329,142 +332,156 @@ describe('staleness', () => {
   });
 });
 
-describe('heading and ID hygiene', () => {
-  test('an ID outside its file namespace fails', () => {
-    const dir = project({ backlog: [P('P1')], decisions: [OD('OD-1')] });
-    patch(dir, 'docs/OPEN_DECISIONS.md', 'OD-1', 'XX-1');
-    fails(dir, /ID out of namespace/);
+describe('identity and ID hygiene', () => {
+  test('an ID outside its register namespace fails', () => {
+    fails(project({ backlog: [P('P1')], decisions: [OD('P5')] }), /docs\/decisions\/P5\.md: ID out of namespace: P5/);
   });
 
-  test('SHIPPED baked into a title fails — it is invisible to a status grep', () => {
+  test('a header id that does not match its file name fails', () => {
     const dir = project();
-    patch(dir, 'docs/product/BACKLOG.md', '### P1 — P1 example', '### P1 — SHIPPED thing');
-    fails(dir, /SHIPPED in title, not suffix/);
+    patch(dir, 'docs/backlog/P1.md', 'id: P1', 'id: P3');
+    fails(dir, /P1\.md: header id P3 does not match the file name/);
   });
 
-  test('the entry template inside a fenced block is not parsed as a real entry', () => {
-    const dir = project();
-    const f = join(dir, 'docs/product/BACKLOG.md');
-    writeFileSync(
-      f,
-      readFileSync(f, 'utf8') +
-        '\n## Template\n\n```markdown\n### P1 — duplicate id inside a fence\n- **Status:** proposed\n```\n',
-    );
-    passes(dir); // would be a duplicate-ID cascade if fences were parsed
+  test('SHIPPED in a title fails — the status lives in the header', () => {
+    fails(project({ backlog: [P('P1', { title: 'SHIPPED thing' })] }), /SHIPPED in title/);
+  });
+
+  test('a template inside a fenced block is not read as a section', () => {
+    const notes = '```markdown\n## Accept\n\n- shown here.\n- as an example.\n```';
+    fails(project({ backlog: [P('P1', { accept: null, notes })] }), /open P1 missing \*\*Accept\*\*/);
   });
 });
 
-// P9. An entry that *describes* a field names it in prose; an unanchored probe reads
-// that prose as the field. These walk every probe the checker reports, so a field
-// added to its config later is covered without anyone adding a test for it.
-describe('field probes are anchored to field lines, not prose', () => {
+// P20. The header is the only place a field lives. An entry *about* a field names it
+// in prose, and before the split every reader had to guess which mention was the
+// field. These walk every required section and header key the checker reports, so
+// one added to its config later is covered without anyone adding a test for it.
+describe('only the header is read: prose about a field is never the field', () => {
   const fields = JSON.parse(run('backlog-schema-check.mjs', ['--fields']).stdout);
+  const fileIn = (dir) => `${dir}/${dir.endsWith('backlog') ? 'P1' : 'OD-1'}.md`;
 
-  // Drop the field's line (and its continuation lines) from the one entry in `rel`,
-  // and add a prose line that names it instead.
+  // Drop the section from the one entry in `rel`, and add a prose section that names
+  // it in every shape it used to be written in.
   const proseOnly = (dir, rel, label) => {
     const f = join(dir, rel);
-    const lines = readFileSync(f, 'utf8').split('\n');
-    const i = lines.findIndex((l) => l.startsWith(`- **${label}:**`));
-    assert.ok(i >= 0, `fixture has no ${label} line in ${rel}`);
-    let j = i + 1;
-    while (j < lines.length && /^\s+\S/.test(lines[j])) j++;
-    lines.splice(i, j - i, `- **Notes:** this entry describes the \`**${label}:**\` field.`);
-    writeFileSync(f, lines.join('\n'));
+    const text = readFileSync(f, 'utf8');
+    const i = text.indexOf(`## ${label}\n`);
+    assert.ok(i >= 0, `fixture has no ${label} section in ${rel}`);
+    const next = text.indexOf('\n## ', i + 1);
+    const rest = next < 0 ? '' : text.slice(next + 1);
+    writeFileSync(f, `${text.slice(0, i)}${rest}\n## Prose\n\nthis entry describes the \`## ${label}\` section.\n- **${label}:** as a bullet, too.\n`);
   };
 
   // Positive control: an empty or truncated list would make the walk below pass by
   // walking nothing (L3).
-  test('the probe list covers both tracked docs', () => {
-    assert.ok(fields['docs/product/BACKLOG.md'].required.includes('Accept'));
-    assert.ok(fields['docs/OPEN_DECISIONS.md'].required.includes('Assumption'));
-    assert.ok(fields['docs/product/BACKLOG.md'].accessed.includes('Depends on'));
+  test('the probe list covers both registers', () => {
+    assert.ok(fields['docs/backlog'].required.includes('Accept'));
+    assert.ok(fields['docs/decisions'].required.includes('Assumption'));
+    assert.ok(fields['docs/backlog'].keys.includes('depends_on'));
   });
 
-  for (const [rel, { required }] of Object.entries(fields)) {
+  for (const [regDir, { required }] of Object.entries(fields)) {
     for (const label of required) {
-      test(`${rel}: naming **${label}:** in prose does not count as carrying it`, () => {
+      test(`${regDir}: naming ${label} in prose does not count as carrying it`, () => {
         const dir = project({ backlog: [P('P1')], decisions: [OD('OD-1')] });
-        passes(dir); // the fixture is valid before the field is taken away
-        proseOnly(dir, rel, label);
+        passes(dir); // the fixture is valid before the section is taken away
+        proseOnly(dir, fileIn(regDir), label);
         fails(dir, new RegExp(`missing \\*\\*${label}\\*\\*`));
       });
     }
   }
 
-  // The first entry most worth protecting: `labelled` takes the first match, so prose
-  // above the real field used to win — and the field it read drives the OD gate.
-  // BACKLOG.md's own P9 entry is the live case; this is its fixture twin.
-  test('prose naming **Depends on:** above the real field does not hide the real dependency', () => {
-    const accept = ['an entry whose prose names `**Depends on:** OD-2` still has its real dependency read.', 'it is still blocked.'];
-    fails(
+  // Accept criterion 1. Every header key, written as a header line, in the body: none
+  // of them may change what the checker reads. If `status: shipped` were read, the
+  // queue would call P2 terminal; if `depends_on: OD-2` were read, OD-2 (verified)
+  // would join the real, open OD-1.
+  test('an entry whose prose says `status: shipped` or `depends_on: OD-3` is unaffected', () => {
+    const notes = 'status: shipped\ndepends_on: OD-2\nresolves: OD-2\n**Depends on:** OD-2\n- **Status:** shipped';
+    const o = fails(
       project({
-        backlog: [P('P1'), P('P2', { accept, dependsOn: ['OD-1'] })],
-        decisions: [OD('OD-1'), OD('OD-2', { status: 'verified', resolution: `${daysAgo(40)} — held.` })],
+        backlog: [P('P1'), P('P2', { notes, dependsOn: ['OD-1'] })],
+        decisions: [OD('OD-1'), OD('OD-2', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
         nextUp: ['P1', 'P2'],
       }),
-      /P2 is in `## Next up` but depends on OD-1, still `open`/,
+      /P2 is in Next up but depends on OD-1, still `open`/,
     );
-  });
-
-  test('prose naming **Resolves:** is not a spike pairing', () => {
-    passes(
-      project({
-        backlog: [P('P1', { scope: 'teach the checker the `**Resolves:** OD-1` field.' })],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(40)} — held.` })],
-      }),
-    );
+    assert.doesNotMatch(o, /terminal/, 'body prose was read as the status');
+    assert.doesNotMatch(o, /OD-2/, 'body prose was read as a dependency or a spike pairing');
+    assert.match(o, /^backlog-schema: 1 violation/m);
   });
 });
 
-// P9. Which `###` lines are entries is a decision, not a side effect of the ID regex.
-describe('section headings are told apart from entry headings', () => {
-  const append = (dir, text) => {
-    const f = join(dir, 'docs/product/BACKLOG.md');
-    writeFileSync(f, readFileSync(f, 'utf8') + text);
-  };
-
-  test('a one-word section heading is skipped, not reported', () => {
+describe('the header is strict — every line is a known `key: value`', () => {
+  // Accept criterion 2: the message names the file and the line.
+  test('an unknown key is rejected, naming the file and the line', () => {
     const dir = project();
-    append(dir, '\n### Notes\n\nSome prose.\n');
-    assert.match(passes(dir), /OK \(1 entries/);
+    patch(dir, 'docs/backlog/P1.md', 'status: proposed\n', 'status: proposed\npriority: high\n');
+    const o = fails(dir, /docs\/backlog\/P1\.md:5: unknown header key `priority`/);
+    assert.match(o, /known: id, title, status/, 'the message should say what is allowed');
   });
 
-  test('a several-word section heading is skipped, not reported', () => {
+  test('a line that is not `key: value` is rejected, naming the file and the line', () => {
     const dir = project();
-    append(dir, '\n### How these entries are ranked\n\nSome prose.\n');
-    assert.match(passes(dir), /OK \(1 entries/);
+    patch(dir, 'docs/backlog/P1.md', 'status: proposed\n', 'status: proposed\njust some words\n');
+    fails(dir, /docs\/backlog\/P1\.md:5: not a `key: value` header line/);
   });
 
-  test("a section heading ends the entry above — its prose is not that entry's fields", () => {
-    const dir = project({ backlog: [P('P1', { accept: null })] });
-    append(dir, '\n### Example\n\n- **Accept:**\n  - shown here.\n  - as an example.\n');
-    fails(dir, /open P1 missing \*\*Accept\*\*/);
+  test('a blank line inside the header is rejected', () => {
+    const dir = project();
+    patch(dir, 'docs/backlog/P1.md', 'status: proposed\n', 'status: proposed\n\n');
+    fails(dir, /P1\.md:5: not a `key: value` header line/);
   });
 
-  // Parse loosely, validate strictly: skipping section headings must not swallow a
-  // broken entry heading too.
-  test('an entry heading with no em-dash is still reported', () => {
+  test('a duplicate key is rejected', () => {
     const dir = project();
-    append(dir, '\n### P2 no dash here\n- **Status:** proposed\n');
-    fails(dir, /malformed entry heading .*### P2 no dash here/);
+    patch(dir, 'docs/backlog/P1.md', 'status: proposed\n', 'status: proposed\nstatus: shipped\n');
+    fails(dir, /P1\.md:5: duplicate header key `status`/);
   });
 
-  test('an entry-shaped heading with a digit-less ID is reported, not skipped', () => {
-    const dir = project();
-    append(dir, '\n### PX — typo in the id\n- **Status:** proposed\n');
-    fails(dir, /ID out of namespace: ### PX/);
+  test('prose in depends_on is rejected — an explanation belongs in the body', () => {
+    fails(
+      project({ backlog: [P('P1', { dependsOn: ['P3 — once it lands'] })] }),
+      /P1\.md:6: depends_on: not a comma-separated ID list/,
+    );
   });
 
-  test('an em-dash later in a prose heading does not make it an entry', () => {
-    const dir = project();
-    append(dir, '\n### Notes on ranking — part two\n\nSome prose.\n');
-    assert.match(passes(dir), /OK \(1 entries/);
+  test('a date that is not a date is rejected', () => {
+    fails(project({ backlog: [P('P1', { drafted: 'last week' })] }), /P1\.md:\d+: drafted: not a YYYY-MM-DD date/);
   });
 
-  test('a bare ID heading is reported, not mistaken for a one-word section', () => {
+  test('a file with no header is reported, not skipped', () => {
     const dir = project();
-    append(dir, '\n### P2\n- **Status:** proposed\n');
-    fails(dir, /malformed entry heading .*### P2$/m);
+    writeFileSync(join(dir, 'docs/backlog/notes.md'), '# Notes\n\nSome prose.\n');
+    fails(dir, /docs\/backlog\/notes\.md:1: no header/);
+  });
+
+  test('a header that never closes is reported', () => {
+    const dir = project();
+    writeFileSync(join(dir, 'docs/backlog/P2.md'), '---\nid: P2\ntitle: x\nstatus: proposed\n');
+    fails(dir, /P2\.md:1: header never closes/);
+  });
+});
+
+// Accept criterion 3: the queue lives in its own file and holds the queue only.
+describe('the queue file holds the queue and nothing else', () => {
+  test('a missing queue file fails', () => {
+    const dir = project();
+    rmSync(join(dir, 'docs/backlog/QUEUE.md'));
+    fails(dir, /QUEUE\.md: missing/);
+  });
+
+  test('a note naming an ID is rejected, and does not queue the ID', () => {
+    const dir = project();
+    const f = join(dir, 'docs/backlog/QUEUE.md');
+    writeFileSync(f, readFileSync(f, 'utf8') + '\nNote what is absent: **P7** is high payoff.\n');
+    const o = fails(dir, /QUEUE\.md:5: not a queue item/);
+    assert.doesNotMatch(o, /P7 has no entry/, 'the note was read as queueing P7');
+  });
+
+  test('an item may wrap onto indented lines', () => {
+    const dir = project();
+    patch(dir, 'docs/backlog/QUEUE.md', '— queued.', '— queued, for a reason\n   that runs onto a second line.');
+    passes(dir);
   });
 });

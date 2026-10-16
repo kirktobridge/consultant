@@ -42,21 +42,22 @@ the code:
   (a check holds it), *verified* (checked this session; say how), or *asserted*
   (someone's belief). An asserted claim that reads as verified is how drift starts.
 
-**Single-writer contract:** this skill is the sole writer of
-[docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md),
+**Single-writer contract:** this skill is the sole writer of the backlog —
+every entry file in [docs/backlog/](../../../docs/backlog/README.md), plus its
+`QUEUE.md` and `README.md` —
 [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md), and
 [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md). It writes **nothing else** — the
 spec is human-owned (propose diffs, never edit).
 
-[docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) is the exception: it has **no
+[docs/decisions/](../../../docs/decisions/README.md) is the exception: it has **no
 single pen** — an assumption gets settled by whoever hits it — and this skill is simply
 the usual hand doing the writing. What's enforced there is the *shape*, by the schema
 check, not the author.
 
-**Edits land on main only.** Feature branches never carry edits to these three files
-(two parallel branches touching `## Next up` conflict every time). So: the
+**Edits land on main only.** Feature branches never carry edits to these files
+(two parallel branches touching the queue conflict every time). So: the
 `in-progress` claim is committed on main *before* branching — that's what makes it
-visible to other sessions — and the terminal flip + Next up refresh happen at land
+visible to other sessions — and the terminal flip + queue refresh happen at land
 time, with /ship running as **/land**'s last step after the merge passes tests. Only
 work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly.
 
@@ -67,14 +68,14 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 
 | What shipped | Doc | Edit |
 |---|---|---|
-| Product feature / UX / UI | [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) | `partial` + note which milestone landed; or `shipped` — **only on the user's word** (below). |
-| A spike landed (`Resolves: OD-n`) | [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) | write the OD's `**Resolution:**` — what was found, how, and the date — and flip its `Status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
+| Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
+| A spike landed (`resolves: OD-n`) | `docs/decisions/OD-n.md` | write the OD's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | A build phase completed | [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md) | tick / delete the phase (it's disposable). |
 | Structure/architecture changed | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) | update the *why* **only** — not signatures (its code blocks are illustrative sketches; the source wins). |
 | Rules / spec changed | *(human-only)* | **do not edit** the spec — it's human-owned and edit-guard blocks it. Propose the exact diff to the user, and flag that ARCHITECTURE needs its matching update once applied. |
 
-3. **Sweep what a resolution unblocked.** If this pass wrote an OD `Resolution:`, name
-   every entry whose `Depends on:` cites it — they just changed state and nothing else
+3. **Sweep what a resolution unblocked.** If this pass wrote an OD's Resolution, name
+   every entry whose `depends_on:` cites it — they just changed state and nothing else
    notices. A `verified` OD unblocks them; a **`refuted`** one may have *voided* them,
    which is the case worth stopping over. Report the list; the deep pass is
    `/triage groom`.
@@ -83,10 +84,11 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
    terminal flip, check the obligation against the **diff that actually landed** —
    scope-listed follow-ups whose premise the build voided get dropped with a one-line
    why, not copied forward.
-5. **Refresh `## Next up`:** on any product status flip or intake, update the
-   `## Next up` block at the top of BACKLOG.md — drop a now-terminal ID, promote the
-   next dependency-ready entry (payoff-ranked, ≤5, one-line why). The schema check
-   fails CI if the queue dangles or lists a terminal ID.
+5. **Refresh the queue:** on any product status flip or intake, update
+   `docs/backlog/QUEUE.md` — drop a now-terminal ID, promote the next
+   dependency-ready entry (payoff-ranked, ≤5, `N. **P#** — one-line why`). The file
+   holds the queue and nothing else; notes about what's absent go nowhere. The schema
+   check fails CI if the queue dangles, lists a terminal ID, or carries any other line.
 
 ## `shipped` is the user's flip
 
@@ -108,8 +110,9 @@ on what.
 Two legitimate causes, and one illegitimate response.
 
 - **A malformed entry** → fix the entry. This is the common case.
-- **A convention you're deliberately changing** → update the doc that documents the
-  format, `scripts/backlog-schema-check.mjs`, and any skill grep that relies on it,
+- **A convention you're deliberately changing** → update the README that documents
+  the format, `scripts/backlog-schema-check.mjs` (and `scripts/entries.mjs`, which
+  reads the header), and any skill lookup that relies on it,
   **in the same commit**. Schema, enforcement, and docs stay in lockstep or they drift
   apart within a session.
 - **Never loosen the check to make a red entry pass.** That inverts the tool: the thing
@@ -124,24 +127,25 @@ Two legitimate causes, and one illegitimate response.
 - Don't document a feature the spec / architecture docs already cover generically.
 
 ## Intake (from /triage)
-When /triage hands over an approved **product** draft, append it to
-[docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) under the right epic with
-`Status: proposed` and today's `Drafted:` date.
+When /triage hands over an approved **product** draft, write it as a new
+`docs/backlog/P#.md` (the next free number) in the shape
+[docs/backlog/README.md](../../../docs/backlog/README.md) documents: a header with
+`status: proposed`, the right `epic:`, and today's `drafted:` date; the body's
+sections below it.
 
 **Copy `Accept:` verbatim.** It is the one field in the shape whose author is the
 product owner rather than an agent, and the loop closes by reporting against those exact
 words — so tightening the wording, merging two criteria, or "clarifying" one is not an
 improvement, it is quietly editing the definition of done. Same standing as the spec:
 if a criterion looks wrong, say so and let the user rewrite it. The schema check holds
-the count (2–4 sub-bullets), never the meaning.
+the count (2–4 bullets), never the meaning.
 
-An approved **OD** draft goes to
-[docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md) with `Status: open` and
-today's `Raised:` date. No other changes — /triage classifies and drafts; this skill is
+An approved **OD** draft becomes a new `docs/decisions/OD-n.md` with `status: open` and
+today's `raised:` date. No other changes — /triage classifies and drafts; this skill is
 just the pen.
 
-A drafted entry that `Depends on:` an open OD is appended **to the pool, not to
-`## Next up`**. That's not a workaround — the queue means dependency-ready, and this
+A drafted entry whose `depends_on:` names an open OD goes **into the pool, not into
+the queue**. That's not a workaround — the queue means dependency-ready, and this
 one isn't. The schema check enforces the distinction.
 
 ## Not this skill

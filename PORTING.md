@@ -61,24 +61,24 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 
 | Placeholder | Means | Where |
 |---|---|---|
-| `P#` | product backlog IDs | BACKLOG.md, all skills, schema check |
-| `OD-n` | open decisions (unverified assumptions) | OPEN_DECISIONS.md, schema check |
+| `P#` | product backlog IDs | `docs/backlog/`, `scripts/entries.mjs`, all skills, schema check |
+| `OD-n` | open decisions (unverified assumptions) | `docs/decisions/`, `scripts/entries.mjs`, schema check |
 | `L#` | lessons | LESSONS.md |
 | `docs/SPEC.md` | your human-owned source of truth | blocklist, /ship, /implement |
 | `main` | integration branch | /land, /implement, session-audit, history |
 
 Keep `P#` and `OD-n` **globally unique** — the schema check enforces it, and the
-cross-pointers (`Depends on: OD-3`, `Resolves: OD-3`) are unparseable without it.
+cross-pointers (`depends_on: OD-3`, `resolves: OD-3`) are unparseable without it.
 
 ## Step 3 — seed the open-decisions register
 
-[docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) is the cheapest high-value thing to
+[docs/decisions/](docs/decisions/README.md) is the cheapest high-value thing to
 fill in, and it works on day one — unlike the backlog, you already know its contents.
 
 Spend twenty minutes listing what your project currently *assumes* and nobody has
 checked: a third-party API's real rate limit or error semantics, a constant someone
 took from a blog post, a scaling limit never actually hit, "users won't do X". Each
-becomes an `OD-n` with a `How to verify:` line. If you can't name a concrete check, you
+becomes an `docs/decisions/OD-n.md` file with a `## How to verify` section. If you can't name a concrete check, you
 don't have an OD — you have a wish; leave it out.
 
 Three things make it more than a wiki page:
@@ -89,7 +89,7 @@ Three things make it more than a wiki page:
   unblocked, and flags assumptions about to start blocking. Nothing else in the loop
   notices either;
 - an assumption that's expensive *and* blocking the queue becomes a **spike** `P#`,
-  paired to the OD by `Resolves:` and held by the schema check.
+  paired to the OD by its `resolves:` header and held by the schema check.
 
 Keep `refuted` entries as `refuted`. Rewriting one into a `verified` entry describing
 the new truth destroys the most useful signal in the file — that we believed something
@@ -186,7 +186,7 @@ format exists to avoid.
 These look arbitrary and are not. Each was paid for.
 
 **Graduated OD blocking, not all-or-nothing.** An entry may sit `proposed` in the pool
-while resting on an `open` assumption; the same entry in `## Next up` or flipped
+while resting on an `open` assumption; the same entry in the queue or flipped
 `in-progress` fails. The obvious implementation — block anything that depends on an
 open OD — makes it impossible to *file* a blocked idea, which is exactly what /triage
 is told to do. A check that's permanently red teaches people to ignore it, and then it
@@ -197,17 +197,24 @@ reach the queue. Without that bound the register turns into a generator of specu
 investigations, and the cheapest thing about it — that you can *list* what you're
 standing on without doing anything about it — is lost.
 
-**`Resolves:` as a field, not a sentence.** The pairing between a spike and its
+**`resolves:` as a field, not a sentence.** The pairing between a spike and its
 assumption is checkable only because it's structured. "We should settle this
 eventually" in prose is unenforceable by construction: nothing can grep it and nobody
 is accountable for it. See LESSONS L2.
+
+**Fields in a strict header, prose in the body.** Every machine-read field lives in the
+entry file's `key: value` header, and nothing in the body is ever read as one. When
+fields were bullets inside the prose, every reader had to guess which mention was the
+field — and each wrong guess (prose above the field, an indented sub-bullet, a heading
+that didn't end the entry) failed *green*. Don't let a reader start scanning the body
+for a field again, and don't loosen the header to accept a line it doesn't know.
 
 **Collected, not fail-fast.** Checks that can produce several independent loose ends
 gather them all. Failing on the first hit hides the rest — and in the original, the case
 a check existed for was masked by an unrelated earlier hit.
 
 **Doc flips on main only.** Tempting to let a branch flip its own status. Don't: two
-branches touching `## Next up` conflict every time, and a claim made on a branch is
+branches touching the queue conflict every time, and a claim made on a branch is
 invisible to other sessions until it merges — exactly when it was supposed to prevent
 duplicate work.
 
@@ -258,8 +265,9 @@ deleted is the tell. See LESSONS L3.
 
 ## Evolving the schema
 
-The format lives in three places — the doc that documents it, the checker that enforces
-it, and every skill's grep that relies on it. **Change all three in the same commit.**
+The format lives in three places — each register's README that documents it, the
+checker that enforces it (`backlog-schema-check.mjs`, reading through `entries.mjs`), and
+every skill lookup that relies on it. **Change all three in the same commit.**
 
 The failure mode to refuse: loosening the check so a malformed entry passes. That
 inverts the tool — the thing that catches drift becomes the thing that ratifies it. A

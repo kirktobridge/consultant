@@ -73,7 +73,7 @@ was malformed."
 
 The prompt tells the subagent to **use no tools**. This matters more than it looks: the
 fixture state in the prompt is not the state on disk, so a single `Read` of the real
-`BACKLOG.md` would silently answer a different question and the grade would be
+backlog entry would silently answer a different question and the grade would be
 meaningless rather than wrong.
 
 **Grading is mechanical, not an LLM judge.** The reply must end with one fenced `json`

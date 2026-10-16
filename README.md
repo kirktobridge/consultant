@@ -23,10 +23,12 @@ This suite makes those failures either impossible or loud.
 No coordination protocol, no merge conflicts, no two agents "helpfully" editing the
 same status line.
 
-**2. The docs are a greppable dataset that happens to be markdown.** Skills orient by
-grepping `### <ID>` headings and `**Status:**` lines — never by reading whole files.
-That grep is only as trustworthy as the format is uniform, so a schema check asserts
-the format in CI. You get structured-data reliability without leaving prose.
+**2. The docs are a greppable dataset that happens to be markdown.** Each backlog entry
+and each assumption is its own file: a strict `key: value` header (`status:`,
+`depends_on:`, …) that the tools read, then a markdown body only people read. Skills
+orient by reading header lines — never whole files — and nothing in the prose is ever
+mistaken for a field. A schema check asserts the format in CI. You get structured-data
+reliability without leaving prose.
 
 **3. Claims carry their strength.** Every durable claim about the code says how strongly
 it's held — *mechanically enforced* (a check holds it), *verified* (checked this
@@ -36,7 +38,7 @@ verified is how the next session inherits your guess as fact. And a negative cla
 from a broken tool is indistinguishable from a true negative.
 
 Grading claims one sentence at a time still leaves the *asserted* ones unindexed, so
-[docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md) is the standing register of them —
+[docs/decisions/](docs/decisions/README.md) is the standing register of them —
 assumptions the project rests on that nobody has verified. Never build on an unverified
 figure.
 
@@ -50,7 +52,7 @@ figure.
       would we│BUILD it?           are we just  │ASSUMING it?
               ▼                                 ▼
        ┌─────────────┐                ┌──────────────────────┐
-       │ /implement  │                │  OPEN_DECISIONS.md   │
+       │ /implement  │                │  docs/decisions/     │
        └──────┬──────┘                │  OD-n — blocks what  │
               ▼                       │  depends on it, in   │
         ┌───────────┐                 │  proportion to how   │
@@ -65,7 +67,7 @@ figure.
           └────────┬────────┘
                    ▼
              ┌─────────┐
-             │  /ship  │  status flips, OD resolutions, Next up, architecture *why*
+             │  /ship  │  status flips, OD resolutions, the queue, architecture *why*
              └─────────┘
 
   every session starts with the dangling-state audit (a SessionStart hook);
@@ -85,7 +87,7 @@ tells you how often you're wrong) work even if nothing is ever verified. Only th
 creates pressure, and it applies that pressure exactly when it matters.
 
 So an open decision escalates to real work — a **spike** `P#`, whose deliverable is the
-answer rather than a feature — only when its dependents reach `## Next up`. An
+answer rather than a feature — only when its dependents reach the queue. An
 assumption blocking something deep in the pool is correctly parked. That bound is what
 keeps the register from becoming a generator of speculative work.
 
@@ -103,12 +105,14 @@ docs/
   SPEC.md                     what "correct" means       ← human-only, hook-blocked
   ARCHITECTURE.md             the *why*                  ← written only by /ship
   BUILD_ORDER.md              the phased plan, disposable
-  product/BACKLOG.md          features (P#)              ← written only by /ship
-  OPEN_DECISIONS.md           unverified assumptions (OD-n) — no single pen
+  backlog/                    features, one file per P#  ← written only by /ship
+    QUEUE.md                  what's next — the queue and nothing else
+  decisions/                  unverified assumptions, one file per OD-n — no single pen
   LESSONS.md                  the expensive failures, each with the rule it bought
   dev_notes/OPEN_IDEAS.md     your raw dump              ← human-only, hook-blocked
 scripts/
   backlog-schema-check.mjs    the keystone: asserts the docs stay greppable
+  entries.mjs                 the one strict reader for entry headers
   verify-guards.mjs           asserts the enforcement layer is still armed
   grep-checked.mjs            a search whose negative results are worth something
   session-audit.mjs           what the last session left dangling (runs at session start)
@@ -140,8 +144,8 @@ npm run history P16          # → P16's claim, build + close report, merge, lan
 npm run check:guards         # → verify-guards: armed (2 hooks verified, blocklist intact)
 
 # a negative you can trust, vs one you can't — note the exit codes
-node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/   # exit 1: VERIFIED negative
-node scripts/grep-checked.mjs --control 'Status:' 'AE[0-9]' docs/nope/  # exit 2: NOT evidence
+node scripts/grep-checked.mjs --control '^status:' 'AE[0-9]' docs/   # exit 1: VERIFIED negative
+node scripts/grep-checked.mjs --control '^status:' 'AE[0-9]' docs/nope/  # exit 2: NOT evidence
 
 echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
                              # → BLOCKED …, exit 2
@@ -150,7 +154,7 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 The tracked docs carry this repo's own live entries rather than placeholders, so what
 you see is the shape in use — replace them with yours. The idioms a fresh backlog won't
 show you (a feature blocked on an assumption, the spike that unblocks it) are specified
-in [docs/OPEN_DECISIONS.md](docs/OPEN_DECISIONS.md)'s entry template and exercised by
+in [docs/decisions/](docs/decisions/README.md)'s entry template and exercised by
 the tests, which is where they're held rather than merely illustrated.
 
 ## Then read

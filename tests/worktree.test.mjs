@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  REPO, P, run, out, tempDir, cleanupAll, gitInit, renderBacklog,
+  REPO, P, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles,
 } from './helpers/fixture.mjs';
 
 after(cleanupAll);
@@ -25,16 +25,16 @@ after(cleanupAll);
 function repoWithWorktree() {
   const main = tempDir();
   mkdirSync(join(main, '.claude'), { recursive: true });
-  mkdirSync(join(main, 'docs', 'product'), { recursive: true });
   mkdirSync(join(main, 'scripts'), { recursive: true });
   for (const f of ['edit-guard.mjs', 'edit-blocklist', 'settings.json']) {
     cpSync(join(REPO, '.claude', f), join(main, '.claude', f));
   }
   // settings.json names these; without them verify-guards reports disarmed everywhere.
-  for (const f of ['backlog-schema-check.mjs', 'verify-guards.mjs']) {
+  // The schema check reads the registers through entries.mjs, so that comes too.
+  for (const f of ['backlog-schema-check.mjs', 'entries.mjs', 'verify-guards.mjs']) {
     cpSync(join(REPO, 'scripts', f), join(main, 'scripts', f));
   }
-  writeFileSync(join(main, 'docs', 'product', 'BACKLOG.md'), renderBacklog({ backlog: [P('P1')] }));
+  writeFiles(main, renderFiles({ backlog: [P('P1')] }));
   const { sh } = gitInit(main);
   const wt = join(main, '.claude', 'worktrees', 'w');
   sh(`git worktree add -q -b feat/w "${wt}"`);
@@ -74,7 +74,7 @@ describe('the edit-guard judges a path against the checkout that contains it', (
 
   test('the worktree\'s ordinary files are still permitted', () => {
     const { main, wt } = repoWithWorktree();
-    assert.equal(guard(main, join(wt, 'docs', 'product', 'BACKLOG.md'), wt).code, ALLOWED);
+    assert.equal(guard(main, join(wt, 'docs', 'backlog', 'P1.md'), wt).code, ALLOWED);
   });
 
   test('a checkout of a different repository is not adopted as a root', () => {
@@ -98,17 +98,16 @@ describe('the PostToolUse checks run against the worktree the edit landed in', (
 
   test('an edit that breaks the worktree\'s backlog schema is flagged', () => {
     const { main, wt } = repoWithWorktree();
-    const backlog = join(wt, 'docs', 'product', 'BACKLOG.md');
-    writeFileSync(backlog, renderBacklog({ backlog: [P('P1', { value: null })] }));
+    const backlog = join(wt, 'docs', 'backlog', 'P1.md');
+    writeFiles(wt, renderFiles({ backlog: [P('P1', { value: null })] }));
     const r = hook('backlog-schema-check.mjs', main, backlog);
     assert.equal(r.code, 2, `expected the worktree's broken backlog to be flagged:\n${out(r)}`);
   });
 
   test('…and main\'s own backlog, untouched, still passes — so it was the worktree checked', () => {
     const { main, wt } = repoWithWorktree();
-    writeFileSync(join(wt, 'docs', 'product', 'BACKLOG.md'),
-      renderBacklog({ backlog: [P('P1', { value: null })] }));
-    const mainBacklog = join(main, 'docs', 'product', 'BACKLOG.md');
+    writeFiles(wt, renderFiles({ backlog: [P('P1', { value: null })] }));
+    const mainBacklog = join(main, 'docs', 'backlog', 'P1.md');
     assert.equal(hook('backlog-schema-check.mjs', main, mainBacklog).code, 0);
   });
 

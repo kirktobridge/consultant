@@ -1,14 +1,14 @@
 ---
 name: implement
-description: Build a specific product-backlog item (P#) from docs/product/BACKLOG.md — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Writes code + tests only, never the backlog docs.
+description: Build a specific product-backlog item (P#) from docs/backlog/ — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Writes code + tests only, never the backlog docs.
 ---
 
 # Implement — build a product backlog item
 
 Takes one entry (or one milestone of one entry) from
-[docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) to working, verified code
+[docs/backlog/](../../../docs/backlog/README.md) to working, verified code
 on a feature branch. This skill **writes code and tests only** — every backlog/doc
-edit goes through its owner: **/ship** owns BACKLOG.md and the architecture docs; the
+edit goes through its owner: **/ship** owns the backlog and the architecture docs; the
 spec is human-owned.
 
 `<ID>` = a product id like `P4`, optionally with a milestone (`P3 R1`).
@@ -20,23 +20,25 @@ spec is human-owned.
 Each gate below exists because skipping it shipped something broken. They are cheap;
 run all of them.
 
-- **No ID given?** The product `## Next up` block (top of BACKLOG.md) is the ranked,
-  dependency-ready head — propose its first entry.
-- Find the entry: `awk '/^##/{p = $1 == "###" && $2 == "<ID>"} p' docs/product/BACKLOG.md`
-  — heading to next heading, never a fixed line count: entries run long, and a
-  truncated read drops `Accept:`, the half of the contract that comes last. No
-  output → it's an untriaged idea; bounce to **/triage**, don't invent an entry.
-- **CLAIM GATE:** `git show main:docs/product/BACKLOG.md | grep -n "in-progress"`
+- **No ID given?** The queue — `git show main:docs/backlog/QUEUE.md` — is the ranked,
+  dependency-ready head; propose its first entry.
+- Find the entry: `cat docs/backlog/<ID>.md` — the whole file, never a fixed line
+  count: entries run long, and a truncated read drops `Accept`, the half of the
+  contract that comes last. No such file → it's an untriaged idea; bounce to
+  **/triage**, don't invent an entry.
+- **CLAIM GATE:** `git grep -n -m1 "^status: " main -- docs/backlog/ | grep ":status: in-progress$"`
   first — **main's version, never the checked-out copy**: in a worktree the local
-  file reflects when you branched, so it can miss a claim another session made since.
+  files reflect when you branched, so they can miss a claim another session made since.
+  (`-m1` reads each file's first `status:` line, which is its header's: an entry
+  whose prose quotes `status: in-progress` is not a claim.)
   Target entry already `in-progress` → stop; it's claimed by another session/branch
   (stale claims are cleared via /ship — the session-start audit surfaces them — not
   overridden here). Another entry
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
-- **DEPENDS GATE:** read its `Depends on:`. A dependency that is an unshipped `P#` or
-  an **`open` `OD-n`**
-  ([docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)) blocks the build — stop
+- **DEPENDS GATE:** read its header's `depends_on:`. A dependency that is an unshipped
+  `P#` or an **`open` `OD-n`**
+  ([docs/decisions/](../../../docs/decisions/README.md)) blocks the build — stop
   and tell the user what's blocking, unless the specific milestone is explicitly marked
   unblocked.
   **Never build on an unverified figure.** An open OD is an assumption nobody has
@@ -54,7 +56,7 @@ run all of them.
   invocation**. If the user didn't name one, propose the first unshipped one and
   confirm — don't silently build the whole epic. Name which `Accept:` criteria this
   milestone answers; the rest are honestly *not exercised* at close, not passed.
-- **SPIKE GATE:** if this entry carries `**Resolves:** OD-n`, it is a spike — its
+- **SPIKE GATE:** if this entry's header carries `resolves: OD-n`, it is a spike — its
   deliverable is *the answer*, not a feature. Build the smallest thing that settles the
   assumption, and treat writing the OD's `Resolution:` as part of done (step 4). A
   spike that ships without the answer written back is the failure LESSONS
@@ -90,7 +92,7 @@ run all of them.
   is what the product owner must be able to watch pass. Build what Scope says, resist
   adjacent improvements, and keep each criterion observable as you go. If scope turns
   out wrong mid-build — or a criterion can't be met by the Scope as written — stop and
-  renegotiate the entry with the user (the rescope note lands in BACKLOG.md via
+  renegotiate the entry with the user (the rescope note lands in the entry via
   /ship), don't drift. Accept is the user's wording: never reinterpret a criterion
   into one the build happens to satisfy.
 - **The project's invariants govern** — don't re-derive them here. *PORTING: list your
@@ -131,7 +133,7 @@ run all of them.
   Scope text (premise gate, step 1): name in the hand-off to /land only obligations
   the change as-built really incurs, and say explicitly which scope-listed ones turned
   out void and why — /ship writes what it's handed.
-- **If this was a spike** (`Resolves: OD-n`), the answer is the deliverable: state what
+- **If this was a spike** (`resolves: OD-n`), the answer is the deliverable: state what
   you actually found, how you established it, and hand /land the exact text for the
   OD's `Resolution:`. If the assumption turned out **wrong**, say so plainly and flag
   it as a refutation — that's the high-value case, and it may void other entries rather

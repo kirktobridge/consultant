@@ -1,0 +1,24 @@
+---
+id: OD-5
+title: Are agent-produced effort estimates good enough to prioritize with?
+status: open
+raised: 2026-08-03
+---
+
+## Assumption
+
+an agent can size a backlog entry closely enough that value-vs-effort
+ranking beats ranking on value alone.
+
+## Why it matters
+
+the obvious fix for the missing prioritization tradeoff is a
+`Size:` field on every entry. If the estimates are noise, that field is worse than
+nothing — it makes ranking *look* informed while adding a third claimant to the
+entry-shape surface P4 and P5 already share.
+
+## How to verify
+
+carry a predicted size on entries for the next ~8 builds, compare
+each against actual session cost and wall time, and check whether the ordering the
+estimates imply differs from value-only ordering by more than their error.
