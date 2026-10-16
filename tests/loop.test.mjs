@@ -5,7 +5,7 @@
 // catches the class of bug unit tests structurally cannot: **interactions**. Step 7
 // only passes because step 6 happened, and nothing but a walk can assert that.
 //
-// The walk is also the only executable statement of what the system *is*. BACKLOG.md's
+// The walk is also the only executable statement of what the system *is*. The backlog's
 // examples are hand-maintained fiction; this is fiction that has to stay consistent or
 // the build goes red.
 //
@@ -59,7 +59,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
         nextUp: ['P1', 'P2'],
       }),
       'the queue claims dependency-ready',
-      /P2 is in `## Next up`/,
+      /P2 is in Next up/,
     );
   });
 
@@ -115,7 +115,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
     legal(
       state({
         backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — 40/min.` })],
+        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'spike and assumption must be able to close together',
@@ -131,7 +131,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
     illegal(
       state({
         backlog: [other, feature({ drafted: daysAgo(30), dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — 40/min.` })],
+        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'resolving an assumption must force a re-read of what was written under it',
@@ -140,7 +140,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
   });
 
   test('8. re-read and re-dated, the feature is queueable — ONLY because of step 7', () => {
-    const resolved = OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — 40/min.` });
+    const resolved = OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' });
     const queued = state({
       backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['OD-1'] }), spike({ status: 'shipped' })],
       decisions: [resolved],
@@ -153,7 +153,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
     illegal(
       { ...queued, decisions: [OD('OD-1')] },
       'if this passes, step 8 proved nothing about the resolution',
-      /P2 is in `## Next up`/,
+      /P2 is in Next up/,
     );
   });
 
@@ -165,7 +165,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
           feature({ status: 'in-progress', drafted: daysAgo(0), dependsOn: ['OD-1'] }),
           spike({ status: 'shipped' }),
         ],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — 40/min.` })],
+        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'the feature was unblocked in step 7 and may now be built',
@@ -180,7 +180,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
           feature({ status: 'shipped', drafted: daysAgo(0), dependsOn: ['OD-1'] }),
           spike({ status: 'shipped' }),
         ],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — 40/min.` })],
+        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1', 'P2'],
       }),
       '/ship must refresh Next up on a terminal flip',
@@ -196,7 +196,7 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
           feature({ status: 'shipped', drafted: daysAgo(0), dependsOn: ['OD-1'] }),
           spike({ status: 'shipped' }),
         ],
-        decisions: [OD('OD-1', { status: 'verified', resolution: `${daysAgo(0)} — 40/min.` })],
+        decisions: [OD('OD-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
         nextUp: ['P1'],
       }),
       'the terminal state of a completed loop must be representable',
@@ -209,7 +209,7 @@ describe('the refutation branch: the assumption was wrong', () => {
     legal(
       state({
         backlog: [P('P1'), P('P3', { status: 'shipped', resolves: 'OD-1' })],
-        decisions: [OD('OD-1', { status: 'refuted', resolution: `${daysAgo(0)} — wrong, it is 10/min.` })],
+        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong, it is 10/min.' })],
         nextUp: ['P1'],
       }),
       'refuting is a legitimate close — it is the most valuable one',
@@ -224,7 +224,7 @@ describe('the refutation branch: the assumption was wrong', () => {
           P('P2', { drafted: daysAgo(30), dependsOn: ['OD-1'] }),
           P('P3', { status: 'shipped', resolves: 'OD-1' }),
         ],
-        decisions: [OD('OD-1', { status: 'refuted', resolution: `${daysAgo(1)} — wrong.` })],
+        decisions: [OD('OD-1', { status: 'refuted', resolved: daysAgo(1), resolution: 'wrong.' })],
         nextUp: ['P1'],
       }),
       'an entry written under a premise that has since been disproved must not pass silently',

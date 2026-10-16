@@ -6,7 +6,7 @@ description: Classify a raw idea (dev notes, conversation, anywhere) as a produc
 # Triage — idea intake & classification
 
 Turns raw ideas into correctly-classified, correctly-shaped drafts. This skill **writes
-nothing** — [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md) has exactly one
+nothing** — the backlog, [docs/backlog/](../../../docs/backlog/README.md), has exactly one
 writer (/ship), and triage stays write-less so that stays true. Output =
 classification + draft + which skill should write it.
 
@@ -14,7 +14,7 @@ classification + draft + which skill should write it.
 - [docs/dev_notes/OPEN_IDEAS.md](../../../docs/dev_notes/OPEN_IDEAS.md) — the human's
   raw dump. **Read-only** (edit-guard enforces it) and explicitly not a source of
   truth: ideas in it may already be shipped, deferred, or dead. Always check the
-  backlog and the decisions register (grep the headings) before drafting — don't
+  backlog and the decisions register (step 2's search) before drafting — don't
   re-propose what exists.
 - Ideas raised in conversation, code review, or the fallout of a build.
 
@@ -24,26 +24,26 @@ One question routes everything:
 
 > **Is this something we'd *build*, or something we're currently *assuming*?**
 
-- **Something to build** → **product feature**. Draft with the product shape (Status /
-  Drafted / Value / Scope / **Accept** / Depends on) with `Status: proposed`.
-  Destination: the right epic in
-  [docs/product/BACKLOG.md](../../../docs/product/BACKLOG.md), written by **/ship**
-  (Intake).
+- **Something to build** → **product feature**. Draft with the product shape
+  [docs/backlog/README.md](../../../docs/backlog/README.md) documents — a header (title
+  / `status: proposed` / epic / drafted / depends_on) and a body (Value / Scope /
+  **Accept**). Destination: a new `docs/backlog/P#.md` under the right epic, written by
+  **/ship** (Intake).
 - **Something we're assuming** → an **open decision** (`OD-n`,
-  [docs/OPEN_DECISIONS.md](../../../docs/OPEN_DECISIONS.md)). The tell: the idea's real
+  [docs/decisions/](../../../docs/decisions/README.md)). The tell: the idea's real
   content is *"we're currently acting as if X is true"* about something largely outside
   our control — a third party's behavior, a constant from a doc page, a limit nobody
   has hit, "users won't do Y". Nothing ships; there's a fact to establish. Draft an OD,
   and **name the entries it blocks** — an OD nobody depends on is trivia; an OD with
   dependents is a gate.
 - **Both** (a feature resting on an unchecked assumption) → **split it**: the
-  assumption becomes an OD; the delivery becomes a product draft whose `Depends on:`
+  assumption becomes an OD; the delivery becomes a product draft whose `depends_on:`
   names it. This pairing is the system's main idiom — it's how a feature stops shipping
   on a premise nobody checked.
 
 ## Drafting `Accept:` — what "right" means, before the build
 
-Every open product entry carries **`Accept:`**: 2–4 sub-bullets, each one thing someone
+Every open product entry carries **`Accept`**: 2–4 bullets, each one thing someone
 could watch pass or fail. The schema check counts them, so a draft without them is not
 filable.
 
@@ -69,21 +69,21 @@ field to satisfy the checker.
 
 A note on the boundary, because it's the one people get wrong: "we should find out
 whether X" is usually an **OD**, not a feature. If you can't name a concrete check that
-would settle it (`How to verify:`), you don't have an OD either — you have a wish. Say
+would settle it (its `How to verify`), you don't have an OD either — you have a wish. Say
 so rather than filing it.
 
 **Blocked-not-rejected:** an idea that's a fine feature but rests on an open OD is
-drafted *and* marked `Depends on: OD-n`, not rejected. It sits in the pool legitimately
+drafted *and* marked `depends_on: OD-n`, not rejected. It sits in the pool legitimately
 — the schema check permits that deliberately. What it forbids is that entry appearing
-in `## Next up` or going `in-progress` while the OD is open. Say this in the output, so
+in the queue or going `in-progress` while the OD is open. Say this in the output, so
 the user knows the entry exists and where it's allowed to sit.
 
 ## Steps
 1. Restate the idea in one sentence; run the classification test out loud.
 2. Check for an existing entry:
    ```
-   node scripts/grep-checked.mjs -i --control 'Status:' '<keyword>' \
-     docs/product/BACKLOG.md docs/OPEN_DECISIONS.md
+   node scripts/grep-checked.mjs -i --control '^status:' '<keyword>' \
+     docs/backlog docs/decisions
    ```
    If one exists, the output is "already tracked as `<ID>` — update it via its owner"
    — not a duplicate draft. Use the checked search rather than a bare grep: a false
@@ -103,7 +103,7 @@ The schema check *detects* rot and then waits for someone to care. This mode is 
 someone. It reads, proposes, and writes nothing — same contract as the rest of the
 skill. Run it periodically, and always after an OD resolves.
 
-1. **Re-check every blocked item's blocker.** For each entry with `Depends on:`,
+1. **Re-check every blocked item's blocker.** For each entry with a `depends_on:`,
    resolve each ID's current status. A dependency that has gone terminal since the
    entry was drafted means this entry is **unblocked** — say so; that's the highest-
    value output of the pass, because nothing else notices.
@@ -112,14 +112,14 @@ skill. Run it periodically, and always after an OD resolves.
    resting on it are not merely unblocked, they may be **void or wrong**, and anything
    already shipped on that assumption needs a fresh look.
 3. **Spot the assumptions about to bite.** Cross-reference every `open` OD against
-   `## Next up` and the entries just behind it. An OD blocking something at the head of
+   the queue (`docs/backlog/QUEUE.md`) and the entries just behind it. An OD blocking something at the head of
    the queue is about to stop work; an OD blocking only entries deep in the pool costs
    nothing yet. **This is the trigger for the spike decision below** — and nothing else
    in the loop looks for it, because the schema check only fires once the entry has
    *already* been queued or claimed.
 4. **Act on staleness flags.** Run the schema check; for every entry it flags as
    drafted before a dependency landed, re-read the entry against the code and report
-   one of: *still accurate* (bump `Drafted:` — after a real re-read, never to quiet the
+   one of: *still accurate* (bump `drafted:` — after a real re-read, never to quiet the
    check), *needs rescoping* (say how), or *void* (say why).
 5. **Flag stale claims.** An entry `in-progress` with no branch and no recent commits
    is an abandoned claim — surface it; clearing it back to `proposed` is a /ship flip,
@@ -141,8 +141,8 @@ the queue yet?"**
 ```
 An open OD blocks something
   ├─ cheap to settle (one API call, one probe, one grep)?
-  │      → do it now; write **Resolution:**, then sweep what it unblocked
-  ├─ expensive, and its dependents are in / entering `## Next up`?
+  │      → do it now; write its Resolution, then sweep what it unblocked
+  ├─ expensive, and its dependents are in / entering the queue?
   │      → promote: draft a spike P# (below). It's obstructing real work now.
   └─ expensive, dependents only deep in the pool?
          → leave it open. It is correctly parked; nothing is blocked in practice,
@@ -154,10 +154,10 @@ the register from becoming a generator of speculative work. An assumption is wor
 paying to settle exactly when it's about to stop you.
 
 **Spike draft shape** — an ordinary product entry, with two specifics:
-- `**Value:**` names the entries it unblocks. That satisfies the required Value field
+- `## Value` names the entries it unblocks. That satisfies the required Value field
   honestly: unblocking queued work *is* user-facing value, one step removed. Don't
   invent a user story for a probe.
-- `**Resolves:** OD-n` — the back-pointer. This is a structured field rather than a
+- `resolves: OD-n` in the header — the back-pointer. This is a structured field rather than a
   sentence because an obligation buried in prose is unenforceable by construction
   (LESSONS [L2](../../../docs/LESSONS.md)); the schema check pairs the two and fails if
   the spike ships without the answer being written back.

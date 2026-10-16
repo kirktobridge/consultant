@@ -53,7 +53,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASES } from './cases.mjs';
-import { renderBacklog, renderDecisions } from '../tests/helpers/fixture.mjs';
+import { renderFiles } from '../tests/helpers/fixture.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -118,10 +118,10 @@ function systemFor(c) {
 }
 
 function userFor(c) {
-  const parts = ['Current repository state.', '', '## docs/product/BACKLOG.md', '', renderBacklog(c.repo)];
-  if (c.repo.decisions?.length) {
-    parts.push('', '## docs/OPEN_DECISIONS.md', '', renderDecisions(c.repo.decisions));
-  }
+  // One block per file, each opened by its path — the registers are a directory of
+  // entry files, and the path is how a skill names an entry.
+  const parts = ['Current repository state, one file per block.'];
+  for (const [path, text] of Object.entries(renderFiles(c.repo))) parts.push('', `==> ${path} <==`, text.trimEnd());
   parts.push(
     '',
     '---',

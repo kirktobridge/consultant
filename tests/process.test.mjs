@@ -20,7 +20,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
-import { REPO, tempDir, gitInit } from './helpers/fixture.mjs';
+import { REPO, tempDir, gitInit, P, renderFiles, writeFiles } from './helpers/fixture.mjs';
 
 // ── Corpus ───────────────────────────────────────────────────────────────────
 
@@ -141,32 +141,26 @@ describe('the entry lookup returns the whole contract', () => {
   // them — so the field the loop closes on, Accept, was never in front of the builder.
   // A fixed line count is wrong the moment one entry runs long, and nothing signals it.
   // So the commands are run, verbatim from the skills, against the real backlog.
-  const BACKLOG = join(REPO, 'docs', 'product', 'BACKLOG.md');
-  const lines = read(BACKLOG).split('\n');
+  const DIR = join(REPO, 'docs', 'backlog');
   const TERMINAL = new Set(['shipped', 'deferred', 'abandoned']);
 
-  // An independent parse of each entry's extent: heading to the line before the next heading.
-  const entries = [];
-  lines.forEach((l, i) => {
-    if (/^##/.test(l) && entries.length && entries.at(-1).end === undefined) entries.at(-1).end = i;
-    const m = l.match(/^### (P\d+)\b/);
-    if (m) entries.push({ id: m[1], start: i });
-  });
-  if (entries.length && entries.at(-1).end === undefined) entries.at(-1).end = lines.length;
-  for (const e of entries) {
-    const body = lines.slice(e.start, e.end).join('\n');
-    e.text = body;
-    e.open = !TERMINAL.has(body.match(/^- \*\*Status:\*\* (\S+)/m)?.[1]);
-  }
+  // An independent read of each entry: the file is the entry.
+  const entries = readdirSync(DIR)
+    .filter((f) => /^P\d+\.md$/.test(f))
+    .map((f) => {
+      const text = read(join(DIR, f));
+      return { id: f.slice(0, -3), text, open: !TERMINAL.has(text.match(/^status: (\S+)$/m)?.[1]) };
+    });
 
   const lookup = (skill) => {
-    const m = read(join(SKILL_DIR, skill, 'SKILL.md')).match(/`(awk [^`]*<ID>[^`]*)`/);
-    assert.ok(m, `/${skill} no longer names an awk entry lookup — update this test with it`);
+    const m = read(join(SKILL_DIR, skill, 'SKILL.md')).match(/`([^`]*docs\/backlog\/<ID>[^`]*)`/);
+    assert.ok(m, `/${skill} no longer names an entry lookup — update this test with it`);
     return m[1];
   };
+  const sh = (cmd) => spawnSync('sh', ['-c', cmd], { cwd: REPO, encoding: 'utf8' });
 
   test('the backlog has entries to look up — the corpus is not silently empty (L3)', () => {
-    assert.ok(entries.filter((e) => e.open).length >= 1, 'no open entries parsed; the parser is broken');
+    assert.ok(entries.filter((e) => e.open).length >= 1, 'no open entries read; the reader is broken');
   });
 
   for (const skill of ['implement', 'verify']) {
@@ -174,26 +168,85 @@ describe('the entry lookup returns the whole contract', () => {
       const cmd = lookup(skill);
       const bad = [];
       for (const e of entries) {
-        const r = spawnSync('sh', ['-c', cmd.replaceAll('<ID>', e.id)], { cwd: REPO, encoding: 'utf8' });
+        const r = sh(cmd.replaceAll('<ID>', e.id));
         assert.equal(r.status, 0, `lookup failed for ${e.id}: ${r.stderr}`);
-        if (r.stdout.trimEnd() !== e.text.trimEnd()) bad.push(`${e.id}: not the whole entry`);
-        if (e.open && !/^- \*\*Accept:\*\*/m.test(r.stdout)) bad.push(`${e.id}: Accept missing`);
+        if (r.stdout !== e.text) bad.push(`${e.id}: not the whole entry`);
+        if (e.open && !/^## Accept$/m.test(r.stdout)) bad.push(`${e.id}: Accept missing`);
       }
       assert.deepEqual(bad, [], `/${skill}'s entry lookup truncates or misses entries`);
     });
   }
 
   test('an ID with no entry returns nothing — the "untriaged" signal /implement relies on', () => {
-    const r = spawnSync('sh', ['-c', lookup('implement').replaceAll('<ID>', 'P999')], { cwd: REPO, encoding: 'utf8' });
+    const r = sh(lookup('implement').replaceAll('<ID>', 'P999'));
     assert.equal(r.stdout, '');
+    assert.notEqual(r.status, 0);
   });
 
-  test('the old fixed-window grep would fail this — the check bites', () => {
-    const truncated = entries.filter((e) => {
-      const r = spawnSync('sh', ['-c', `grep -A12 "^### ${e.id}\\b" docs/product/BACKLOG.md`], { cwd: REPO, encoding: 'utf8' });
-      return r.stdout.trimEnd() !== e.text.trimEnd();
+  test('a fixed-window read would fail this — the check bites', () => {
+    const truncated = entries.filter((e) => sh(`head -n 12 docs/backlog/${e.id}.md`).stdout !== e.text);
+    assert.ok(truncated.length > 0, 'every entry fits in 12 lines; this control no longer proves anything');
+  });
+});
+
+describe('the orientation reads (P20)', () => {
+  // "What's claimed" and "what's next" are the reads every session starts from. They
+  // used to be greps over one big file, and the claim grep matched prose: on the day
+  // P20 was built, every hit it returned was a sentence, not a claim.
+  const implement = read(join(SKILL_DIR, 'implement', 'SKILL.md'));
+
+  test('the claim gate finds exactly the entries whose header says in-progress', () => {
+    const m = implement.match(/\*\*CLAIM GATE:\*\* `([^`]+)`/);
+    assert.ok(m, '/implement no longer names its claim-gate command');
+    assert.match(m[1], / main -- /, 'the claim gate must read main, not the checkout');
+    // Run against the working tree rather than main: in a pre-commit run, main does not
+    // hold the change under test yet. Same search, different tree.
+    const cmd = m[1].replace(' main -- ', ' -- ');
+    const r = spawnSync('sh', ['-c', cmd], { cwd: REPO, encoding: 'utf8' });
+    const found = [...r.stdout.matchAll(/docs\/backlog\/(P\d+)\.md/g)].map((x) => x[1]).sort();
+    const claimed = readdirSync(join(REPO, 'docs', 'backlog'))
+      .filter((f) => /^P\d+\.md$/.test(f) && /^status: in-progress$/m.test(read(join(REPO, 'docs', 'backlog', f))))
+      .map((f) => f.slice(0, -3))
+      .sort();
+    assert.deepEqual(found, claimed);
+    // Prose that says "in-progress" is everywhere in the backlog; none of it may match.
+    assert.equal(r.stdout.trim().split('\n').filter(Boolean).length, claimed.length, r.stdout);
+  });
+
+  test('the claim gate, run verbatim on main, ignores a body line that quotes a status', () => {
+    // Found by /verify P20: a plain grep for the status line matched prose too, so an
+    // entry *describing* a claim read as claimed.
+    const cmd = implement.match(/\*\*CLAIM GATE:\*\* `([^`]+)`/)[1];
+    const dir = tempDir();
+    writeFiles(dir, renderFiles({
+      backlog: [P('P1', { notes: 'status: in-progress\nwas what the old grep matched.' }), P('P2', { status: 'in-progress' })],
+    }));
+    gitInit(dir);
+    const r = spawnSync('sh', ['-c', cmd], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.stdout, 'main:docs/backlog/P2.md:4:status: in-progress\n', r.stderr);
+  });
+
+  test('the queue read names the queue file', () => {
+    assert.match(implement, /`git show main:docs\/backlog\/QUEUE\.md`/);
+  });
+});
+
+describe('the migration to one file per entry lost nothing (P20)', () => {
+  // The IDs both registers held on the day they were split into files. A literal rather
+  // than `git show <sha>`, because CI clones shallow. New entries may be added freely;
+  // none of these may go missing.
+  const BEFORE = [
+    'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16', 'P17',
+    'P18', 'P19', 'P20', 'P21', 'OD-3', 'OD-4', 'OD-5', 'OD-6', 'OD-7', 'OD-8', 'OD-9', 'OD-10',
+  ];
+
+  test('all 26 entries still exist, each in its own file under its own id', () => {
+    assert.equal(BEFORE.length, 26);
+    const missing = BEFORE.filter((id) => {
+      const f = join(REPO, 'docs', id.startsWith('P') ? 'backlog' : 'decisions', `${id}.md`);
+      return !existsSync(f) || !new RegExp(`^id: ${id}$`, 'm').test(read(f));
     });
-    assert.ok(truncated.length > 0, 'every entry fits in 13 lines; this control no longer proves anything');
+    assert.deepEqual(missing, []);
   });
 });
 
@@ -221,13 +274,13 @@ describe('the retired closeout stays retired (P18)', () => {
   // baton restated. A mention left behind is worse than none: it sends a reader to
   // run a skill that is gone, or to wait on a file nobody writes any more.
   //
-  // The backlog and the decisions register are exempt — their entries are the record
-  // of the retirement itself (P18, OD-10), and rewriting history to pass a check is
-  // the inversion the CLAUDE.md format rule forbids.
-  const RECORDS = new Set(['docs/product/BACKLOG.md', 'docs/OPEN_DECISIONS.md']);
+  // Backlog and decision entries are exempt — they are the record of the retirement
+  // itself (P18, OD-10), and rewriting history to pass a check is the inversion the
+  // CLAUDE.md format rule forbids. The registers' READMEs and the queue are not.
+  const isRecord = (f) => /^docs\/(backlog\/P\d+|decisions\/OD-\d+)\.md$/.test(rel(f).replaceAll('\\', '/'));
 
   test('no skill or doc mentions /checkpoint or the handoff file', () => {
-    const live = DOCS.filter((f) => !RECORDS.has(rel(f)));
+    const live = DOCS.filter((f) => !isRecord(f));
     assert.ok(live.some((f) => rel(f) === '.claude/GUIDE.md'), 'the corpus lost GUIDE — the walker is broken (L3)');
     const bad = [];
     for (const f of live) {
@@ -639,7 +692,7 @@ describe('the single-writer map agrees with the skills', () => {
     // leaves two documents disagreeing about who may write a file — and the whole
     // no-conflict property rests on there being exactly one answer.
     const owned = [
-      ['docs/product/BACKLOG.md', 'ship'],
+      ['docs/backlog/QUEUE.md', 'ship'],
       ['docs/BUILD_ORDER.md', 'ship'],
       ['docs/ARCHITECTURE.md', 'ship'],
     ];

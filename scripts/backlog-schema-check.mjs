@@ -1,13 +1,17 @@
 // Backlog schema check — the keystone of the whole system.
 //
-// The skills orient off the backlog by *grepping* only `### <ID>` headings and
-// `**Status:**` lines — never by reading whole files, which would cost a fortune
-// in tokens and still go stale. That grep is only as trustworthy as the format is
-// uniform. This script asserts the format, so retrieval is mechanically reliable:
-// the benefit of a structured dataset without leaving markdown.
+// The skills orient off the registers by reading entry *headers* — `status:`,
+// `depends_on:` — never by reading whole files, which would cost a fortune in tokens
+// and still go stale. That read is only as trustworthy as the format is uniform. This
+// script asserts the format, so retrieval is mechanically reliable: the benefit of a
+// structured dataset without leaving markdown.
 //
-// It only *reads* the docs. The single-writer contract (BACKLOG.md ← /ship) is
-// untouched; drift it surfaces is fixed by that file's owner.
+// The format itself is read by scripts/entries.mjs: one file per entry, a strict
+// `key: value` header the tools read, a markdown body only people read. This script
+// decides what an entry must carry and how entries may relate.
+//
+// It only *reads* the docs. The single-writer contract (docs/backlog/ ← /ship) is
+// untouched; drift it surfaces is fixed by that register's owner.
 //
 // The three things worth understanding before you edit anything:
 //
@@ -28,109 +32,75 @@
 // Modes:
 //   node scripts/backlog-schema-check.mjs           check everything (CI / manual)
 //   node scripts/backlog-schema-check.mjs --all     same, explicit
-//   node scripts/backlog-schema-check.mjs --fields  print every probed field label as
-//                                                   JSON (tests walk the probes by it)
+//   node scripts/backlog-schema-check.mjs --fields  print every required section and
+//                                                   header key as JSON (tests walk them)
 //   (PostToolUse hook)                              reads hook JSON on stdin; exits
-//                                                   0 fast unless the edited file is
-//                                                   watched, else checks and exits 2
+//                                                   0 fast unless the edited file is in
+//                                                   a register, else checks and exits 2
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
+import { BACKLOG, DECISIONS, loadRegister, parseQueue, idsOf } from './entries.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const DASH = '—'; // em-dash — the canonical heading + SHIPPED separator
 
 // ── Configuration ────────────────────────────────────────────────────────────
-// PORTING: adjust ID namespaces and file paths; keep the shapes.
+// PORTING: adjust the register paths in entries.mjs; keep the shapes here.
 
-// Every field probe is anchored to a field LINE — `- **Label` at the start of a
-// bullet — never to the label appearing anywhere. An entry *about* a field names it
-// in prose, and an unanchored probe reads that prose as the field: a presence check
-// then passes an entry that carries nothing, and an accessor (`labelled` takes the
-// first match) reads the prose instead of the real field. `Depends on:` is the one
-// that bites hardest, since it drives the OD-blocking gate. So the config below
-// lists LABELS, and this is the only place a label becomes a regex.
-const fieldLine = (...labels) => new RegExp(`^\\s*-\\s+\\*\\*(?:${labels.join('|')})\\b`);
-
-const BACKLOGS = [
+const REGISTERS = [
   {
-    file: 'docs/product/BACKLOG.md',
-    idPattern: /^P\d+$/,
+    ...BACKLOG,
     kind: 'product',
     open: new Set(['proposed', 'in-progress', 'partial']),
     terminal: new Set(['shipped', 'deferred', 'abandoned']),
-    // Fields every entry carries, and fields only *open* entries carry.
+    // Body sections every entry carries, and those only *open* entries carry.
     // NB: product `Scope` means "what's in, what's out" — the unit /implement
     // builds against. Don't confuse it with a measurement's context.
     always: ['Value'],
     whileOpen: ['Scope', 'Accept'],
-    // `Accept:` is the product owner's definition of done, written before the build.
+    // `Accept` is the product owner's definition of done, written before the build.
     // Counted rather than merely present, because the failure mode this field has is
     // not absence — it's degrading into ceremony, a restatement of Value as one
     // unfalsifiable sentence. A bound forces the author to enumerate *separable*
     // checks; a lower bound of 1 would accept "it works" and a high ceiling would
     // accept a spec dump nobody drives.
-    criteria: { label: 'Accept', min: 2, max: 4 },
+    criteria: { section: 'Accept', min: 2, max: 4 },
+    // Header keys: when the entry's claims were established, and when it closed.
+    dated: 'drafted',
+    closed: 'shipped',
+  },
+  // Open Decisions: load-bearing assumptions. Not a backlog (no queue, no payoff
+  // order) but the same shape rules apply, and backlog entries may depend on them —
+  // which is the point.
+  {
+    ...DECISIONS,
+    kind: 'decisions',
+    open: new Set(['open']),
+    terminal: new Set(['verified', 'refuted', 'moot']),
+    always: ['Assumption'],
+    whileOpen: ['Why it matters', 'How to verify'],
+    dated: 'raised',
+    closed: 'resolved',
   },
 ];
-
-// Open Decisions: load-bearing assumptions. Not a backlog (no `## Next up`, no
-// payoff order) but the same shape rules apply, and backlog entries may
-// `Depends on:` them — which is the point.
-const DECISIONS = {
-  file: 'docs/OPEN_DECISIONS.md',
-  idPattern: /^OD-\d+$/,
-  kind: 'decisions',
-  open: new Set(['open']),
-  terminal: new Set(['verified', 'refuted', 'moot']),
-  always: ['Assumption'],
-  whileOpen: ['Why it matters', 'How to verify'],
-};
-
-// Fields read by an accessor rather than checked for presence. Listed beside the
-// required ones so `--fields` reports every probe, and a test can walk them all.
-// The accessors below read their labels from here, so this cannot drift from them.
-const ACCESSED = {
-  status: ['Status'],
-  drafted: ['Drafted', 'Raised'],
-  terminal: ['Shipped', 'Closed', 'Landed'],
-  resolution: ['Resolution'],
-  dependsOn: ['Depends on'],
-  resolves: ['Resolves'],
-};
-
-const HEADING = new RegExp(`^###\\s+\\S+\\s+${DASH}\\s+\\S`);
-
-// Which `###` lines are entries: the first word carries a digit (an ID always has
-// a number; a prose heading's first word does not), or is followed directly by the
-// em-dash (the entry shape, with a typo'd ID). Everything else is a section heading.
-// Deliberately loose: anything entry-shaped is taken as an entry and then
-// *validated* (HEADING, idPattern), so a broken entry heading is reported rather
-// than skipped. Tightening this to the exact heading shape would make broken
-// headings vanish silently — parse loosely, validate strictly.
-const ENTRY_LIKE = new RegExp(`^###\\s+(\\S*\\d|\\S+\\s+${DASH})`);
-
-/** Files whose edit should trigger the in-session (hook) run. */
-const WATCHED = [BACKLOGS[0].file, DECISIONS.file];
 
 // ── Mode ─────────────────────────────────────────────────────────────────────
 //
 // Decided *before* any file is read. A hook fires on every Edit/Write in the
 // session, the vast majority of which touch nothing we track — those must cost
-// nothing and must never fail, even if a tracked doc is mid-rename or absent.
+// nothing and must never fail, even if a register is mid-rename or absent.
 
 const argv = process.argv.slice(2);
 
-// `--fields`: every probed label per doc, as JSON. Exists so tests can walk the
-// probes from this config instead of restating the list — a field added here is
-// covered without anyone remembering to add its test.
+// `--fields`: every required section and header key per register, as JSON. Exists so
+// tests can walk them from this config instead of restating the list — a field added
+// here is covered without anyone remembering to add its test.
 if (argv.includes('--fields')) {
-  const fieldsOf = (b) => ({
-    required: [...b.always, ...b.whileOpen],
-    accessed: Object.values(ACCESSED).flat(),
-  });
-  console.log(JSON.stringify(Object.fromEntries([...BACKLOGS, DECISIONS].map((b) => [b.file, fieldsOf(b)]))));
+  console.log(JSON.stringify(Object.fromEntries(REGISTERS.map((r) => [
+    r.dir,
+    { required: [...r.always, ...r.whileOpen], keys: Object.keys(r.keys) },
+  ]))));
   process.exit(0);
 }
 const explicit = argv.includes('--all');
@@ -151,7 +121,8 @@ if (!run) {
     } catch {
       /* unparseable → treat as a no-op, never block an unrelated edit */
     }
-    run = WATCHED.some((w) => file.replaceAll('\\', '/').endsWith(w));
+    const norm = `/${file.replaceAll('\\', '/')}`;
+    run = REGISTERS.some((r) => norm.includes(`/${r.dir}/`));
     // Check the checkout the edit landed in. In a worktree session the hook still
     // runs from the launch checkout (OD-7), which would validate main's copy.
     if (run) ROOT = checkoutOf(file, ROOT);
@@ -160,22 +131,15 @@ if (!run) {
 
 if (!run) process.exit(0);
 
-// ── Parsing ──────────────────────────────────────────────────────────────────
-
-const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
-const has = (lines, ...labels) => lines.some((l) => fieldLine(...labels).test(l));
+// ── Reading ──────────────────────────────────────────────────────────────────
 
 /**
- * Status vocabulary is read *from the document itself* — the backtick-quoted
+ * Status vocabulary is read *from the register's README* — the backtick-quoted
  * words in its "Status vocab:" line — not hardcoded here. A doc that documents
  * its own vocabulary and a checker that reads it cannot drift apart.
  */
 function sectionVocab(text) {
   const out = new Set();
-  // Two shapes in the wild, both legitimate:
-  //   inline — `Status vocab: `a` / `b` / `c`.`  (runs to the blank line)
-  //   heading — `## Status vocab` with the list a line or two below
-  // Take the first backtick-bearing run after the marker either way.
   const m = text.match(/Status vocab\b[\s\S]{0,600}/i);
   if (!m) return out;
   // A vocab list may wrap across lines, so consume consecutive token-bearing
@@ -194,160 +158,98 @@ function sectionVocab(text) {
   return out;
 }
 
-function parse(b) {
-  const text = read(b.file);
-  const lines = text.split('\n');
-  const entries = [];
-  let cur = null;
-  // Docs carry their own entry template inside a fenced block, and a template is
-  // not an entry — parsing one as real produces a phantom duplicate ID and a
-  // cascade of downstream failures. Skip fences everywhere.
-  let inFence = false;
-  for (const line of lines) {
-    if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
-    if (inFence) { if (cur) cur.body.push(line); continue; }
-    if (/^###(\s|$)/.test(line)) {
-      if (cur) entries.push(cur);
-      // A section heading ends the entry above it — its prose is not that entry's
-      // body — and is otherwise skipped, never reported.
-      cur = ENTRY_LIKE.test(line)
-        ? { id: line.split(/\s+/)[1], heading: line, title: line.replace(/^###\s+\S+\s*/, ''), body: [] }
-        : null;
-    } else if (cur) {
-      cur.body.push(line);
-    }
-  }
-  if (cur) entries.push(cur);
+const readIf = (rel) => (existsSync(join(ROOT, rel)) ? readFileSync(join(ROOT, rel), 'utf8') : null);
 
-  for (const e of entries) {
-    const s = e.body.find((l) => fieldLine(...ACCESSED.status).test(l));
-    const tok = s?.match(/\*\*Status:\*\*\s*`?([a-z-]+)`?/i);
-    e.statusToken = tok ? tok[1].toLowerCase() : null;
-  }
-  return { file: b.file, entries, vocab: sectionVocab(text), nextUp: parseNextUp(lines) };
-}
+const loaded = REGISTERS.map((r) => loadRegister(ROOT, r)).filter((l) => l.present);
+const byId = new Map(loaded.flatMap((l) => l.entries.filter((e) => e.id).map((e) => [e.id, e])));
+const regOf = (e) => loaded.find((l) => l.entries.includes(e))?.reg;
+const isTerminal = (e) => !!e && !!regOf(e)?.terminal.has(e.status ?? '');
 
-function parseNextUp(lines) {
-  const out = [];
-  let inBlock = false;
-  for (const l of lines) {
-    if (/^##\s+Next up/i.test(l)) { inBlock = true; continue; }
-    if (inBlock && /^##\s/.test(l)) break;
-    if (inBlock) for (const m of l.matchAll(/\*\*(P\d+)\*\*/g)) out.push(m[1]);
-  }
-  return [...new Set(out)];
-}
-
-const labelled = (body, ...labels) => {
-  const i = body.findIndex((l) => fieldLine(...labels).test(l));
-  if (i < 0) return [];
-  const out = [body[i]];
-  for (let j = i + 1; j < body.length && /^\s+\S/.test(body[j]); j++) out.push(body[j]);
-  return out;
-};
-
-// Sub-bullets of a labelled block, which is how an enumerable field (`Accept:`) is
-// distinguished from a prose one. Only the label's own continuation lines are
-// considered, so the next field's bullets can never be counted as this field's.
-const subBullets = (body, label) => labelled(body, label).slice(1).filter((l) => /^\s+[-*]\s+\S/.test(l));
-
-// Backlog entries are **Drafted:**; open decisions are **Raised:**. Same idea —
-// when this entry's claims were last established — so one accessor reads both.
-const draftedOn = (body) =>
-  body.find((l) => fieldLine(...ACCESSED.drafted).test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
-
-const terminalDateOf = (body) =>
-  body.find((l) => fieldLine(...ACCESSED.terminal).test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
-  body.find((l) => fieldLine(...ACCESSED.resolution).test(l))?.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ??
-  null;
-
-// Deduped: a labelled block runs over its continuation lines, so prose that names
-// the same ID more than once ("depends on OD-1 … until OD-1 resolves") would
-// otherwise raise one violation per mention. Inflating the count is not harmless —
-// the count is the positive control that a parser still works (LESSONS L3), so it
-// has to mean what it says.
-const idsIn = (body, labels) => [
-  ...new Set(
-    [...labelled(body, ...labels).join(' ').matchAll(/\b(OD-\d+|P\d+)\b/g)].map((m) => m[1]),
-  ),
-];
-
-const dependsOn = (body) => idsIn(body, ACCESSED.dependsOn);
-const resolvesOf = (body) => idsIn(body, ACCESSED.resolves).filter((id) => /^OD-/.test(id));
+// Top-level bullets only: an indented sub-bullet is detail under a criterion, not
+// another criterion, and a paragraph is not a criterion at all.
+const bullets = (lines) => (lines ?? []).filter((l) => /^[-*]\s+\S/.test(l));
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
 
-const present = [...BACKLOGS, DECISIONS].filter((b) => existsSync(join(ROOT, b.file)));
-const parsed = present.map(parse);
-const byId = new Map(parsed.flatMap((p) => p.entries.map((e) => [e.id, e])));
-const cfgOf = (file) => present.find((b) => b.file === file);
-const cfgOfEntry = (e) => cfgOf(parsed.find((q) => q.entries.includes(e))?.file);
-const isTerminal = (e) => !!e && !!cfgOfEntry(e)?.terminal.has(e.statusToken ?? '');
-
-// Every ID named anywhere in a `## Next up` queue. The queue is documented as the
-// *dependency-ready* head, which is what gives OD blocking its severity tiers below.
-const queued = new Set(parsed.flatMap((p) => p.nextUp));
-
-for (const p of parsed) {
-  const b = cfgOf(p.file);
-
-  if (p.entries.length === 0) fail(`${p.file}: no \`### \` entries parsed`);
-  if (p.vocab.size === 0) fail(`${p.file}: no documented status vocabulary resolved`);
-
-  // — heading shape, ID namespace, uniqueness —
-  for (const e of p.entries) {
-    if (!HEADING.test(e.heading)) {
-      fail(`${p.file}: malformed entry heading (expected "### <ID> ${DASH} <title>"): ${e.heading}`);
-    }
-    if (!b.idPattern.test(e.id)) fail(`${p.file}: ID out of namespace: ${e.heading}`);
-    // SHIPPED is a canonical ` — SHIPPED` suffix, never baked into the title: a
-    // status baked into a title is invisible to a status grep and survives the
-    // flip that should have removed it. Matched on the uppercase marker only —
-    // the word "shipped" in ordinary title prose is not a status claim.
-    if (/SHIPPED/.test(e.title.replace(new RegExp(`\\s*${DASH}\\s*SHIPPED\\s*$`), ''))) {
-      fail(`${p.file}: SHIPPED in title, not suffix: ${e.heading}`);
-    }
+// Every ID in the queue. The queue is documented as the *dependency-ready* head,
+// which is what gives OD blocking its severity tiers below.
+let queued = new Set();
+const queueReg = loaded.find((l) => l.reg.queue)?.reg;
+let queueIds = [];
+if (queueReg) {
+  const text = readIf(queueReg.queue);
+  if (text === null) {
+    fail(`${queueReg.queue}: missing — the queue lives in its own file`);
+  } else {
+    const q = parseQueue(text);
+    for (const e of q.errors) fail(`${queueReg.queue}:${e.line}: ${e.msg}`);
+    queueIds = [...new Set(q.ids)];
+    queued = new Set(queueIds);
   }
-  const ids = p.entries.map((e) => e.id);
-  if (new Set(ids).size !== ids.length) fail(`${p.file}: duplicate ID within file`);
+}
 
-  // — status drawn from the vocabulary the doc itself documents —
-  for (const e of p.entries) {
-    if (!e.statusToken) { fail(`${p.file}: no **Status:** line for ${e.id}`); continue; }
-    if (p.vocab.size && !p.vocab.has(e.statusToken)) {
-      fail(`${p.file}: status "${e.statusToken}" for ${e.id} not in vocab {${[...p.vocab].join(', ')}}`);
-    }
+const today = new Date().toISOString().slice(0, 10);
+
+for (const { reg: b, entries } of loaded) {
+  if (entries.length === 0) fail(`${b.dir}: no entry files parsed`);
+  const readme = readIf(b.readme);
+  const vocab = readme === null ? new Set() : sectionVocab(readme);
+  if (vocab.size === 0) fail(`${b.readme}: no documented status vocabulary resolved`);
+
+  // — the header: strict, and every error names the file and line —
+  for (const e of entries) {
+    for (const x of e.errors) fail(`${e.file}:${x.line}: ${x.msg}`);
   }
 
-  // — required fields: always-fields on every entry, open-fields while open —
+  // — identity: required keys, namespace, the file is named for its entry —
+  for (const e of entries) {
+    for (const key of ['id', 'title', 'status']) {
+      if (!e.header[key]) fail(`${e.file}: no \`${key}:\` in the header`);
+    }
+    if (!e.id) continue;
+    if (!b.idPattern.test(e.id)) fail(`${e.file}: ID out of namespace: ${e.id}`);
+    if (e.id !== e.name) fail(`${e.file}: header id ${e.id} does not match the file name`);
+    // SHIPPED is a status, never part of a title: a status baked into a title is
+    // invisible to a status read and survives the flip that should have removed it.
+    // Matched on the uppercase marker only — the word in ordinary prose is not a claim.
+    if (/SHIPPED/.test(e.header.title ?? '')) fail(`${e.file}: SHIPPED in title — status lives in \`status:\``);
+  }
+
+  // — status drawn from the vocabulary the register documents —
+  for (const e of entries) {
+    if (e.status && vocab.size && !vocab.has(e.status)) {
+      fail(`${e.file}: status "${e.status}" for ${e.id} not in vocab {${[...vocab].join(', ')}}`);
+    }
+  }
+
+  // — required sections: always-sections on every entry, open-sections while open —
   // Terminal entries legitimately compress to a status + a one-line outcome.
-  for (const e of p.entries) {
-    for (const label of b.always) {
-      if (!has(e.body, label)) fail(`${p.file}: ${e.id} missing **${label}**`);
+  for (const e of entries) {
+    for (const s of b.always) {
+      if (!e.sections.has(s)) fail(`${e.file}: ${e.id} missing **${s}**`);
     }
-    if (!b.open.has(e.statusToken ?? '')) continue;
-    for (const label of b.whileOpen) {
-      if (!has(e.body, label)) fail(`${p.file}: open ${e.id} missing **${label}**`);
+    if (!b.open.has(e.status ?? '')) continue;
+    for (const s of b.whileOpen) {
+      if (!e.sections.has(s)) fail(`${e.file}: open ${e.id} missing **${s}**`);
     }
   }
 
-  // — an enumerable field is actually enumerated —
-  // Presence is checked above; this checks the field says something a person could
-  // *drive*. Runs only where the field is present, so a missing one raises exactly
+  // — an enumerable section is actually enumerated —
+  // Presence is checked above; this checks the section says something a person could
+  // *drive*. Runs only where the section is present, so a missing one raises exactly
   // one violation rather than two saying the same thing.
   if (b.criteria) {
-    const { label, min, max } = b.criteria;
-    for (const e of p.entries) {
-      if (!b.open.has(e.statusToken ?? '')) continue;
-      if (!has(e.body, label)) continue; // the required-fields check owns that failure
-      const n = subBullets(e.body, label).length;
+    const { section, min, max } = b.criteria;
+    for (const e of entries) {
+      if (!b.open.has(e.status ?? '') || !e.sections.has(section)) continue;
+      const n = bullets(e.sections.get(section)).length;
       if (n < min || n > max) {
         fail(
-          `${p.file}: open ${e.id} has ${n} **${label}** criteri${n === 1 ? 'on' : 'a'}, ` +
-            `expected ${min}–${max} — each on its own sub-bullet, each one someone could ` +
+          `${e.file}: open ${e.id} has ${n} **${section}** criteri${n === 1 ? 'on' : 'a'}, ` +
+            `expected ${min}–${max} — each its own top-level bullet, each one someone could ` +
             `observe passing or failing.`,
         );
       }
@@ -360,12 +262,11 @@ for (const p of parsed) {
   // one written this morning — which is how an entry gets built against a premise
   // two other entries had already voided. The date is what makes the premise gate
   // *affordable*: re-verify the old ones rather than all of them.
-  const today = new Date().toISOString().slice(0, 10);
-  for (const e of p.entries) {
-    if (!b.open.has(e.statusToken ?? '')) continue;
-    const d = draftedOn(e.body);
-    if (!d) { fail(`${p.file}: open ${e.id} has no **Drafted:** YYYY-MM-DD`); continue; }
-    if (d > today) fail(`${p.file}: ${e.id} is drafted in the future (${d})`);
+  for (const e of entries) {
+    if (!b.open.has(e.status ?? '')) continue;
+    const d = e.header[b.dated];
+    if (!d) { fail(`${e.file}: open ${e.id} has no \`${b.dated}: YYYY-MM-DD\``); continue; }
+    if (d > today) fail(`${e.file}: ${e.id} is ${b.dated} in the future (${d})`);
   }
 
   // — an open entry older than a dependency that has since landed —
@@ -374,18 +275,18 @@ for (const p of parsed) {
   // it without re-checking against the code and re-dating it. Conservative by
   // construction: fires only when *both* dates parse, so a missing date never
   // invents an alarm.
-  for (const e of p.entries) {
-    if (!b.open.has(e.statusToken ?? '')) continue;
-    const drafted = draftedOn(e.body);
+  for (const e of entries) {
+    if (!b.open.has(e.status ?? '')) continue;
+    const drafted = e.header[b.dated];
     if (!drafted) continue; // the check above owns that failure
-    for (const depId of dependsOn(e.body)) {
+    for (const depId of idsOf(e, 'depends_on')) {
       const dep = byId.get(depId);
       if (!dep || !isTerminal(dep)) continue;
-      const landed = terminalDateOf(dep.body);
+      const landed = dep.header[regOf(dep).closed];
       if (!landed || landed <= drafted) continue;
       fail(
-        `${p.file}: ${e.id} (drafted ${drafted}) depends on ${depId}, which landed ${landed} — ` +
-          `presumptively stale. Re-verify its claims against the code and bump **Drafted:**, ` +
+        `${e.file}: ${e.id} (${b.dated} ${drafted}) depends on ${depId}, which landed ${landed} — ` +
+          `presumptively stale. Re-verify its claims against the code and bump \`${b.dated}:\`, ` +
           `or rescope it, before building.`,
       );
     }
@@ -405,25 +306,25 @@ for (const p of parsed) {
   // permanently red teaches people to ignore it.
   //
   //   proposed, not queued  → pass. Correctly parked; the block costs nothing yet.
-  //   in `## Next up`       → fail. The queue is documented as the *dependency-
+  //   in Next up            → fail. The queue is documented as the *dependency-
   //                           ready* head; an entry resting on an open assumption
   //                           is not dependency-ready, so the queue is lying.
   //   in-progress/partial   → fail. Someone is building on sand right now.
   //
   // /implement's DEPENDS GATE stays unconditional — it acts on work being picked
   // up, which is already in a failing tier by the time it runs.
-  for (const e of p.entries) {
-    for (const depId of dependsOn(e.body)) {
+  for (const e of entries) {
+    for (const depId of idsOf(e, 'depends_on')) {
       if (!/^OD-/.test(depId)) continue;
       const od = byId.get(depId);
       // A dangling reference is wrong at any status: a terminal entry citing a
       // nonexistent OD is a broken audit trail, not a harmless leftover.
-      if (!od) { fail(`${p.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
-      if (od.statusToken !== 'open') continue;
-      const claimed = e.statusToken === 'in-progress' || e.statusToken === 'partial';
+      if (!od) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
+      if (od.status !== 'open') continue;
+      const claimed = e.status === 'in-progress' || e.status === 'partial';
       if (!claimed && !queued.has(e.id)) continue; // parked in the pool — fine
       fail(
-        `${p.file}: ${e.id} is ${claimed ? `\`${e.statusToken}\`` : 'in `## Next up`'} but ` +
+        `${e.file}: ${e.id} is ${claimed ? `\`${e.status}\`` : 'in Next up'} but ` +
           `depends on ${depId}, still \`open\`. ${claimed
             ? 'Work in flight is resting on an unverified assumption'
             : 'The queue is the dependency-ready head, and this entry is not ready'}` +
@@ -434,51 +335,48 @@ for (const p of parsed) {
 
   // — a spike and the assumption it answers move together —
   //
-  // The one cross-file obligation in the suite, and the reason it's a structured
+  // The one cross-register obligation in the suite, and the reason it's a structured
   // field rather than a sentence (LESSONS L2): an obligation recorded on one side
   // of a boundary with nothing accountable on the other never fails loudly, it
-  // just quietly doesn't happen. `Resolves: OD-n` is greppable and pairable;
+  // just quietly doesn't happen. `resolves: OD-n` is readable and pairable;
   // "we should settle this eventually" is neither.
-  for (const e of p.entries) {
-    for (const odId of resolvesOf(e.body)) {
+  for (const e of entries) {
+    for (const odId of idsOf(e, 'resolves').filter((id) => /^OD-/.test(id))) {
       const od = byId.get(odId);
-      if (!od) { fail(`${p.file}: ${e.id} resolves ${odId}, which has no entry`); continue; }
+      if (!od) { fail(`${e.file}: ${e.id} resolves ${odId}, which has no entry`); continue; }
       // Live spike pointing at an already-settled assumption: either the spike is
       // obsolete, or something resolved the OD out from under it.
-      if (b.open.has(e.statusToken ?? '') && od.statusToken !== 'open') {
+      if (b.open.has(e.status ?? '') && od.status !== 'open') {
         fail(
-          `${p.file}: open ${e.id} resolves ${odId}, but ${odId} is already ` +
-            `\`${od.statusToken}\` — the spike is obsolete (close it) or it answers a ` +
-            `different question (repoint **Resolves:**).`,
+          `${e.file}: open ${e.id} resolves ${odId}, but ${odId} is already ` +
+            `\`${od.status}\` — the spike is obsolete (close it) or it answers a ` +
+            `different question (repoint \`resolves:\`).`,
         );
       }
       // Spike shipped, assumption still open: the answer never made it back.
-      if (isTerminal(e) && e.statusToken === 'shipped' && od.statusToken === 'open') {
+      if (e.status === 'shipped' && od.status === 'open') {
         fail(
-          `${p.file}: ${e.id} shipped and resolves ${odId}, but ${odId} is still \`open\` — ` +
-            `write what the spike found into its **Resolution:**, then sweep the entries ` +
+          `${e.file}: ${e.id} shipped and resolves ${odId}, but ${odId} is still \`open\` — ` +
+            `write what the spike found into its **Resolution**, then sweep the entries ` +
             `that were blocked on it. A finding nobody wrote down is inventory.`,
         );
       }
     }
   }
+}
 
-  // The decisions register is not a queue: no payoff order, no `## Next up`.
-  if (b.kind === 'decisions') continue;
-
-  // — `## Next up` never dangles or goes stale —
-  if (p.nextUp.length === 0) fail(`${p.file} has no \`## Next up\` IDs`);
-  for (const id of p.nextUp) {
-    const e = p.entries.find((x) => x.id === id);
-    if (!e) { fail(`${p.file}: Next-up ID ${id} has no entry`); continue; }
-    if (b.terminal.has(e.statusToken ?? '')) {
-      fail(`${p.file}: Next-up ${id} is terminal ("${e.statusToken}") — refresh the queue`);
-    }
+// — Next up never dangles or goes stale —
+if (queueReg && readIf(queueReg.queue) !== null) {
+  if (queueIds.length === 0) fail(`${queueReg.queue} has no queued IDs`);
+  for (const id of queueIds) {
+    const e = byId.get(id);
+    if (!e) { fail(`${queueReg.queue}: Next-up ID ${id} has no entry`); continue; }
+    if (isTerminal(e)) fail(`${queueReg.queue}: Next-up ${id} is terminal ("${e.status}") — refresh the queue`);
   }
 }
 
-// — IDs are globally unique across the tracked docs —
-const all = parsed.flatMap((p) => p.entries.map((e) => e.id));
+// — IDs are globally unique across the registers —
+const all = loaded.flatMap((l) => l.entries.map((e) => e.id).filter(Boolean));
 const dupes = [...new Set(all.filter((id, i) => all.indexOf(id) !== i))];
 if (dupes.length) fail(`duplicate IDs across files: ${dupes.join(', ')}`);
 
@@ -494,4 +392,4 @@ if (problems.length) {
 // The count is a positive control, printed every run: a checker that quietly stops
 // parsing reports success exactly like a clean tree (LESSONS L3). A number that
 // drops without files being deleted means the parser broke, not that drift left.
-if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${parsed.length} file(s))`);
+if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${loaded.length} register(s))`);

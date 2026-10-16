@@ -38,12 +38,12 @@ not observed or not exercised first; that is what the user is accepting despite.
 3. Verify the merged result: the full test suite + typecheck, wrapped in `time`. Red →
    undo the merge (`git reset --merge ORIG_HEAD`), report what failed, and leave main
    untouched — **never leave main broken**.
-4. Run **/ship** on main: `partial` + the milestone if milestones remain, `## Next up`
-   refresh, any BUILD_ORDER / ARCHITECTURE touch-up. **Never `shipped`.** If this was
+4. Run **/ship** on main: `partial` + the milestone if milestones remain, queue
+   (`docs/backlog/QUEUE.md`) refresh, any BUILD_ORDER / ARCHITECTURE touch-up. **Never `shipped`.** If this was
    the entry's last milestone, it stays `in-progress`: whether it shipped is the
    product owner's call, made against the report below, and a forked skill cannot
    ask them. Tests green and every criterion observed are evidence for that call,
-   not the call. If the branch was a **spike** (`Resolves: OD-n`), /ship also
+   not the call. If the branch was a **spike** (`resolves: OD-n`), /ship also
    writes the OD's `Resolution:` and flips its status — the answer landing in the code
    without landing in the register is the exact failure the pairing check exists for.
    Name the resolution in your final report, and say if it was a **refutation**: that

@@ -25,9 +25,8 @@
 //
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
-import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { BACKLOG, DECISIONS, loadRegister, idsOf } from './entries.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -36,9 +35,6 @@ const asJson = argv.includes('--json');
 // the next flag the branch name. Guard the lookup rather than the arithmetic.
 const baseIdx = argv.indexOf('--base');
 const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] : null;
-
-const BACKLOG = 'docs/product/BACKLOG.md';
-const DECISIONS = 'docs/OPEN_DECISIONS.md';
 
 const findings = [];
 const add = (severity, what, action) => findings.push({ severity, what, action });
@@ -87,41 +83,14 @@ if (!BASE) {
   process.exit(2);
 }
 
-// ── Shallow doc read ─────────────────────────────────────────────────────────
-// Deliberately minimal: ID, status, and two fields. This is NOT the schema
-// authority — backlog-schema-check.mjs is, and it fails loudly if the format moves.
-// Keeping this parser dumb means a format change breaks the checker (loud) rather
-// than quietly changing what the audit reports (silent).
+// ── Doc read ─────────────────────────────────────────────────────────────────
+// Headers only, through the same strict reader the schema check uses. This is NOT the
+// schema authority — backlog-schema-check.mjs is, and it reports a malformed header
+// loudly. A field this audit can't read is simply absent here, so a format problem
+// shows up as a red check rather than as a quietly different audit.
 
-function entries(rel) {
-  const p = join(ROOT, rel);
-  if (!existsSync(p)) return [];
-  const out = [];
-  let cur = null;
-  let inFence = false;
-  for (const line of readFileSync(p, 'utf8').split('\n')) {
-    if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
-    if (inFence) { if (cur) cur.body.push(line); continue; }
-    const h = line.match(/^###\s+(\S+)\s+/);
-    if (h) { if (cur) out.push(cur); cur = { id: h[1], title: line, body: [] }; }
-    else if (cur) cur.body.push(line);
-  }
-  if (cur) out.push(cur);
-  for (const e of out) {
-    e.status = e.body.find((l) => /\*\*Status:\*\*/.test(l))?.match(/\*\*Status:\*\*\s*`?([a-z-]+)`?/i)?.[1]?.toLowerCase() ?? null;
-    e.field = (label) => {
-      const i = e.body.findIndex((l) => new RegExp(`\\*\\*${label}:\\*\\*`).test(l));
-      if (i < 0) return '';
-      let s = e.body[i];
-      for (let j = i + 1; j < e.body.length && /^\s+\S/.test(e.body[j]); j++) s += ' ' + e.body[j];
-      return s;
-    };
-  }
-  return out;
-}
-
-const backlog = entries(BACKLOG);
-const decisions = entries(DECISIONS);
+const backlog = loadRegister(ROOT, BACKLOG).entries;
+const decisions = loadRegister(ROOT, DECISIONS).entries;
 const odById = new Map(decisions.map((d) => [d.id, d]));
 const today = new Date().toISOString().slice(0, 10);
 
@@ -146,14 +115,13 @@ if (dirty.length) {
 // in-flight case, where the answer may exist only in a session's transcript.
 
 for (const e of backlog) {
-  const odIds = [...e.field('Resolves').matchAll(/\bOD-\d+\b/g)].map((m) => m[0]);
-  for (const odId of odIds) {
+  for (const odId of idsOf(e, 'resolves').filter((id) => /^OD-/.test(id))) {
     const od = odById.get(odId);
     if (!od) continue; // schema check owns dangling refs
     if (od.status !== 'open') continue;
     if (e.status === 'in-progress' || e.status === 'partial') {
       add('warn', `Spike ${e.id} is \`${e.status}\` and ${odId} is still \`open\`.`,
-        `If a session established the answer, write it into ${odId}'s **Resolution:** via /ship — an answer that exists only in the transcript is lost. If not, the spike is still owed.`);
+        `If a session established the answer, write it into ${odId}'s Resolution via /ship — an answer that exists only in the transcript is lost. If not, the spike is still owed.`);
     }
   }
 }
@@ -192,18 +160,17 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
 
 for (const od of decisions) {
   if (od.status === 'open') continue;
-  const res = od.field('Resolution');
-  const resolvedToday = res.includes(today);
-  const changedThisSession = (git('diff', BASE, '--name-only') || '').includes(DECISIONS);
+  const resolvedToday = od.header.resolved === today;
+  const changedThisSession = (git('diff', BASE, '--name-only') || '').includes(`${DECISIONS.dir}/`);
   if (!resolvedToday && !changedThisSession) continue;
-  const dependents = backlog.filter((e) => new RegExp(`\\b${od.id}\\b`).test(e.field('Depends on')));
+  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(od.id));
   if (dependents.length === 0) continue;
   const ids = dependents.map((d) => `${d.id} (${d.status})`).join(', ');
   add(od.status === 'refuted' ? 'alert' : 'info',
     `${od.id} is \`${od.status}\`${resolvedToday ? ' (resolved today)' : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
     od.status === 'refuted'
       ? 'A refutation can VOID dependents rather than unblock them — re-read each against the new truth, and check whether anything already shipped on the false assumption. Deep pass: /triage groom.'
-      : 'These are now unblocked and nothing else will notice. Consider promoting one into `## Next up` via /ship.');
+      : 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.');
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────
