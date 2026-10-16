@@ -24,16 +24,20 @@ const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] : null;
 // skip the first argument — the ID, in the common case.
 const idArg = argv.find((a, i) => /^P\d+$/i.test(a) && !(baseIdx >= 0 && i === baseIdx + 1))?.toUpperCase() ?? null;
 
+// safe.directory=*: Windows git refuses a repo inside WSL as another user's. The
+// reasoning is session-audit's: running this script already trusts this repository.
+let lastError = '';
 const git = (...args) => {
   try {
-    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 });
-  } catch {
+    return execFileSync('git', ['-c', 'safe.directory=*', ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 << 20 });
+  } catch (e) {
+    lastError = String(e.stderr ?? e.message ?? '').trim();
     return null;
   }
 };
 
 if (git('rev-parse', '--git-dir') === null) {
-  console.error('history: not a git repository — no history to read.');
+  console.error(`history: not a git repository, or git refused it — no history to read.${lastError ? `\n  git: ${lastError.split('\n')[0]}` : ''}`);
   process.exit(2);
 }
 
