@@ -349,6 +349,35 @@ block *is* the queue, as far as the schema check and every skill's grep are conc
   parsing (2026-10-16): one mechanism, not two that drift. P11 waits on P10, so this
   is a long chain. Keep it short because the output lands in every session's context.
 
+### P21 — Triage decides whether an entry needs a plan; /implement honours it
+- **Status:** proposed
+- **Drafted:** 2026-10-16
+- **Value:** the big builds get a plan I approve before any code is written, decided
+  when the entry is filed rather than left to the building session's judgement in
+  the moment. Today that's one prose line in /implement ("for anything nontrivial").
+- **Scope:**
+  - A plan field on every open product entry (yes / no + a one-line reason), set by
+    /triage when drafting and changeable by rescoping through /ship.
+  - /implement: an entry marked yes gets a plan (the files to touch, the order, the
+    risks) presented for approval before the first code edit. Marked no keeps today's
+    rule: plan anyway if the build turns out nontrivial.
+  - The schema check requires the field on open entries; existing open entries get
+    it in the same commit.
+  - Out: sizing or effort estimates (that's OD-5's question), and where a plan is
+    stored beyond the conversation and the build commit.
+- **Accept:**
+  - Every new triage draft says whether the entry needs a plan, with a reason; an open
+    entry without the field fails the schema check.
+  - Implementing an entry marked as needing a plan stops for my approval of a written
+    plan before any code changes.
+  - An entry marked as not needing one still gets a plan when its build turns out
+    bigger than drafted — the mark is a floor, not a ceiling.
+- **Depends on:** P20
+- **Notes:** raised 2026-10-16, after P20 was filed as the obvious case. Depends on
+  P20 so the field is born in the header rather than migrated into it. A cousin of
+  OD-5 and OD-8 but not resting on either: a wrong "no" falls back to today's rule,
+  and a wrong "yes" costs one short plan.
+
 ---
 
 ## Epic: The checking machinery
