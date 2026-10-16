@@ -36,15 +36,18 @@ answer to "what to build next." Refreshed by /ship on status flips + intake. The
 check fails CI if any ID here is missing, terminal, or resting on an open assumption:
 "dependency-ready" is a claim this block makes, so it has to be true.
 
-1. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
+1. **P18** — retire /checkpoint and the handoff file. First because it removes
+   friction you hit on every landing, and P15 should be written against the loop
+   without them. OD-10 settled it: the hook must force exit 0.
+2. **P9** — anchor the field probes. Ahead of P5 and P6 not by dependency but by
    timing: both of those write documentation prose *about* new field names, which is
    the exact input that makes P9's silent failure live. Cheap, and cheaper now than
    after.
-2. **P5** — defects as a third intake class. Extends the same schema-check surface P4
+3. **P5** — defects as a third intake class. Extends the same schema-check surface P4
    touches, so it follows P9 by preference rather than by dependency.
-3. **P6** — split "merged" from "released". Independent of the others; available to
+4. **P6** — split "merged" from "released". Independent of the others; available to
    a parallel session at any time.
-4. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
+5. **P8** — a review step in the loop. Placement, not construction, so it's cheap; last
    because nothing else waits on it.
 
 Note what is *absent*: P7 is a high-payoff idea, and is
@@ -52,7 +55,7 @@ deliberately not queued — it depends on P6 (P4 has shipped), so the queue woul
 readiness it doesn't have. P15 is dependency-ready now that P16 has shipped, but it is held behind P18 by
 preference: its R2 and R3 lean on HANDOFF and /checkpoint, which P18 retires, so
 building it second means writing it once.
-P17 waits on P15 and on an open assumption (OD-8). P18 waits on OD-10.
+P17 waits on P15 and on an open assumption (OD-8).
 (Named in plain text on purpose: a **bolded** ID in this
 block *is* the queue, as far as the schema check and every skill's grep are concerned.)
 

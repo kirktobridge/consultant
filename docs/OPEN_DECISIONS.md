@@ -256,7 +256,7 @@ is readable from this side too. The schema check reads the `Resolves:` half.
   rewrites to `rtk git`, while plain single git commands ran.
 
 ### OD-10 — Does a SessionStart hook's output reach the session?
-- **Status:** open
+- **Status:** verified
 - **Raised:** 2026-10-16
 - **Assumption:** stdout from a `SessionStart` command hook in .claude/settings.json is
   added to the new session's context, so the agent sees the audit's findings without
@@ -267,4 +267,12 @@ is readable from this side too. The schema check reads the `Resolves:` half.
 - **How to verify:** start a headless session with a SessionStart hook that prints a
   unique marker, ask it what context it was given at startup, and see whether the
   marker comes back.
-- **Resolution:** —
+- **Resolution:** 2026-10-16 — **holds, on exit 0 only.** Probed with headless
+  `claude -p` (2.1.174) in a scratch repo whose SessionStart hook echoed a unique
+  marker the prompt never contained. Exit 0: the session quoted the marker verbatim.
+  Same hook ending `exit 1`: the session answered NONE, so the output was dropped.
+  Wrapped as `… || true`: the marker came back. That matters because
+  session-audit.mjs exits 1 exactly when it has findings; P18's hook must force exit
+  0. Findings print on stdout (*verified* by reading the script); its exit-2 "could
+  not audit" message goes to stderr, whose fate was not probed. Not tested: an
+  interactive session (headless only).
