@@ -20,35 +20,45 @@ classification + draft + which skill should write it.
 
 ## The classification test
 
-One question routes everything:
+Ask in this order, and stop at the first yes:
 
-> **Is this something we'd *build*, something we're currently *assuming*, or
-> something the product owner has to *choose*?**
+1. **Is it a yes/no fact about the outside world, settled by observation?** (A third
+   party's behavior, a constant from a doc page, a limit nobody has hit, "users won't
+   do Y".) → an **assumption** (`A-n`,
+   [docs/assumptions/](../../../docs/assumptions/README.md)). The tell: the idea's real
+   content is *"we're currently acting as if X is true"* about something largely
+   outside our control. Nothing ships; there's a fact to establish. It needs a concrete
+   `## How to verify` by observation. **Name the entries it blocks** — an assumption
+   nobody depends on is trivia; an assumption with dependents is a gate.
+2. **Is it a choice the product owner makes between real options?** → a **decision**
+   (`D-n`, [docs/decisions/](../../../docs/decisions/README.md)). The tell: no
+   observation settles it, because either answer could be true of the world — what's
+   missing is someone choosing. A preference is a decision, not an assumption. It needs
+   at least two named `## Options` and what it is `waiting_on:` (IDs it waits on, and/or
+   `user`). If the user can answer on the spot, ask, and draft it decided. An open
+   decision is never spiked: if it waits on the user, ask them; if it waits on a fact,
+   that fact is an assumption and follows its own route.
+3. **Is it a question answered from data — a quantity, a rate, "how often does X
+   happen"?** That is a measurement, and it is **not** an assumption (no single
+   observation settles a rate) or a decision (nobody chooses it). Its home is the
+   research track, which **P13** builds and which does not exist yet. Say so to the
+   user rather than filing it under 1 or 2; if a decision is waiting on the number,
+   draft the decision and name the measurement in its `## Context`.
+4. **Otherwise it's something to build** → a **product feature**. Draft with the
+   product shape [docs/backlog/README.md](../../../docs/backlog/README.md) documents — a
+   header (title / `status: proposed` / epic / drafted / depends_on) and a body (Value /
+   Scope / **Accept**). Destination: a new `docs/backlog/P#.md` under the right epic,
+   written by **/ship** (Intake).
 
-- **Something to build** → **product feature**. Draft with the product shape
-  [docs/backlog/README.md](../../../docs/backlog/README.md) documents — a header (title
-  / `status: proposed` / epic / drafted / depends_on) and a body (Value / Scope /
-  **Accept**). Destination: a new `docs/backlog/P#.md` under the right epic, written by
-  **/ship** (Intake).
-- **Something we're assuming** → an **open assumption** (`A-n`,
-  [docs/assumptions/](../../../docs/assumptions/README.md)). The tell: the idea's real
-  content is *"we're currently acting as if X is true"* about something largely outside
-  our control — a third party's behavior, a constant from a doc page, a limit nobody
-  has hit, "users won't do Y". Nothing ships; there's a fact to establish. Draft an assumption,
-  and **name the entries it blocks** — an assumption nobody depends on is trivia; an assumption with
-  dependents is a gate.
-- **A choice the product owner makes between real options** → a **decision** (`D-n`,
-  [docs/decisions/](../../../docs/decisions/README.md)). The tell: no observation
-  settles it, because both answers are true of the world — what's missing is someone
-  choosing. It needs at least two named `## Options` and what it is `waiting_on:` (IDs
-  it waits on, and/or `user`). If the user can answer on the spot, ask, and draft it
-  decided. An open decision is never spiked: if it waits on the user, ask them; if it
-  waits on a fact, that fact is an assumption and follows its own route.
-- **Both** (a feature resting on an unchecked assumption) → **split it**: the
-  assumption becomes an `A-n`; the delivery becomes a product draft whose `depends_on:`
-  names it. This pairing is the system's main idiom — it's how a feature stops shipping
-  on a premise nobody checked. A feature that can't be built until a choice is made
-  splits the same way, into a `D-n` and a feature whose `depends_on:` names it.
+**"Does our own code work?" is never an entry.** It's a feature's `Accept`, a test,
+or a /verify run. Filing it as an assumption parks a question the suite could answer
+today.
+
+**Split mixed ideas.** A feature resting on an unchecked assumption becomes an `A-n`
+plus a product draft whose `depends_on:` names it. This pairing is the system's main
+idiom — it's how a feature stops shipping on a premise nobody checked. A feature that
+can't be built until a choice is made splits the same way, into a `D-n` and a feature
+whose `depends_on:` names it.
 
 ## Drafting `Accept:` — what "right" means, before the build
 
@@ -77,9 +87,11 @@ Scope restated", say so to the user and ask what they'd actually check — don't
 field to satisfy the checker.
 
 A note on the boundary, because it's the one people get wrong: "we should find out
-whether X" is usually an **assumption**, not a feature. If you can't name a concrete check that
-would settle it (its `How to verify`), you don't have an assumption either — you have a wish. Say
-so rather than filing it.
+whether X" is usually an **assumption**, not a feature — when X is a yes/no fact about
+the world. "How often does X happen" is a measurement (question 3), and "should we X"
+is a decision. If you can't name a concrete check that would settle it (its `How to
+verify`), you don't have an assumption either — you have a wish. Say so rather than
+filing it.
 
 **Blocked-not-rejected:** an idea that's a fine feature but rests on an open assumption
 or decision is drafted *and* marked `depends_on: A-n` / `D-n`, not rejected. It sits in

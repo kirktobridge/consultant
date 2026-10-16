@@ -125,6 +125,15 @@ export const CASES = [
     expect: { classification: 'decision' },
   },
   {
+    id: 'triage-does-not-file-a-measurement-as-an-assumption',
+    skill: 'triage',
+    request: 'we should find out how often people undo a placement right after making it',
+    bar: 'not filable here yet — a measurement, not an assumption or a decision',
+    why: 'a rate is not a yes/no fact, so filed as an assumption no single observation can ever close it; its home is the research track P13 builds',
+    repo: { backlog: [P('P1')], nextUp: ['P1'] },
+    expect: { classification: 'not-applicable' },
+  },
+  {
     id: 'triage-splits-a-feature-resting-on-an-assumption',
     skill: 'triage',
     request:
