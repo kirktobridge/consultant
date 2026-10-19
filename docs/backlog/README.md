@@ -87,14 +87,21 @@ An entry may sit here `proposed` while it depends on an **open** `A-n` or `D-n` 
 blocked idea gets filed rather than lost. It may **not** appear in the queue or go
 `in-progress` in that state; the schema check enforces the line.
 
+A `P#` dependency blocks too, read through the whole graph: an entry may go
+`in-progress` or `partial` only once every `P#` it depends on, directly or through
+another entry, is `shipped` — `partial` and `in-progress` don't count as met, and a
+`deferred` or `abandoned` dependency never will be. A dependency cycle fails outright.
+All of this is *mechanically enforced* by the schema check.
+
 ## The queue
 
 [QUEUE.md](QUEUE.md) is the **dependency-ready** head of the backlog, highest-payoff
 first — the authoritative answer to "what to build next." Refreshed by /ship on status
 flips + intake. It holds numbered items (`N. **P#** — why`) and nothing else; any other
 line fails the check, so a note naming an ID can never queue it. The check also fails
-if a queued ID is missing, terminal, or resting on an open assumption: "dependency-ready"
-is a claim the queue makes, so it has to be true.
+if a queued ID is missing, terminal, or resting on an open assumption, or if it depends
+(directly or through another entry) on an unshipped `P#` that isn't queued above it:
+"dependency-ready" is a claim the queue makes, so it has to be true.
 
 **Ranking is the agent's job, not the user's** (user decision, 2026-10-16). /ship
 ranks on every refresh by one rule: the dependency-ready entry that unblocks the most
