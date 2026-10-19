@@ -339,6 +339,25 @@ describe('merge from the main checkout, then clean up (P15 R2)', () => {
     assert.equal(git1(r.main, 'status --porcelain'), '');
   });
 
+  test('the red-suite summary names the failing test, not passing tests named for failures', () => {
+    // Found live (P15 R2 drill): matching /fail/ listed fifteen passing "…fails" tests
+    // and cut off the one that actually failed.
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    land(r.wts['p1-one'], 'rebase');
+    const t = join(tempDir(), 'suite.test.mjs');
+    writeFileSync(t, [
+      "import { test } from 'node:test';",
+      ...Array.from({ length: 20 }, (_, i) => `test('an empty input fails loudly ${i}', () => {});`),
+      "test('the one real failure', () => { throw new Error('boom'); });",
+    ].join('\n'));
+    const m = land(r.main, 'merge', 'feat/p1-one', '--suite', `"${process.execPath}" --test "${t}"`);
+    assert.equal(m.code, 1, out(m));
+    assert.match(m.stderr, /✖ the one real failure/);
+    assert.doesNotMatch(m.stderr, /fails loudly/);
+  });
+
   test('finish removes the worktree, the branch, the record and the lock', () => {
     const r = repo();
     editLine(r.wts['p1-one'], 9, 'mine');
@@ -364,6 +383,18 @@ describe('the skills land through land.mjs (P15 R2)', () => {
     ];
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'steps out of order');
     assert.match(t, /lock take claim:<ID>/, 'the claim commit must take the lock too');
+  });
+
+  test('/implement tells a subagent how to work in its worktree without the worktree tools (A-12)', () => {
+    const t = skill('implement');
+    assert.match(t, /If you are a subagent, EnterWorktree and ExitWorktree are refused \(A-12\)/);
+    assert.match(t, /cd <path> && …/);
+    assert.match(t, /--allow-empty/);
+  });
+
+  test('a criterion only landing can show is reported as such, and /land gives its verdict', () => {
+    assert.match(skill('implement'), /not exercised — observable after landing/);
+    assert.match(skill('land'), /observable after landing\* is yours to check/);
   });
 
   test('/land merges and finishes through the script, and never merges with raw git', () => {

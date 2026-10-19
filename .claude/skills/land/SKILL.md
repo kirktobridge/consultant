@@ -17,7 +17,9 @@ deleted or not, and on failure *exactly* what failed and what state main was lef
 Then the **acceptance handshake**: the branch's per-criterion report, each `Accept:`
 criterion verbatim with its verdict and evidence — not a diff summary — and, if the
 entry's last milestone just landed, the question it is now waiting on: *"P# landed
-and is `in-progress` until you accept it. Ship it?"* Name every criterion that is
+and is `in-progress` until you accept it. Ship it?"* A criterion the branch reported
+as *not exercised — observable after landing* is yours to check: look at main now,
+and give it a verdict of its own with the evidence. Name every criterion that is
 not observed or not exercised first; that is what the user is accepting despite.
 
 ## Preconditions (stop if any fail)

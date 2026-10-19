@@ -216,6 +216,101 @@ describe('choices waiting on the user (P10)', () => {
   });
 });
 
+describe('worktrees and the land lock left behind (P15 R3)', () => {
+  // Worktrees go in a sibling temp dir: where they live doesn't matter to the audit,
+  // and inside the fixture they would add an unrelated untracked-files note.
+  const addWorktree = (g, branch) => {
+    const wt = join(tempDir(), 'wt');
+    g.sh(`git worktree add -q -b ${branch} "${wt}" main`);
+    return wt;
+  };
+  const writeLock = (dir, owner, minutesAgo = 0) =>
+    writeFileSync(join(dir, '.git', 'loop-land.lock'), JSON.stringify({
+      owner, worktree: dir, at: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+    }));
+
+  test('a worktree whose branch is already merged is flagged, with the finish command', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'partial' })] });
+    const wt = addWorktree(g, 'feat/p1-thing');
+    execInWt(wt, 'work');
+    g.merge('feat/p1-thing');
+    const r = audit(dir);
+    assert.equal(r.code, FINDINGS, out(r));
+    assert.match(r.stdout, /feat\/p1-thing, which is already merged into main/);
+    assert.match(r.stdout, /land\.mjs finish feat\/p1-thing/);
+  });
+
+  test('a landing between merge and finish — merged, lock live, worktree present — is not flagged', () => {
+    // /ship is writing its flips under the lock right then; a session starting at that
+    // moment must not be told the landing never finished (found by /verify, P15 R3).
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'partial' })] });
+    const wt = addWorktree(g, 'feat/p1-thing');
+    execInWt(wt, 'work');
+    g.merge('feat/p1-thing');
+    writeLock(dir, 'feat/p1-thing', 1);
+    const r = audit(dir);
+    assert.doesNotMatch(r.stdout, /already merged into main/, out(r));
+  });
+
+  test('a worktree building an entry whose claim is gone is flagged, and removing it is the user\'s call', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'proposed' })] });
+    const wt = addWorktree(g, 'feat/p1-thing');
+    execInWt(wt, 'work');
+    const r = audit(dir);
+    assert.equal(r.code, FINDINGS, out(r));
+    assert.match(r.stdout, /building P1 \(feat\/p1-thing\), but P1 is `proposed` — its claim is gone/);
+    assert.match(r.stdout, /ask the user before removing/);
+  });
+
+  test('a build just started — branch cut, no commits yet — is in flight, not landed', () => {
+    // Found live (P15 R3): a fresh branch sits at main's tip, so `git branch --merged`
+    // lists it, and the audit called the session's own live build an unfinished landing.
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    addWorktree(g, 'feat/p1-thing');
+    const r = audit(dir);
+    assert.equal(r.code, CLEAN, out(r));
+  });
+
+  test('a worktree building a claimed entry is in flight — silent', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    execInWt(addWorktree(g, 'feat/p1-thing'), 'work');
+    const r = audit(dir);
+    assert.equal(r.code, CLEAN, out(r));
+  });
+
+  test('an old lock whose owner is unmerged is an ALERT naming the release command', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    execInWt(addWorktree(g, 'feat/p1-thing'), 'work');
+    writeLock(dir, 'feat/p1-thing', 45);
+    const r = audit(dir);
+    assert.equal(r.code, FINDINGS, out(r));
+    assert.match(r.stdout, /\[ALERT\] The land lock has been held by feat\/p1-thing/);
+    assert.match(r.stdout, /lock release feat\/p1-thing/);
+  });
+
+  test('a lock whose owner branch is gone is noted as stale', () => {
+    const { dir } = repo();
+    writeLock(dir, 'feat/p9-gone');
+    const r = audit(dir);
+    assert.match(r.stdout, /held by feat\/p9-gone .* which has finished or gone/);
+  });
+
+  test('a fresh lock held by a live landing is not a finding', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    execInWt(addWorktree(g, 'feat/p1-thing'), 'work');
+    writeLock(dir, 'feat/p1-thing', 1);
+    const r = audit(dir);
+    assert.equal(r.code, CLEAN, out(r));
+  });
+});
+
+/** Commit something in a worktree, so its branch is ahead of main. */
+function execInWt(wt, msg) {
+  writeFileSync(join(wt, `${msg}-${Math.random().toString(36).slice(2)}.txt`), msg);
+  spawnSync('git', ['add', '-A'], { cwd: wt });
+  spawnSync('git', ['commit', '-qm', msg], { cwd: wt });
+}
+
 describe('unmerged branches are not findings by themselves', () => {
   // P18 retired the baton file, and with it the "branch with no handoff section"
   // check. A branch is in-flight work; git already records it, and `npm run history`

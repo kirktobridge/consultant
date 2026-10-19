@@ -93,11 +93,16 @@ run all of them.
   local main into `.claude/worktrees/`, or resumes the entry's existing branch. Enter
   the `path:` it prints with **EnterWorktree** (`path`, not `name`) — CLAUDE.md
   authorizes this — and build there. You don't ask the user about any of it.
-- **Inside the worktree, run git one plain command per call.** The session's
+- **If you are a subagent, EnterWorktree and ExitWorktree are refused (A-12).** Work
+  in the printed path anyway: run each command as `cd <path> && …` in one Bash call,
+  and edit files there by their absolute path. Skip ExitWorktree; your main-checkout
+  steps already run where you are.
+- **Under EnterWorktree, run git one plain command per call.** The session's
   isolation refuses a compound git command (a pipe, a chain, a heredoc that names
-  git), because it can't verify the command stays in the worktree. An installation
-  whose hooks rewrite git through a wrapper needs a workaround as well; that belongs
-  in the installation's own config, not here.
+  git), because it can't verify the command stays in the worktree (A-11). The `cd`
+  form above is unaffected, since nothing isolates it. An installation whose hooks
+  rewrite git through a wrapper needs its own workaround; that belongs in the
+  installation's config, not here.
 - For anything nontrivial, plan first (plan mode / a short written plan naming the
   files to touch) before editing.
 
@@ -128,13 +133,17 @@ run all of them.
 ### 4. Verify + close
 - Run the full check suite (tests, typecheck, lint). Wrap long runs with `time`.
 - Run **/verify `<ID>`** — it drives the entry's `Accept:` criteria in the real app,
-  not a flow guessed from the diff.
+  not a flow guessed from the diff. A docs-only change has no app to drive: check
+  each criterion directly (read the file, run the command it names) and say in the
+  report that this is how it was checked.
 - **Close by criterion, not by diff.** Report each `Accept:` criterion, verbatim, as
   **observed** (with the evidence), **not observed** (with what was seen instead), or
   **not exercised** (a later milestone owns it — say which). A diff summary is not a
   close report: it says what changed, and the criteria say whether it was right. A
   criterion that is *not observed* is not done — say so plainly rather than
-  rounding it up.
+  rounding it up. A criterion that only the landing can show ("on main, …") is
+  *not exercised — observable after landing*. /land observes it on main and gives
+  the verdict in its handshake.
 - Commit on the feature branch, **with that per-criterion report in the commit
   message** and the entry's ID in the subject (`feat: … (P#)`). `npm run history`
   finds an entry's commits by that ID, so a commit without it drops out of the
@@ -156,9 +165,11 @@ run all of them.
      `lock release <branch>` and stop for the user. If it's green, the close report
      now describes code from before the resolution: re-run /verify and commit its
      fresh per-criterion report (`chore: re-verified after conflict resolution
-     (P#)`). If you can't re-run it, /land marks the old verdicts *observed before
-     conflict resolution*.
-  4. Leave the worktree with **ExitWorktree** (`keep`; /land removes it), then run
+     (P#)`, with `--allow-empty` when nothing changed, which is the usual case). If
+     you can't re-run it, /land marks the old verdicts *observed before conflict
+     resolution*.
+  4. Leave the worktree with **ExitWorktree** (`keep`; /land removes it; a subagent
+     skips this), then run
      **/land**. It merges into main, re-runs the suite on the merged result, runs
      /ship's flips there (`partial` + which milestone; doc flips never happen on the
      branch), and cleans up. `shipped` is not among those flips: it waits for the
