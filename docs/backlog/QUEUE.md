@@ -1,7 +1,7 @@
 # Next up
 
-1. **P5** — bugs as a third intake class. Unblocks nothing; holds its slot over
-   newcomers by existing order.
+1. **P5** — bugs as a fourth intake class; R0 landed, R1 next. Unblocks nothing;
+   holds its slot over newcomers by existing order.
 2. **P8** — a review step in the loop. Unblocks nothing; first of the ready leaves by
    existing order.
 3. **P7** — a status view for the product owner. Unblocks nothing; ready, by existing
