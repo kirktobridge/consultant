@@ -1,4 +1,4 @@
-# Agent skill suite — a doc-driven working loop
+# Consultant — a doc-driven working loop
 
 A portable system of **five loop skills** plus the **documents they read and write**,
 extracted from a project where it ran for months across dozens of features. (A sixth,

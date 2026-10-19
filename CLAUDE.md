@@ -1,4 +1,4 @@
-# <PROJECT NAME>
+# Consultant
 
 <!-- PORTING: one-paragraph description of what this project is and how to run it.
      Keep it short — this file is loaded into every session's context, so every line
