@@ -104,6 +104,12 @@ state: that dependency usually moved the very code the entry describes. A flag m
   the ones that read it closely. Prose keeps what code can't decide: judgment, the
   *why*, and the product owner's words. When you write a rule as prose that could have
   been code, say so and propose the check (README's "three enforcement layers").
+- **Building an entry happens in its own worktree** (P15). When /implement starts a
+  build, enter the worktree `node scripts/worktree.mjs start <ID>` prints, with
+  EnterWorktree (`path`); when the build closes, leave it with ExitWorktree (`keep`) so
+  /land integrates from the main checkout. This line is the authorization those tools require: they act only
+  on the user's or CLAUDE.md's instruction, and a SKILL.md is neither. The main
+  checkout stays integration-only while sessions run.
 
 <!-- PORTING: naming, coordinates, units, formatting — the small stuff that causes
      churn when it's implicit. -->

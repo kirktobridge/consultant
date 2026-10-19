@@ -128,6 +128,19 @@ describe('robustness', () => {
     assert.doesNotMatch(out(r), /node_modules/);
   });
 
+  test('a nested checkout (a session worktree) is not searched as part of this tree', () => {
+    // From the main checkout, a worktree under .claude/worktrees/ holds a full copy of
+    // the repo; its match would be reported as a match here (P15).
+    const d = corpus();
+    const wt = join(d, '.claude', 'worktrees', 'p1-x');
+    mkdirSync(join(wt, 'docs'), { recursive: true });
+    writeFileSync(join(wt, '.git'), 'gitdir: /elsewhere\n');
+    writeFileSync(join(wt, 'docs', 'copy.md'), 'Status: from the other checkout\n');
+    const r = grep(['--files', 'Status', d], d);
+    assert.doesNotMatch(out(r), /worktrees/);
+    assert.equal(grep(['--files', 'Status', wt], d).code, 0, 'named directly, it is still searched');
+  });
+
   test('the searcher is in-process — no external grep is invoked', () => {
     // The original failure was a *proxied* grep (L1). If this ever shells out, a
     // hostile PATH would make the tool lie in precisely the way it exists to prevent.

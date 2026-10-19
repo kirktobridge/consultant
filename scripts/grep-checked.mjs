@@ -77,16 +77,20 @@ try {
 
 // ── Walk ─────────────────────────────────────────────────────────────────────
 
-function* walk(p) {
+// A directory below the one named that has its own `.git` is another checkout — a
+// session worktree under .claude/worktrees/ (P15), or a nested repo. Its files are not
+// this tree's, and a match found there would be reported as a match here.
+function* walk(p, top = true) {
   let st;
   try { st = statSync(p); } catch { return; }
   if (st.isFile()) { yield p; return; }
   if (!st.isDirectory()) return;
+  if (!top && existsSync(join(p, '.git'))) return;
   let entries;
   try { entries = readdirSync(p); } catch { return; }
   for (const name of entries) {
     if (SKIP_DIRS.has(name)) continue;
-    yield* walk(join(p, name));
+    yield* walk(join(p, name), false);
   }
 }
 

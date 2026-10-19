@@ -49,7 +49,9 @@ not observed or not exercised first; that is what the user is accepting despite.
    Name the resolution in your final report, and say if it was a **refutation**: that
    may void other entries rather than unblock them, and the main session needs to know
    before it picks the next thing up.
-5. Delete the branch (`git branch -d`).
+5. Remove the branch's worktree if it has one (`git worktree list`, then
+   `git worktree remove <path>`), then delete the branch (`git branch -d`). git
+   refuses to delete a branch that is still checked out in a worktree.
 
 ## Not this skill
 - Doc edits → **/ship** (invoked as step 4, never replaced).
