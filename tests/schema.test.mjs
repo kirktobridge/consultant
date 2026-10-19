@@ -14,7 +14,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, A, D, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
+import { P, B, A, D, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -626,7 +626,7 @@ describe('identity and ID hygiene', () => {
 // one added to its config later is covered without anyone adding a test for it.
 describe('only the header is read: prose about a field is never the field', () => {
   const fields = JSON.parse(run('backlog-schema-check.mjs', ['--fields']).stdout);
-  const fileIn = (dir) => `${dir}/${{ 'docs/backlog': 'P1', 'docs/assumptions': 'A-1', 'docs/decisions': 'D-1' }[dir]}.md`;
+  const fileIn = (dir) => `${dir}/${{ 'docs/backlog': 'P1', 'docs/bugs': 'B1', 'docs/assumptions': 'A-1', 'docs/decisions': 'D-1' }[dir]}.md`;
 
   // Drop the section from the one entry in `rel`, and add a prose section that names
   // it in every shape it used to be written in.
@@ -644,6 +644,7 @@ describe('only the header is read: prose about a field is never the field', () =
   // walking nothing (L3).
   test('the probe list covers every register', () => {
     assert.ok(fields['docs/backlog'].required.includes('Accept'));
+    assert.ok(fields['docs/bugs'].required.includes('Repro'));
     assert.ok(fields['docs/assumptions'].required.includes('Assumption'));
     assert.ok(fields['docs/decisions'].required.includes('Options'));
     assert.ok(fields['docs/backlog'].keys.includes('depends_on'));
@@ -652,7 +653,7 @@ describe('only the header is read: prose about a field is never the field', () =
   for (const [regDir, { required }] of Object.entries(fields)) {
     for (const label of required) {
       test(`${regDir}: naming ${label} in prose does not count as carrying it`, () => {
-        const dir = project({ backlog: [P('P1')], assumptions: [A('A-1')], decisions: [D('D-1')] });
+        const dir = project({ backlog: [P('P1')], bugs: [B('B1')], assumptions: [A('A-1')], decisions: [D('D-1')] });
         passes(dir); // the fixture is valid before the section is taken away
         proseOnly(dir, fileIn(regDir), label);
         fails(dir, new RegExp(`missing \\*\\*${label}\\*\\*`));
@@ -677,6 +678,81 @@ describe('only the header is read: prose about a field is never the field', () =
     assert.doesNotMatch(o, /terminal/, 'body prose was read as the status');
     assert.doesNotMatch(o, /A-2/, 'body prose was read as a dependency or a spike pairing');
     assert.match(o, /^backlog-schema: 1 violation/m);
+  });
+});
+
+// P5 R0. A bug is reported, not pitched: its shape is a repro and a severity, and the
+// register holds it to that shape without asking it for a `Value` nobody has.
+describe('bugs', () => {
+  test('an open bug with a repro and a severity, and no Value, passes', () => {
+    const o = passes(project({ bugs: [B('B1')] }));
+    assert.match(o, /OK \(2 entries across 2 register\(s\)\)/);
+  });
+
+  test('an empty bug register passes — no bugs is the healthy state', () => {
+    const o = passes(project({ bugsReadme: true }));
+    assert.match(o, /OK \(1 entries across 2 register\(s\)\)/, 'the register was not loaded');
+  });
+
+  test('a bug carrying a Value fails — nothing gets invented to fill it', () => {
+    fails(project({ bugs: [B('B1', { value: 'users get a working product.' })] }), /B1 carries \*\*Value\*\* — a bug entry never does/);
+  });
+
+  test('an open bug with no Repro fails', () => {
+    fails(project({ bugs: [B('B1', { repro: null })] }), /open B1 missing \*\*Repro\*\*/);
+  });
+
+  test('a fixed bug may compress to its status', () => {
+    passes(project({ bugs: [B('B1', { status: 'fixed', repro: null, severity: null })] }));
+  });
+
+  test('an open bug with no severity fails', () => {
+    fails(project({ bugs: [B('B1', { severity: null })] }), /open B1 has no `severity:` in the header/);
+  });
+
+  test('a severity outside the documented scale fails', () => {
+    fails(project({ bugs: [B('B1', { severity: 'high' })] }), /severity "high" for B1 not in vocab \{critical, major, minor\}/);
+  });
+
+  test('the scale is read from the README: one that documents none fails', () => {
+    const dir = project({ bugs: [B('B1')] });
+    patch(dir, 'docs/bugs/README.md', 'Severity vocab', 'Severities');
+    fails(dir, /docs\/bugs\/README\.md: no documented Severity vocab resolved/);
+  });
+
+  test('a backlog status is not a bug status', () => {
+    fails(project({ bugs: [B('B1', { status: 'proposed' })] }), /status "proposed" for B1 not in vocab/);
+  });
+
+  test('an open bug with no `reported:` date fails', () => {
+    fails(project({ bugs: [B('B1', { reported: null })] }), /open B1 has no `reported: YYYY-MM-DD`/);
+  });
+
+  test('a backlog-only key is not a bug key', () => {
+    const dir = project({ bugs: [B('B1')] });
+    patch(dir, 'docs/bugs/B1.md', 'status: open\n', 'status: open\ndrafted: 2026-08-01\n');
+    fails(dir, /B1\.md:5: unknown header key `drafted`/);
+  });
+
+  test('a B# filed in the backlog is out of namespace', () => {
+    const dir = project({ bugsReadme: true });
+    writeFileSync(join(dir, 'docs/backlog/B1.md'), readFileSync(join(dir, 'docs/backlog/P1.md'), 'utf8').replace('id: P1', 'id: B1'));
+    fails(dir, /docs\/backlog\/B1\.md: ID out of namespace: B1/);
+  });
+
+  test('a bug depending on an entry that does not exist fails', () => {
+    fails(project({ bugs: [B('B1', { dependsOn: ['P9'] })] }), /B1 depends on P9, which has no entry/);
+  });
+
+  test('a feature depending on a bug that does not exist fails', () => {
+    fails(project({ backlog: [P('P1', { dependsOn: ['B9'] })], bugsReadme: true }), /P1 depends on B9, which has no entry/);
+  });
+
+  test('an in-progress bug resting on an open assumption fails', () => {
+    fails(
+      project({ bugs: [B('B1', { status: 'in-progress', dependsOn: ['A-1'] })], assumptions: [A('A-1')] }),
+      /B1 is `in-progress` but depends on A-1, still `open`/,
+    );
   });
 });
 

@@ -67,6 +67,23 @@ export function P(id, over = {}) {
   };
 }
 
+/** A bug. Defaults are a minimal *valid* open bug: a repro and a severity, no Value. */
+export function B(id, over = {}) {
+  return {
+    id,
+    title: `${id} example`,
+    status: 'open',
+    severity: 'major',
+    reported: '2026-08-01',
+    dependsOn: [],
+    repro: '1. do the thing.\n2. it breaks.',
+    expected: null,
+    value: null,
+    notes: null,
+    ...over,
+  };
+}
+
 /** An open assumption. Defaults are a minimal *valid* open assumption. */
 export function A(id, over = {}) {
   return {
@@ -147,6 +164,19 @@ const renderP = (e) =>
     [section('Value', e.value), section('Scope', e.scope), list('Accept', e.accept), section('Notes', e.notes)],
   );
 
+const renderB = (e) =>
+  entry(
+    [
+      key('id', e.id),
+      key('title', e.title),
+      key('status', e.status),
+      key('severity', e.severity),
+      key('reported', e.reported),
+      key('depends_on', e.dependsOn.length ? e.dependsOn.join(', ') : '—'),
+    ],
+    [section('Value', e.value), section('Repro', e.repro), section('Expected', e.expected), section('Notes', e.notes)],
+  );
+
 const renderA = (d) =>
   entry(
     [
@@ -195,10 +225,10 @@ const renderD = (d) =>
  * list of P ids; pass [] deliberately to test the empty-queue failure. The READMEs
  * carry the status vocab lines verbatim because the checker reads its vocabulary *from
  * them* — a fixture that omitted them would be testing a different contract than the
- * real docs have. The assumptions and decisions registers are only written when they
- * have entries.
+ * real docs have. The bugs, assumptions and decisions registers are only written when
+ * they have entries — pass `bugs: []` with `bugsReadme: true` for an empty bug register.
  */
-export function renderFiles({ backlog = [P('P1')], assumptions = [], decisions = [], nextUp = ['P1'] } = {}) {
+export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false, assumptions = [], decisions = [], nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
       '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
@@ -206,6 +236,11 @@ export function renderFiles({ backlog = [P('P1')], assumptions = [], decisions =
       '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
   };
   for (const e of backlog) files[`docs/backlog/${e.id}.md`] = renderP(e);
+  if (bugs.length || bugsReadme) {
+    files['docs/bugs/README.md'] =
+      '# Bugs\n\nStatus vocab: `open` / `in-progress` / `fixed` / `wontfix`.\n\nSeverity vocab: `critical` / `major` / `minor`.\n';
+    for (const e of bugs) files[`docs/bugs/${e.id}.md`] = renderB(e);
+  }
   if (assumptions.length) {
     files['docs/assumptions/README.md'] = '# Assumptions\n\nStatus vocab: `open` / `verified` / `refuted` / `moot` / `moved`.\n';
     for (const d of assumptions) files[`docs/assumptions/${d.id}.md`] = renderA(d);

@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature, an assumption or a decision, and draft the entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open assumptions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
+description: Classify a raw idea (dev notes, conversation, anywhere) as a product feature, a bug, an assumption or a decision, and draft the entry — without writing any file. Also grooms the backlog (`/triage groom`) — re-checks blockers, sweeps resolved open assumptions, flags assumptions about to block the queue, acts on staleness. Use for "add this idea", "this is broken", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage. Hands the draft to /ship to write.
 ---
 
 # Triage — idea intake & classification
@@ -14,7 +14,7 @@ classification + draft + which skill should write it.
 - [docs/dev_notes/OPEN_IDEAS.md](../../../docs/dev_notes/OPEN_IDEAS.md) — the human's
   raw dump. **Read-only** (edit-guard enforces it) and explicitly not a source of
   truth: ideas in it may already be shipped, deferred, or dead. Always check the
-  backlog and the assumptions and decisions registers (step 2's search) before drafting — don't
+  backlog and the bugs, assumptions and decisions registers (step 2's search) before drafting — don't
   re-propose what exists.
 - Ideas raised in conversation, code review, or the fallout of a build.
 
@@ -44,7 +44,17 @@ Ask in this order, and stop at the first yes:
    research track, which **P13** builds and which does not exist yet. Say so to the
    user rather than filing it under 1 or 2; if a decision is waiting on the number,
    draft the decision and name the measurement in its `## Context`.
-4. **Otherwise it's something to build** → a **product feature**. Draft with the
+4. **Is it broken — something that works, or was meant to, seen not to?** → a
+   **bug** (`B#`, [docs/bugs/](../../../docs/bugs/README.md)). The tell: someone
+   *saw* it fail, and can say what they did and what happened. Draft with the shape the
+   bugs README documents — a header (title / `status: open` / `severity` / `reported` /
+   depends_on) and a body (`## Repro`, optionally `## Expected` / `## Notes`). Keep the
+   reporter's repro steps **as they gave them**; don't tidy them into what you think
+   happened. Ask for the severity (`critical` / `major` / `minor`) if they haven't said,
+   and **don't write a `Value`** — "it should work" is the whole of a bug's value, and
+   inventing a payoff line is the dressing-up this class exists to stop. A suspicion
+   nobody has seen fail is not a bug: that's a test or a /verify run (below).
+5. **Otherwise it's something to build** → a **product feature**. Draft with the
    product shape [docs/backlog/README.md](../../../docs/backlog/README.md) documents — a
    header (title / `status: proposed` / epic / drafted / depends_on) and a body (Value /
    Scope / **Accept**). Destination: a new `docs/backlog/P#.md` under the right epic,
@@ -52,7 +62,7 @@ Ask in this order, and stop at the first yes:
 
 **"Does our own code work?" is never an entry.** It's a feature's `Accept`, a test,
 or a /verify run. Filing it as an assumption parks a question the suite could answer
-today.
+today. Once someone has *seen* it not work, it's no longer a question: it's a bug (4).
 
 **Split mixed ideas.** A feature resting on an unchecked assumption becomes an `A-n`
 plus a product draft whose `depends_on:` names it. This pairing is the system's main
@@ -104,7 +114,7 @@ the user knows the entry exists and where it's allowed to sit.
 2. Check for an existing entry:
    ```
    node scripts/grep-checked.mjs -i --control '^status:' '<keyword>' \
-     docs/backlog docs/assumptions docs/decisions
+     docs/backlog docs/bugs docs/assumptions docs/decisions
    ```
    If one exists, the output is "already tracked as `<ID>` — update it via its owner"
    — not a duplicate draft. Use the checked search rather than a bare grep: a false
@@ -113,8 +123,8 @@ the user knows the entry exists and where it's allowed to sit.
    [L1](../../../docs/LESSONS.md)). **Exit 2 means you learned nothing** — re-run
    before concluding the idea is new.
 3. Draft the entry in the destination's template, including where it slots (epic for a
-   feature; nothing to slot for an assumption or a decision — those registers aren't
-   ordered).
+   feature; its severity for a bug; nothing to slot for an assumption or a decision —
+   those registers aren't ordered).
 4. Present draft + destination to the user; on approval, hand to **/ship** to write it.
    (An assumption draft also goes to /ship as the pen, though the register has no single
    writer — only an enforced shape. A decision's pen is /ship alone.)

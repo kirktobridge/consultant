@@ -46,7 +46,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
-import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf, dependencyGraph } from './entries.mjs';
+import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf, dependencyGraph } from './entries.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -77,6 +77,27 @@ const REGISTERS = [
     // The only statuses that may carry the `closed` date. A `shipped:` date on any other
     // status is the claim "the user accepted this" contradicting the status line.
     closedBy: new Set(['shipped']),
+  },
+  // Bugs: what's broken. Carries a repro and a severity instead of a `Value` — the point
+  // of the register is that nobody has to invent a payoff line for "this is broken".
+  {
+    ...BUGS,
+    kind: 'bugs',
+    open: new Set(['open', 'in-progress']),
+    terminal: new Set(['fixed', 'wontfix']),
+    always: [],
+    whileOpen: ['Repro'],
+    // Sections an entry may never carry. A bug's `Value` can only be invented — "it
+    // should work" — and that dressing-up is what the register exists to stop.
+    never: ['Value'],
+    whileOpenKeys: ['severity'],
+    // Header keys whose value is a word from a vocabulary the README documents, read
+    // the same way as the status vocab: `<label>:` followed by backticked words.
+    vocabKeys: { severity: 'Severity vocab' },
+    // No bugs is the healthy state, so an empty register is not a parser gone quiet.
+    // The entry count in the success line is still the positive control.
+    mayBeEmpty: true,
+    dated: 'reported',
   },
   // Assumptions: load-bearing assumptions. Not a backlog (no queue, no payoff
   // order) but the same shape rules apply, and backlog entries may depend on them —
@@ -179,9 +200,9 @@ if (!run) process.exit(0);
  * words in its "Status vocab:" line — not hardcoded here. A doc that documents
  * its own vocabulary and a checker that reads it cannot drift apart.
  */
-function sectionVocab(text) {
+function sectionVocab(text, label = 'Status vocab') {
   const out = new Set();
-  const m = text.match(/Status vocab\b[\s\S]{0,600}/i);
+  const m = text.match(new RegExp(`${label}\\b[\\s\\S]{0,600}`, 'i'));
   if (!m) return out;
   // A vocab list may wrap across lines, so consume consecutive token-bearing
   // lines; stop at the first gap after tokens have started, so an explanatory
@@ -235,7 +256,7 @@ if (queueReg) {
 const today = new Date().toISOString().slice(0, 10);
 
 for (const { reg: b, entries } of loaded) {
-  if (entries.length === 0) fail(`${b.dir}: no entry files parsed`);
+  if (entries.length === 0 && !b.mayBeEmpty) fail(`${b.dir}: no entry files parsed`);
   const readme = readIf(b.readme);
   const vocab = readme === null ? new Set() : sectionVocab(readme);
   if (vocab.size === 0) fail(`${b.readme}: no documented status vocabulary resolved`);
@@ -265,12 +286,23 @@ for (const { reg: b, entries } of loaded) {
       fail(`${e.file}: status "${e.status}" for ${e.id} not in vocab {${[...vocab].join(', ')}}`);
     }
   }
+  for (const [key, label] of Object.entries(b.vocabKeys ?? {})) {
+    const words = readme === null ? new Set() : sectionVocab(readme, label);
+    if (words.size === 0) { fail(`${b.readme}: no documented ${label} resolved`); continue; }
+    for (const e of entries) {
+      const v = e.header[key];
+      if (v && !words.has(v)) fail(`${e.file}: ${key} "${v}" for ${e.id} not in vocab {${[...words].join(', ')}}`);
+    }
+  }
 
   // — required sections: always-sections on every entry, open-sections while open —
   // Terminal entries legitimately compress to a status + a one-line outcome.
   for (const e of entries) {
     for (const s of b.always) {
       if (!e.sections.has(s)) fail(`${e.file}: ${e.id} missing **${s}**`);
+    }
+    for (const s of b.never ?? []) {
+      if (e.sections.has(s)) fail(`${e.file}: ${e.id} carries **${s}** — a ${b.kind.replace(/s$/, '')} entry never does`);
     }
     if (!b.open.has(e.status ?? '')) continue;
     for (const s of b.whileOpen) {
@@ -395,6 +427,12 @@ for (const { reg: b, entries } of loaded) {
   // landing; an abandoned or deferred one is the consequence quietly dropped while the
   // decision still reads as in force.
   for (const e of entries) {
+    // A dependency no other check reads: the gate above owns `A-n`/`D-n`, and the graph
+    // block below owns the backlog's own `P#` edges. Everything else dangles here.
+    for (const id of idsOf(e, 'depends_on')) {
+      if (GATING.test(id) || (b.kind === 'product' && b.idPattern.test(id))) continue;
+      if (!byId.has(id)) fail(`${e.file}: ${e.id} depends on ${id}, which has no entry`);
+    }
     for (const key of ['waiting_on', 'leads_to', 'superseded_by', 'moved_to']) {
       for (const id of idsOf(e, key)) {
         if (!byId.has(id)) fail(`${e.file}: ${e.id} ${key} ${id}, which has no entry`);

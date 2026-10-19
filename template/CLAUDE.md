@@ -18,6 +18,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 | [docs/SPEC.md](docs/SPEC.md) | **Source of truth for behavior.** Human-owned — propose diffs, never edit. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, folder layout, key types, the *why*. |
 | [docs/backlog/](docs/backlog/README.md) | **Product/feature backlog** — the pool of shippable work, one file per entry; [QUEUE.md](docs/backlog/QUEUE.md) is what's next. |
+| [docs/bugs/](docs/bugs/README.md) | **What's broken** (`B#`): the reporter's repro and a severity, no invented `Value`. |
 | [docs/assumptions/](docs/assumptions/README.md) | **Load-bearing assumptions** (`A-n`) nobody has verified. An `open` assumption blocks work that depends on it. |
 | [docs/decisions/](docs/decisions/README.md) | **Choices only the product owner makes** (`D-n`): open ones with options and what they wait on, decided ones with why. An `open` decision blocks like an open assumption. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |

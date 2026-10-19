@@ -134,6 +134,16 @@ export const CASES = [
     expect: { classification: 'not-applicable' },
   },
   {
+    id: 'triage-files-a-breakage-as-a-bug',
+    skill: 'triage',
+    request:
+      'this is broken: I ran `npm run check:docs` after deleting every line of QUEUE.md except the heading, and it printed OK. it should have failed. pretty bad, nothing else catches it',
+    bar: 'bug — a repro and a severity, not a feature with a Value',
+    why: 'P5: an observed failure dressed as a feature gets an invented Value line and loses its repro',
+    repo: { backlog: [P('P1')], nextUp: ['P1'] },
+    expect: { classification: 'bug' },
+  },
+  {
     id: 'triage-splits-a-feature-resting-on-an-assumption',
     skill: 'triage',
     request:
