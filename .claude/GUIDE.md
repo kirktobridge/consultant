@@ -60,7 +60,11 @@ run the app and screenshot the main view
 
 ### /land — "merge it into main"
 The integration step: merge one finished branch into main, re-run the full suite on the
-merged result, then run /ship's doc flips there. Doc flips happen at land time — never
+merged result, then run /ship's doc flips there. /implement invokes it itself, after
+it has taken the land lock and rebased in its worktree, resolving any conflicts
+there (`scripts/land.mjs`). Landings and claims share that one lock, so parallel
+sessions land one after the other. A conflict stops for you only when the
+resolution would keep just one entry's side, or the suite is red after it. Doc flips happen at land time — never
 on the branch — so parallel branches can't conflict on the backlog. Runs forked
 (`context: fork`), so the merge/test output doesn't eat the session's context — you get
 back a compact landing report, ending in the entry's `Accept:` criteria with a verdict

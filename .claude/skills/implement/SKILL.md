@@ -84,7 +84,10 @@ run all of them.
   is); don't branch over it.
 - Flip the entry to `in-progress` **via /ship, committed on main before branching** —
   a flip made on your branch is invisible to other sessions, which defeats the claim
-  gate. (/ship edits its files on main only.)
+  gate. (/ship edits its files on main only.) Hold the land lock for the claim
+  commit: `node scripts/land.mjs lock take claim:<ID> --wait 600`, then release it
+  with `lock release claim:<ID>`. Another session may be landing in the same main
+  checkout.
 - Then, from the main checkout, `node scripts/worktree.mjs start <ID>`. It refuses
   an unclaimed entry or a dirty tree (exit 1, says which), cuts `feat/p<#>-<slug>` off
   local main into `.claude/worktrees/`, or resumes the entry's existing branch. Enter
@@ -136,12 +139,30 @@ run all of them.
   message** and the entry's ID in the subject (`feat: … (P#)`). `npm run history`
   finds an entry's commits by that ID, so a commit without it drops out of the
   record; and /land runs forked and reads git, not this conversation, and it is the
-  report the user will be asked to accept against. Leave the worktree with
-  **ExitWorktree** (`keep` — the branch is the work, and /land removes the worktree
-  once it merges), so /land starts in the main checkout. Then **/land** merges it into main,
-  re-runs the suite on the merged result, and runs /ship's flips there (`partial` +
-  which milestone) — doc flips never happen on the branch. `shipped` is not among
-  them: it waits for the user to accept (see /ship).
+  report the user will be asked to accept against.
+- **Then land it yourself — don't ask.** Still in the worktree:
+  1. `node scripts/land.mjs lock take <branch> --wait 600`. If it's refused as
+     *ambiguous*, ask the user; otherwise it waits its turn.
+  2. `node scripts/land.mjs rebase` puts the branch on the current main.
+     - **Exit 3 = conflicts.** It prints each region (main's side, this branch's
+       side, what was there before either) and the entry that landed the other
+       side. Read that entry's merge commit and backlog file, resolve each region
+       with Edit so **both** entries' intent survives, then run
+       `node scripts/land.mjs continue`. Repeat until it exits 0.
+     - **Exit 4 = stop and ask the user.** Either your resolution kept only one
+       side, or the conflict has nothing to resolve line by line (a delete, a
+       rename, a binary file). Keep the lock and show them the regions.
+  3. If anything was resolved, run the full suite in the worktree. If it's red,
+     `lock release <branch>` and stop for the user. If it's green, the close report
+     now describes code from before the resolution: re-run /verify and commit its
+     fresh per-criterion report (`chore: re-verified after conflict resolution
+     (P#)`). If you can't re-run it, /land marks the old verdicts *observed before
+     conflict resolution*.
+  4. Leave the worktree with **ExitWorktree** (`keep`; /land removes it), then run
+     **/land**. It merges into main, re-runs the suite on the merged result, runs
+     /ship's flips there (`partial` + which milestone; doc flips never happen on the
+     branch), and cleans up. `shipped` is not among those flips: it waits for the
+     user to accept (see /ship).
 - Re-derive any "still owed" follow-ups from the **actual diff**, not the entry's
   Scope text (premise gate, step 1): name in the hand-off to /land only obligations
   the change as-built really incurs, and say explicitly which scope-listed ones turned
