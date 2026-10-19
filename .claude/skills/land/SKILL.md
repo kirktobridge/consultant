@@ -21,24 +21,32 @@ and is `in-progress` until you accept it. Ship it?"* Name every criterion that i
 not observed or not exercised first; that is what the user is accepting despite.
 
 ## Preconditions (stop if any fail)
-- Working tree clean (`git status --short`).
-- Tests were green at the branch's last commit; if in doubt, re-run on the branch.
+- You are in the main checkout, and it is clean. The session left its worktree
+  before invoking you.
+- The branch holds the land lock (`node scripts/land.mjs lock status`) and is
+  rebased onto main. /implement did both in its worktree, resolving any conflicts
+  there. If it doesn't hold the lock, the branch skipped that step: send it back
+  through /implement's close, because a rebase can't happen from here.
 - The branch carries its **per-criterion close report** — /implement writes it into
   the feature commit's message: each `Accept:` criterion, verbatim, as observed /
   not observed / not exercised. Read it with `git log main..<branch>`. No report →
   stop: the user is about to be asked to accept against it, and you cannot write it
   from here (you never saw the build). Send the branch back through /verify.
+  Then read `node scripts/land.mjs report <branch>`. If conflicts were resolved and
+  no commit after the resolution carries a fresh report, the verdicts describe the
+  code from before the resolution: mark each one *observed before conflict
+  resolution* in the handshake.
 
 ## Steps
-1. `git checkout main` (pull first if there's a remote), then
-   `git merge --no-ff <branch>` — keeps the merge-commit convention.
-2. **Conflicts → stop and show them.** Never auto-resolve silently. With the
-   flips-on-main discipline (see /ship) doc conflicts should be rare, so a conflict is
-   a signal something skipped the process — say so.
-3. Verify the merged result: the full test suite + typecheck, wrapped in `time`. Red →
-   undo the merge (`git reset --merge ORIG_HEAD`), report what failed, and leave main
-   untouched — **never leave main broken**.
-4. Run **/ship** on main: `partial` + the milestone if milestones remain, queue
+1. `node scripts/land.mjs merge <branch>`, wrapped in `time`. It merges `--no-ff`
+   (the merge message carries the conflict report), runs the full suite on the
+   merged result, and on red puts main back where it was — **main is never left
+   broken**. A merge conflict here can't happen to a rebased branch under the lock.
+   If it does, something moved main without the lock: say so.
+2. Red, or any refusal → `node scripts/land.mjs lock release <branch>` so the other
+   sessions aren't held up, report exactly what failed and that main is untouched,
+   and stop.
+3. Run **/ship** on main: `partial` + the milestone if milestones remain, queue
    (`docs/backlog/QUEUE.md`) refresh, any BUILD_ORDER / ARCHITECTURE touch-up. **Never `shipped`.** If this was
    the entry's last milestone, it stays `in-progress`: whether it shipped is the
    product owner's call, made against the report below, and a forked skill cannot
@@ -49,11 +57,13 @@ not observed or not exercised first; that is what the user is accepting despite.
    Name the resolution in your final report, and say if it was a **refutation**: that
    may void other entries rather than unblock them, and the main session needs to know
    before it picks the next thing up.
-5. Remove the branch's worktree if it has one (`git worktree list`, then
-   `git worktree remove <path>`), then delete the branch (`git branch -d`). git
-   refuses to delete a branch that is still checked out in a worktree.
+4. `node scripts/land.mjs finish <branch>`: removes the worktree and the branch,
+   drops the landing record, and releases the lock. That's the last step, because
+   /ship's flips in step 3 are commits on main and need the lock too. Your report
+   includes the conflicts from `land.mjs report` (taken before finish): file, both
+   sides, the resolution.
 
 ## Not this skill
-- Doc edits → **/ship** (invoked as step 4, never replaced).
+- Doc edits → **/ship** (invoked as step 3, never replaced).
 - Building the feature → **/implement**.
 - Deciding an entry shipped → **the user**, then /ship writes it.
