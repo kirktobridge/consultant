@@ -37,7 +37,8 @@ run all of them.
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
 - **DEPENDS GATE:** read its header's `depends_on:`. A dependency that is an unshipped
-  `P#`, an **`open` `A-n`**
+  `P#` (directly or through another entry's `depends_on:`; only `shipped` counts, not
+  `partial` — the schema check refuses the claim the same way), an **`open` `A-n`**
   ([docs/assumptions/](../../../docs/assumptions/README.md)) or an **`open` `D-n`**
   ([docs/decisions/](../../../docs/decisions/README.md)) blocks the build — stop
   and tell the user what's blocking, unless the specific milestone is explicitly marked
