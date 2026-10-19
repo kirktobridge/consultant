@@ -46,7 +46,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
-import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf } from './entries.mjs';
+import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf, dependencyGraph } from './entries.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -481,6 +481,64 @@ if (queueReg && readIf(queueReg.queue) !== null) {
     const e = byId.get(id);
     if (!e) { fail(`${queueReg.queue}: Next-up ID ${id} has no entry`); continue; }
     if (isTerminal(e)) fail(`${queueReg.queue}: Next-up ${id} is terminal ("${e.status}") — refresh the queue`);
+  }
+}
+
+// — feature dependencies gate the queue and claims, read from one graph —
+//
+// The same two promises as the assumption gate above, kept for `P#` dependencies, and
+// transitively: what a dependency waits on is waited on too. Only `shipped` is met.
+//
+//   queued       → every unmet dependency sits *above* it in the queue. Working the
+//                  queue in order then keeps it dependency-ready (user decision,
+//                  2026-10-16: queuing below an unshipped dependency is allowed).
+//   in-progress  → every dependency is shipped. A claim builds on what exists.
+//   /partial
+//
+// A `deferred` or `abandoned` dependency fails at both: it is never going to be met.
+const backlogLoaded = loaded.find((l) => l.reg.kind === 'product');
+if (backlogLoaded) {
+  const g = dependencyGraph(backlogLoaded.entries);
+  const via = (u) => (u.path.length > 2 ? ` (through ${u.path.slice(1, -1).join(' → ')})` : '');
+  for (const cycle of g.cycles) {
+    fail(`dependency cycle: ${cycle.join(' → ')} — none of these can ever be dependency-ready; drop one edge.`);
+  }
+  // An entry on a cycle gets the cycle's message alone: its queue advice ("queue X
+  // above Y" around the loop) cannot all be followed, so it would only be noise.
+  const onCycle = new Set(g.cycles.flat());
+  for (const e of backlogLoaded.entries) {
+    for (const id of g.deps.get(e.id) ?? []) {
+      if (!byId.has(id)) fail(`${e.file}: ${e.id} depends on ${id}, which has no entry`);
+    }
+    if (onCycle.has(e.id)) continue;
+    const unmet = g.unmet(e.id);
+    const claimed = e.status === 'in-progress' || e.status === 'partial';
+    const at = queueIds.indexOf(e.id);
+    for (const u of unmet) {
+      const dead = isTerminal(byId.get(u.id));
+      if (claimed) {
+        fail(
+          `${e.file}: ${e.id} is \`${e.status}\` but depends on ${u.id}${via(u)}, which is ` +
+            `\`${u.status}\`, not shipped — ${dead
+              ? `it never will be. Drop the dependency or rescope ${e.id}.`
+              : `work in flight is building on a feature that doesn't exist yet. Ship ${u.id} first, or rescope ${e.id}.`}`,
+        );
+      } else if (at >= 0 && dead) {
+        fail(
+          `${queueReg.queue}: ${e.id} is in Next up but depends on ${u.id}${via(u)}, which is ` +
+            `\`${u.status}\` — it will never ship, so ${e.id} is not dependency-ready. ` +
+            `Drop the dependency, or demote ${e.id}.`,
+        );
+      } else if (at >= 0) {
+        const uAt = queueIds.indexOf(u.id);
+        if (uAt >= 0 && uAt < at) continue;
+        fail(
+          `${queueReg.queue}: ${e.id} is in Next up but depends on ${u.id}${via(u)}, ` +
+            `\`${u.status}\` and ${uAt < 0 ? 'not queued' : 'queued below it'} — the queue is ` +
+            `the dependency-ready head, worked in order. Queue ${u.id} above ${e.id}, or demote ${e.id}.`,
+        );
+      }
+    }
   }
 }
 

@@ -261,6 +261,103 @@ describe('graduated assumption blocking — severity tracks proximity to the wor
   });
 });
 
+// P23: the same two promises for `P#` dependencies, read through the graph — the queue
+// may hold an entry below its unshipped dependency, a claim may not rest on one.
+describe('feature dependencies gate the queue and claims (P23)', () => {
+  const dep = (id, over = {}) => P(id, { dependsOn: ['P1'], ...over });
+
+  test('QUEUED with the unshipped dependency not queued → fails, naming both IDs', () => {
+    const o = fails(project({ backlog: [P('P1'), dep('P2')], nextUp: ['P2'] }), /P2 is in Next up but depends on P1/);
+    assert.match(o, /not queued/);
+    assert.match(o, /dependency-ready/, 'the message must say why the queue is the line');
+  });
+
+  test('QUEUED above its unshipped dependency → fails', () => {
+    fails(project({ backlog: [P('P1'), dep('P2')], nextUp: ['P2', 'P1'] }), /P2 is in Next up but depends on P1, `proposed` and queued below it/);
+  });
+
+  test('QUEUED directly below its unshipped dependency → passes', () => {
+    passes(project({ backlog: [P('P1'), dep('P2')], nextUp: ['P1', 'P2'] }));
+  });
+
+  test('QUEUED: an indirect dependency must be queued above too, and the path is named', () => {
+    const backlog = [P('P1'), dep('P2'), P('P3', { dependsOn: ['P2'] })];
+    fails(project({ backlog, nextUp: ['P2', 'P3'] }), /P3 is in Next up but depends on P1 \(through P2\)/);
+    passes(project({ backlog, nextUp: ['P1', 'P2', 'P3'] }));
+  });
+
+  test('PARKED: proposed, not queued, unshipped dependency → passes', () => {
+    passes(project({ backlog: [P('P1'), dep('P2')], nextUp: ['P1'] }));
+  });
+
+  test('a shipped dependency is met, and the walk stops there', () => {
+    // P1 shipped while resting on an unshipped P0: P1's own history, not P2's problem.
+    passes(
+      project({
+        backlog: [P('P0'), P('P1', { status: 'shipped', dependsOn: ['P0'] }), P('P2', { status: 'in-progress', dependsOn: ['P1'] })],
+        nextUp: ['P2'],
+      }),
+    );
+  });
+
+  for (const status of ['in-progress', 'partial']) {
+    test(`CLAIMED (${status}) on an unshipped dependency → fails, naming it`, () => {
+      fails(project({ backlog: [P('P1'), dep('P2', { status })], nextUp: ['P1'] }), new RegExp(`P2 is \`${status}\` but depends on P1, which is \`proposed\`, not shipped`));
+    });
+  }
+
+  test('CLAIMED on an indirect unshipped dependency → fails, naming the unmet one and the path', () => {
+    fails(
+      project({
+        backlog: [P('P1'), P('P2', { status: 'shipped', dependsOn: [] }), P('P3', { status: 'proposed', dependsOn: ['P1'] }), P('P4', { status: 'in-progress', dependsOn: ['P2', 'P3'] })],
+        nextUp: ['P1'],
+      }),
+      /P4 is `in-progress` but depends on P1 \(through P3\), which is `proposed`/,
+    );
+  });
+
+  test('CLAIMED on a partial dependency → fails: only shipped counts as met', () => {
+    fails(project({ backlog: [P('P1', { status: 'partial' }), dep('P2', { status: 'in-progress' })], nextUp: ['P1'] }), /depends on P1, which is `partial`, not shipped/);
+  });
+
+  test('CLAIMED on shipped dependencies → passes', () => {
+    passes(project({ backlog: [P('P1', { status: 'shipped' }), dep('P2', { status: 'in-progress' })], nextUp: ['P2'] }));
+  });
+
+  for (const status of ['deferred', 'abandoned']) {
+    test(`a ${status} dependency fails at the queue and at the claim`, () => {
+      fails(project({ backlog: [P('P1', { status }), dep('P2')], nextUp: ['P2'] }), new RegExp(`P2 is in Next up but depends on P1, which is \`${status}\` — it will never ship`));
+      fails(project({ backlog: [P('P1', { status }), dep('P2', { status: 'in-progress' })], nextUp: ['P2'] }), new RegExp(`P2 is \`in-progress\` but depends on P1, which is \`${status}\`, not shipped — it never will be`));
+    });
+  }
+
+  test('a dependency cycle fails, naming the cycle', () => {
+    fails(
+      project({ backlog: [P('P1', { dependsOn: ['P3'] }), dep('P2'), P('P3', { dependsOn: ['P2'] })], nextUp: ['P1'] }),
+      /dependency cycle: P1 → P3 → P2 → P1/,
+    );
+  });
+
+  test('a queued cycle raises the cycle alone, not queue advice that cannot all be followed', () => {
+    const o = fails(project({ backlog: [P('P1', { dependsOn: ['P2'] }), dep('P2')], nextUp: ['P1', 'P2'] }));
+    assert.match(o, /^backlog-schema: 1 violation\(s\)/m);
+    assert.match(o, /dependency cycle: P1 → P2 → P1/);
+  });
+
+  test('a self-dependency is a cycle', () => {
+    fails(project({ backlog: [P('P1', { dependsOn: ['P1'] })] }), /dependency cycle: P1 → P1/);
+  });
+
+  test('a cycle among parked entries fails too, and once', () => {
+    const o = fails(project({ backlog: [P('P1'), P('P2', { dependsOn: ['P3'] }), P('P3', { dependsOn: ['P2'] })] }));
+    assert.equal(o.match(/dependency cycle/g).length, 1);
+  });
+
+  test('a dangling P# dependency fails', () => {
+    fails(project({ backlog: [P('P1'), P('P2', { status: 'shipped', dependsOn: ['P99'] })] }), /P2 depends on P99, which has no entry/);
+  });
+});
+
 describe('spike ↔ assumption pairing', () => {
   test('an open spike pointing at an open assumption passes — the normal live state', () => {
     passes(

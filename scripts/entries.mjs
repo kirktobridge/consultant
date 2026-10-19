@@ -212,3 +212,60 @@ export function parseQueue(text) {
   });
   return { ids, errors };
 }
+
+// ── The dependency graph ─────────────────────────────────────────────────────
+
+/**
+ * The `P#` → `P#` edges of `depends_on`, built once for every check that walks them.
+ * Only feature dependencies are edges here: an `A-n` or `D-n` is a leaf with its own
+ * gate, and chasing one transitively is out of scope (P23).
+ *
+ * `unmet(id)` is every feature dependency of `id`, direct or through another entry, that
+ * is not `shipped`, each with the `path` it was reached by. It walks *through* an unmet
+ * entry (what that one waits on is waited on too) and stops at a met one: a shipped
+ * dependency is met, whatever it once rested on. Only `shipped` is met — a `partial`
+ * one may have shipped the milestone a dependent needs, but `depends_on` cannot say
+ * which. `cycles` lists each cycle once, as the IDs around it with the first repeated
+ * at the end.
+ */
+export function dependencyGraph(entries) {
+  const byId = new Map(entries.filter((e) => e.id).map((e) => [e.id, e]));
+  const deps = new Map(
+    [...byId.values()].map((e) => [e.id, idsOf(e, 'depends_on').filter((id) => BACKLOG.idPattern.test(id))]),
+  );
+  const met = (id) => byId.get(id)?.status === 'shipped';
+
+  const unmet = (id) => {
+    const found = [];
+    const seen = new Set([id]);
+    const walk = (from, path) => {
+      for (const d of deps.get(from) ?? []) {
+        if (seen.has(d) || !byId.has(d) || met(d)) continue;
+        seen.add(d);
+        found.push({ id: d, status: byId.get(d).status, path: [...path, d] });
+        walk(d, [...path, d]);
+      }
+    };
+    walk(id, [id]);
+    return found;
+  };
+
+  // Depth-first, colouring nodes: an edge back to a node still on the stack closes a cycle.
+  const cycles = [];
+  const state = new Map();
+  const stack = [];
+  const visit = (id) => {
+    state.set(id, 'open');
+    stack.push(id);
+    for (const d of deps.get(id) ?? []) {
+      if (!byId.has(d)) continue;
+      if (state.get(d) === 'open') cycles.push([...stack.slice(stack.indexOf(d)), d]);
+      else if (!state.has(d)) visit(d);
+    }
+    stack.pop();
+    state.set(id, 'done');
+  };
+  for (const id of byId.keys()) if (!state.has(id)) visit(id);
+
+  return { deps, unmet, cycles };
+}
