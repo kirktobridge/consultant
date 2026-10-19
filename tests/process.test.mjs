@@ -36,7 +36,10 @@ function markdownFiles() {
     for (const name of readdirSync(dir)) {
       if (['.git', 'node_modules', 'tests'].includes(name)) continue;
       const p = join(dir, name);
-      if (statSync(p).isDirectory()) walk(p);
+      // A subdirectory with its own `.git` is another checkout — a session worktree
+      // under .claude/worktrees/ (P15) — and its copies of these docs are not this
+      // tree's. Reading them made every /land from the main checkout go red.
+      if (statSync(p).isDirectory()) { if (!existsSync(join(p, '.git'))) walk(p); }
       else if (name.endsWith('.md')) out.push(p);
     }
   };
@@ -83,6 +86,15 @@ describe('the corpus is what we think it is', () => {
 
   test('markdown was actually found — the corpus is not silently empty (L3)', () => {
     assert.ok(DOCS.length >= 10, `only found ${DOCS.length} docs; the walker is broken`);
+  });
+
+  test('no doc in the corpus lies inside another checkout (a session worktree, P15)', () => {
+    // Bites only when a worktree exists under the tree — exactly when /land runs.
+    const inOther = DOCS.filter((p) => {
+      const rel = p.slice(REPO.length + 1).split(/[\\/]/);
+      return rel.slice(0, -1).some((_, i) => existsSync(join(REPO, ...rel.slice(0, i + 1), '.git')));
+    });
+    assert.deepEqual(inOther, []);
   });
 });
 
