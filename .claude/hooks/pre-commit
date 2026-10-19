@@ -31,19 +31,36 @@
 # tests most worth having here are the cheap ones — the process tests that catch a
 # renamed script leaving four skills' instructions stale. Those cost nothing and are
 # exactly what a commit is likely to break.
-if ! npm test --silent; then
+#
+# The full output goes to a log, not the terminal. It runs to ~30KB of passing tests
+# with the failures summarised at the very END, so anything that keeps only the head of
+# long output (a terminal scrollback, a tool's display limit, a git wrapper) dropped the
+# one part that mattered: a red commit on 2026-10-19 could not be diagnosed afterwards.
+# So on red this prints the runner's own failure summary (or the log's tail, when a
+# check after the tests failed), and says where the rest is.
+log="$(git rev-parse --git-path pre-commit-suite.log)"
+if ! npm test --silent >"$log" 2>&1; then
   echo ""
-  echo "pre-commit: refusing — the suite is red."
+  if grep -q '^✖ failing tests:' "$log"; then
+    sed -n '/^✖ failing tests:/,$p' "$log" | head -n 200
+  else
+    tail -n 40 "$log"
+  fi
+  echo ""
+  echo "pre-commit: refusing — the suite is red. Full output: $log"
   echo ""
   echo "  guards disarmed?  fix the config, or update REQUIRED in"
   echo "                    scripts/verify-guards.mjs in the same commit."
   echo "  process test?     a rename left an instruction, link or handoff stale."
   echo "  schema test?      an entry is malformed, or a convention changed and its"
   echo "                    checker did not (change doc + checker + skills together)."
+  echo "  manifest?         a new tracked file is not marked suite or instance in"
+  echo "                    scripts/manifest.mjs."
   echo ""
   echo "To commit anyway: git commit --no-verify  (CI still runs all of this)."
   exit 1
 fi
+echo "pre-commit: suite green. Full output: $log"
 
 # Hand off to your personal hook, if you have one. The suite's gate runs first so the
 # common failure is the cheap one. Every hook in this directory ends this way; the

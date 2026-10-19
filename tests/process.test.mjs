@@ -551,12 +551,12 @@ describe('the enforcement layer survives a fresh clone', () => {
     const hookFiles = () => readdirSync(HOOK_DIR).filter((n) => !n.endsWith('.md') && n !== '_chain');
 
     /** Run a committed hook in a throwaway repo, optionally with a personal hook present. */
-    function runHook(name, { local, localMode = 0o755, args = [], stdin = '' } = {}) {
+    function runHook(name, { local, localMode = 0o755, args = [], stdin = '', npm = '#!/bin/sh\nexit 0\n' } = {}) {
       const dir = tempDir();
       gitInit(dir);
       const bin = join(dir, 'stub-bin');
       mkdirSync(bin);
-      writeFileSync(join(bin, 'npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      writeFileSync(join(bin, 'npm'), npm, { mode: 0o755 });
       if (local !== undefined) {
         const hooks = join(dir, '.git', 'hooks');
         mkdirSync(hooks, { recursive: true });
@@ -568,8 +568,31 @@ describe('the enforcement layer survives a fresh clone', () => {
         encoding: 'utf8',
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
       });
-      return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+      return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '', dir };
     }
+
+    test('a red pre-commit prints the failure summary, not the whole run, and keeps the rest', () => {
+      // On 2026-10-19 a red commit printed ~30KB of passing tests with the summary at
+      // the end, the display kept the head, and the failure could not be read back.
+      const noise = Array.from({ length: 2000 }, (_, i) => `  ✔ passing test ${i}`).join('\n');
+      const npm = `#!/bin/sh\ncat <<'EOF'\n${noise}\n✖ failing tests:\n\ntest at x.test.mjs:1:1\n✖ the one that broke\nEOF\nexit 1\n`;
+      const r = runHook('pre-commit', { npm });
+      assert.equal(r.code, 1);
+      assert.match(r.stdout, /✖ the one that broke/);
+      assert.doesNotMatch(r.stdout, /passing test 1999/, 'the passing tests went to the terminal');
+      const m = r.stdout.match(/Full output: (\S+)/);
+      assert.ok(m, `no log path named:\n${r.stdout}`);
+      assert.match(readFileSync(resolve(r.dir, m[1]), 'utf8'), /passing test 1999/, 'the log lost the full run');
+    });
+
+    test('a red check after the tests still shows its own message', () => {
+      // No `✖ failing tests:` when node:test passed and a chained check failed; its
+      // complaint is at the end, so the tail is what to show.
+      const npm = `#!/bin/sh\necho 'ℹ pass 300'\necho 'manifest: src/x.js: not marked suite or instance' >&2\nexit 1\n`;
+      const r = runHook('pre-commit', { npm });
+      assert.equal(r.code, 1);
+      assert.match(r.stdout, /src\/x\.js: not marked/);
+    });
 
     test('every hook exits 0 when there is no personal hook to chain', () => {
       // THE TRAP, and the reason this is a test rather than a code review note:

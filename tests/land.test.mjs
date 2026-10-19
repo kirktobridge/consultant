@@ -8,8 +8,8 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execSync } from 'node:child_process';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
+import { join, delimiter } from 'node:path';
 import { REPO, run, out, script, tempDir, cleanupAll, gitInit } from './helpers/fixture.mjs';
 
 after(cleanupAll);
@@ -408,39 +408,69 @@ describe('the skills land through land.mjs (P15 R2)', () => {
 // ── Accept 3 ─────────────────────────────────────────────────────────────────
 
 describe('two sessions finishing at once land one after the other (P15 Accept 3)', () => {
-  test('main shows both merges, and the suite was green after each, on exactly one more merge', async () => {
-    const r = repo(['p1-one', 'p2-two']);
-    editLine(r.wts['p1-one'], 2, 'two, by p1');
-    editLine(r.wts['p2-two'], 8, 'eight, by p2');
-    const log = join(r.main, '..', `${Date.now()}-suite.log`);
-    // The suite stub records how many merges main had when it ran, and is slow enough
-    // that an unserialised second landing would overlap it.
-    const suite = `"${process.execPath}" -e "require('fs').appendFileSync('${log.replace(/\\/g, '/')}', require('child_process').execSync('git rev-list --count --merges HEAD').toString()); setTimeout(() => {}, 400)"`;
-    const driver = join(r.main, '..', `${Date.now()}-driver.mjs`);
-    writeFileSync(driver, `
-      import { spawnSync } from 'node:child_process';
-      const [main, wt, branch, suite] = process.argv.slice(2);
-      const step = (cwd, ...a) => {
-        const x = spawnSync(process.execPath, [${JSON.stringify(script('land.mjs'))}, ...a], { cwd, encoding: 'utf8' });
-        if (x.status !== 0) { console.error(a.join(' '), x.status, x.stderr); process.exit(1); }
-      };
-      step(wt, 'lock', 'take', branch, '--wait', '60');
-      step(wt, 'rebase');
-      step(main, 'merge', branch, '--suite', suite);
-      step(main, 'finish', branch);
-    `);
-    const go = (name) => new Promise((resolve) => {
-      const c = spawn(process.execPath, [driver, r.main, r.wts[name], `feat/${name}`, suite], { stdio: ['ignore', 'pipe', 'pipe'] });
-      let err = '';
-      c.stderr.on('data', (d) => { err += d; });
-      c.on('exit', (code) => resolve({ code, err }));
-    });
-    const results = await Promise.all([go('p1-one'), go('p2-two')]);
-    for (const x of results) assert.equal(x.code, 0, x.err);
-    assert.equal(git1(r.main, 'rev-list --count --merges main'), '2');
-    assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['1', '2']);
-    const f = readFileSync(join(r.main, 'f.txt'), 'utf8');
-    assert.match(f, /two, by p1/);
-    assert.match(f, /eight, by p2/);
+  test('main shows both merges, and the suite was green after each, on exactly one more merge', () => twoLandings());
+
+  test("a landing waiting through the other's finish keeps its own lock", { skip: process.platform === 'win32' && 'the git shim is a sh script' }, () => {
+    // finish once released the lock last, after removing the worktree. In between, the
+    // lock's owner was merged with no worktree, which `judge` calls stale: the waiting
+    // landing cleared it and took its own, and finish's unlink then deleted that one,
+    // so the second merge died with "does not hold the land lock". The window was a few
+    // milliseconds, so the plain test above failed only under load (a pre-commit run,
+    // 2026-10-19). A git that pauses before `branch -d` holds it open on every run.
+    const realGit = (process.env.PATH || '').split(delimiter).map((d) => join(d, 'git')).find((p) => existsSync(p));
+    assert.ok(realGit, 'no git on PATH');
+    const shim = tempDir();
+    writeFileSync(join(shim, 'git'), [
+      '#!/bin/sh',
+      'prev=',
+      'for a in "$@"; do',
+      '  if [ "$prev" = branch ] && [ "$a" = -d ]; then sleep 0.5; break; fi',
+      '  prev=$a',
+      'done',
+      `exec "${realGit}" "$@"`,
+      '',
+    ].join('\n'));
+    chmodSync(join(shim, 'git'), 0o755);
+    return twoLandings({ PATH: `${shim}${delimiter}${process.env.PATH}` });
   });
 });
+
+/** Two branches, each driven through take → rebase → merge → finish at the same time. */
+async function twoLandings(env = {}) {
+  const r = repo(['p1-one', 'p2-two']);
+  editLine(r.wts['p1-one'], 2, 'two, by p1');
+  editLine(r.wts['p2-two'], 8, 'eight, by p2');
+  // Beside the fixture, not in its parent: the parent is the shared temp dir, where
+  // concurrent runs collided on the name and nothing ever cleaned up.
+  const scratch = tempDir();
+  const log = join(scratch, 'suite.log');
+  // The suite stub records how many merges main had when it ran, and is slow enough
+  // that an unserialised second landing would overlap it.
+  const suite = `"${process.execPath}" -e "require('fs').appendFileSync('${log.replace(/\\/g, '/')}', require('child_process').execSync('git rev-list --count --merges HEAD').toString()); setTimeout(() => {}, 400)"`;
+  const driver = join(scratch, 'driver.mjs');
+  writeFileSync(driver, `
+    import { spawnSync } from 'node:child_process';
+    const [main, wt, branch, suite] = process.argv.slice(2);
+    const step = (cwd, ...a) => {
+      const x = spawnSync(process.execPath, [${JSON.stringify(script('land.mjs'))}, ...a], { cwd, encoding: 'utf8' });
+      if (x.status !== 0) { console.error(a.join(' '), x.status, x.stderr); process.exit(1); }
+    };
+    step(wt, 'lock', 'take', branch, '--wait', '60');
+    step(wt, 'rebase');
+    step(main, 'merge', branch, '--suite', suite);
+    step(main, 'finish', branch);
+  `);
+  const go = (name) => new Promise((resolve) => {
+    const c = spawn(process.execPath, [driver, r.main, r.wts[name], `feat/${name}`, suite], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+    let err = '';
+    c.stderr.on('data', (d) => { err += d; });
+    c.on('exit', (code) => resolve({ code, err }));
+  });
+  const results = await Promise.all([go('p1-one'), go('p2-two')]);
+  for (const x of results) assert.equal(x.code, 0, x.err);
+  assert.equal(git1(r.main, 'rev-list --count --merges main'), '2');
+  assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['1', '2']);
+  const f = readFileSync(join(r.main, 'f.txt'), 'utf8');
+  assert.match(f, /two, by p1/);
+  assert.match(f, /eight, by p2/);
+}
