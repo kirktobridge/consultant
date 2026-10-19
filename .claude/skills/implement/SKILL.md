@@ -90,10 +90,11 @@ run all of them.
   local main into `.claude/worktrees/`, or resumes the entry's existing branch. Enter
   the `path:` it prints with **EnterWorktree** (`path`, not `name`) — CLAUDE.md
   authorizes this — and build there. You don't ask the user about any of it.
-- **Inside the worktree, run git as `command git …`**, one plain command per call:
-  the session's isolation refuses a compound git command, and refuses a git command
-  a hook has rewritten through a wrapper (rtk), because it can't verify either stays
-  in the worktree.
+- **Inside the worktree, run git one plain command per call.** The session's
+  isolation refuses a compound git command (a pipe, a chain, a heredoc that names
+  git), because it can't verify the command stays in the worktree. An installation
+  whose hooks rewrite git through a wrapper needs a workaround as well; that belongs
+  in the installation's own config, not here.
 - For anything nontrivial, plan first (plan mode / a short written plan naming the
   files to touch) before editing.
 
