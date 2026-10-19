@@ -155,7 +155,10 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 ```
 
 The tracked docs carry this repo's own live entries rather than placeholders, so what
-you see is the shape in use — replace them with yours. The idioms a fresh backlog won't
+you see is the shape in use. To adopt the suite, don't copy this tree: run
+`node scripts/export.mjs <dir>`, which writes the suite alone, with one seed entry per
+register where this repo's entries were (`npm run test:clean` proves that copy passes
+its own suite). The idioms a fresh backlog won't
 show you (a feature blocked on an assumption, the spike that unblocks it) are specified
 in [docs/assumptions/](docs/assumptions/README.md)'s entry template and exercised by
 the tests, which is where they're held rather than merely illustrated.

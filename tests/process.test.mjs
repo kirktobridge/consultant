@@ -36,6 +36,10 @@ function markdownFiles() {
     for (const name of readdirSync(dir)) {
       if (['.git', 'node_modules', 'tests'].includes(name)) continue;
       const p = join(dir, name);
+      // template/ holds files written elsewhere by the export (P28): their links are
+      // relative to where they land, not where they're kept. The clean run (`npm run
+      // test:clean`) reads them in place, where this corpus checks them.
+      if (p === join(REPO, 'template')) continue;
       // A subdirectory with its own `.git` is another checkout — a session worktree
       // under .claude/worktrees/ (P15) — and its copies of these docs are not this
       // tree's. Reading them made every /land from the main checkout go red.
@@ -240,25 +244,6 @@ describe('the orientation reads (P20)', () => {
 
   test('the queue read names the queue file', () => {
     assert.match(implement, /`git show main:docs\/backlog\/QUEUE\.md`/);
-  });
-});
-
-describe('the migration to one file per entry lost nothing (P20)', () => {
-  // The IDs both registers held on the day they were split into files. A literal rather
-  // than `git show <sha>`, because CI clones shallow. New entries may be added freely;
-  // none of these may go missing.
-  const BEFORE = [
-    'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16', 'P17',
-    'P18', 'P19', 'P20', 'P21', 'A-3', 'A-4', 'A-5', 'A-6', 'A-7', 'A-8', 'A-9', 'A-10',
-  ];
-
-  test('all 26 entries still exist, each in its own file under its own id', () => {
-    assert.equal(BEFORE.length, 26);
-    const missing = BEFORE.filter((id) => {
-      const f = join(REPO, 'docs', id.startsWith('P') ? 'backlog' : 'assumptions', `${id}.md`);
-      return !existsSync(f) || !new RegExp(`^id: ${id}$`, 'm').test(read(f));
-    });
-    assert.deepEqual(missing, []);
   });
 });
 

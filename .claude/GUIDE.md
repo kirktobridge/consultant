@@ -124,6 +124,8 @@ aren't — they run whether or not anyone remembers them.
 | `npm run check:docs` | the docs stay greppable — the schema every skill's grep depends on | in-session (PostToolUse hook) + `npm test` |
 | `node scripts/backlog-schema-check.mjs --graph` | what blocks what: open entries with no open blocker ranked by how much they unblock, the chain behind each blocked one, prose blockers ([below](#the-dependency-graph)) | /triage groom; any "what's next?" |
 | `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
+| `npm run check:manifest` | every tracked file is marked *suite* or *instance* (`scripts/manifest.mjs`), so the export knows what ships | `npm test` |
+| `npm run test:clean` | the suite passes in a clean export of itself, with none of this repo's entries | CI only (it doubles the suite's time) |
 | `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |
 | `npm run history` | each entry's commits and close reports, and unmerged branches | on demand |
 | `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |

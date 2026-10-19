@@ -133,6 +133,12 @@ Add your project's own tests to the `test` line, and run the lot before every co
 npm run install-git-hooks    # symlinks .claude/hooks/pre-commit into .git/hooks/
 ```
 
+`npm test` also runs `check:manifest`, which fails on any tracked file that
+[scripts/manifest.mjs](scripts/manifest.mjs) doesn't mark *suite* or *instance*. In
+your project, everything that isn't the suite is instance: add your own paths to its
+`INSTANCE` list when you adopt it. A catch-all won't do: it would mark every suite file
+both, which the check refuses.
+
 Keep `tests/` — it is what stops the checks rotting into decoration. Two of its files
 carry most of that weight and are worth understanding before you trim anything:
 
