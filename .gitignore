@@ -10,3 +10,7 @@ evals/runs/
 
 # Editor workspace config is per-developer, like settings.local.json above.
 .vscode/
+
+# Session worktrees (P15). Each is a checkout of its own feat/ branch; the branch,
+# not the directory, is what gets merged.
+.claude/worktrees/

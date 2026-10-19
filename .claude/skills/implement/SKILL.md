@@ -81,12 +81,19 @@ run all of them.
 ### 2. Set up
 - **CLEAN-TREE GATE:** `git status` must be clean before branching. Dirty tree =
   another task's live state — commit it with its own unit (or ask the user what it
-  is); don't branch over it. For a
-  deliberately parallel session, take a `git worktree` instead of sharing the tree.
+  is); don't branch over it.
 - Flip the entry to `in-progress` **via /ship, committed on main before branching** —
   a flip made on your branch is invisible to other sessions, which defeats the claim
   gate. (/ship edits its files on main only.)
-- Then branch off main: `feat/p<#>-<slug>`.
+- Then, from the main checkout, `node scripts/worktree.mjs start <ID>`. It refuses
+  an unclaimed entry or a dirty tree (exit 1, says which), cuts `feat/p<#>-<slug>` off
+  local main into `.claude/worktrees/`, or resumes the entry's existing branch. Enter
+  the `path:` it prints with **EnterWorktree** (`path`, not `name`) — CLAUDE.md
+  authorizes this — and build there. You don't ask the user about any of it.
+- **Inside the worktree, run git as `command git …`**, one plain command per call:
+  the session's isolation refuses a compound git command, and refuses a git command
+  a hook has rewritten through a wrapper (rtk), because it can't verify either stays
+  in the worktree.
 - For anything nontrivial, plan first (plan mode / a short written plan naming the
   files to touch) before editing.
 
@@ -128,7 +135,9 @@ run all of them.
   message** and the entry's ID in the subject (`feat: … (P#)`). `npm run history`
   finds an entry's commits by that ID, so a commit without it drops out of the
   record; and /land runs forked and reads git, not this conversation, and it is the
-  report the user will be asked to accept against. Then **/land** merges it into main,
+  report the user will be asked to accept against. Leave the worktree with
+  **ExitWorktree** (`keep` — the branch is the work, and /land removes the worktree
+  once it merges), so /land starts in the main checkout. Then **/land** merges it into main,
   re-runs the suite on the merged result, and runs /ship's flips there (`partial` +
   which milestone) — doc flips never happen on the branch. `shipped` is not among
   them: it waits for the user to accept (see /ship).

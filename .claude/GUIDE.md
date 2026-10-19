@@ -208,8 +208,9 @@ honest limits are in [evals/README.md](../evals/README.md).
 
 **Parallel sessions** (2–3 at once):
 
-- **One session = one branch = one worktree.** The main checkout belongs to whichever
-  session is integrating (/land, /ship on main); branch sessions never
+- **One session = one branch = one worktree**, and /implement provisions it
+  (`scripts/worktree.mjs start`, after the claim). The main checkout belongs to
+  whichever session is integrating (/land, /ship on main); branch sessions never
   edit it.
 - **Claims are read from main**, not your checkout — a worktree's copy of the backlog
   predates claims made since you branched. /implement's claim gate does this

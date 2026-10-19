@@ -9,7 +9,7 @@
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
 import { cpSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -120,5 +120,146 @@ describe('the PostToolUse checks run against the worktree the edit landed in', (
     writeFileSync(settings, JSON.stringify(s, null, 2));
     const r = hook('verify-guards.mjs', main, settings);
     assert.equal(r.code, 2, `expected the worktree's disarmed settings to be flagged:\n${out(r)}`);
+  });
+});
+
+// ── P15 R1: /implement provisions its own worktree ──────────────────────────
+//
+// scripts/worktree.mjs decides what the skill's prose used to leave to the user. Each
+// refusal below is a way a session would otherwise branch on the wrong state: before
+// the claim is visible, over someone's uncommitted work, or from inside a worktree.
+
+/** A main checkout with P3 claimed on main (unless `status` says otherwise). */
+function claimedRepo({ status = 'in-progress', title = 'Make the widget spin' } = {}) {
+  const main = tempDir();
+  writeFiles(main, {
+    ...renderFiles({ backlog: [P('P3', { status, title })], nextUp: status === 'proposed' ? ['P3'] : [] }),
+    '.gitignore': '.claude/worktrees/\n',
+  });
+  return { main, ...gitInit(main) };
+}
+const start = (cwd, ...args) => run('worktree.mjs', ['start', ...args], { cwd });
+const git1 = (cwd, cmd) => execSync(`git ${cmd}`, { cwd, encoding: 'utf8' }).trim();
+const pathLine = (r) => (r.stdout.match(/^path: (.+)$/m) || [])[1];
+
+describe('worktree.mjs start gives a claimed entry its own branch and worktree (P15 R1)', () => {
+  test('a claimed entry gets feat/p<#>-<slug> in .claude/worktrees/, at local main', () => {
+    const { main } = claimedRepo();
+    const r = start(main, 'P3');
+    assert.equal(r.code, 0, out(r));
+    const wt = pathLine(r);
+    assert.equal(wt, join(main, '.claude', 'worktrees', 'p3-make-the-widget-spin'));
+    assert.equal(git1(wt, 'rev-parse --abbrev-ref HEAD'), 'feat/p3-make-the-widget-spin');
+    assert.equal(git1(wt, 'rev-parse HEAD'), git1(main, 'rev-parse main'));
+    assert.equal(git1(main, 'status --porcelain'), '', 'the worktree must not dirty the main checkout');
+  });
+
+  test('it branches from local main, not origin — the claim is usually unpushed (A-6)', () => {
+    const { main, sh } = claimedRepo({ status: 'proposed' });
+    sh('git update-ref refs/remotes/origin/main HEAD'); // origin: before the claim
+    writeFiles(main, renderFiles({ backlog: [P('P3', { status: 'in-progress', title: 'Make the widget spin' })], nextUp: [] }));
+    sh('git commit -qam claim');
+    const r = start(main, 'P3');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(git1(pathLine(r), 'rev-parse HEAD'), git1(main, 'rev-parse main'));
+    assert.notEqual(git1(pathLine(r), 'rev-parse HEAD'), git1(main, 'rev-parse origin/main'));
+  });
+
+  test('an unclaimed entry is refused, and nothing is created', () => {
+    const { main } = claimedRepo({ status: 'proposed' });
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /not claimed.*via \/ship/s);
+    assert.equal(git1(main, 'branch --list "feat/*"'), '');
+  });
+
+  test('the claim is read from main, never the checked-out copy', () => {
+    const { main, sh } = claimedRepo({ status: 'proposed' });
+    sh('git checkout -qb elsewhere');
+    writeFiles(main, renderFiles({ backlog: [P('P3', { status: 'in-progress' })], nextUp: [] }));
+    sh('git commit -qam "a claim that never reached main"');
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /`proposed` on main/);
+  });
+
+  test('a dirty main checkout is refused, naming the files', () => {
+    const { main } = claimedRepo();
+    writeFileSync(join(main, 'stray.txt'), 'someone else\'s work');
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /uncommitted changes[\s\S]*stray\.txt/);
+    assert.equal(git1(main, 'branch --list "feat/*"'), '');
+  });
+
+  test('a second start resumes the same worktree instead of making another', () => {
+    const { main } = claimedRepo();
+    const first = start(main, 'P3');
+    const again = start(main, 'P3', '--json');
+    assert.equal(again.code, 0, out(again));
+    const j = JSON.parse(again.stdout);
+    assert.equal(j.action, 'resumed');
+    assert.equal(j.path, pathLine(first));
+    assert.equal(git1(main, 'worktree list').split('\n').length, 2);
+  });
+
+  test('a branch whose worktree was removed gets its worktree back, on the same branch', () => {
+    const { main, sh } = claimedRepo();
+    const wt = pathLine(start(main, 'P3'));
+    sh(`git worktree remove "${wt}"`);
+    const r = start(main, 'P3');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(git1(pathLine(r), 'rev-parse --abbrev-ref HEAD'), 'feat/p3-make-the-widget-spin');
+  });
+
+  test('run from inside a linked worktree, it refuses', () => {
+    const { main } = claimedRepo();
+    const wt = pathLine(start(main, 'P3'));
+    const r = start(wt, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /linked worktree.*main checkout/s);
+  });
+
+  test('another entry\'s branch with a longer id is not taken for this one', () => {
+    const { main, sh } = claimedRepo();
+    sh('git branch feat/p31-something-else');
+    const r = start(main, 'P3', '--json');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(JSON.parse(r.stdout).action, 'created');
+  });
+
+  test('an id with no entry on main is refused toward /triage', () => {
+    const { main } = claimedRepo();
+    const r = start(main, 'P9');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /no entry on main.*\/triage/s);
+  });
+});
+
+describe('the repo is set up for the worktrees /implement makes (P15 R1)', () => {
+  test('.claude/worktrees/ is gitignored, so the main checkout stays clean', () => {
+    const r = spawnSync('git', ['check-ignore', '-q', '.claude/worktrees/p1-x/file'], { cwd: REPO });
+    assert.equal(r.status, 0, '.claude/worktrees/ must be ignored');
+  });
+
+  test('settings.json sets worktree.baseRef to head (A-6)', () => {
+    const s = JSON.parse(readFileSync(join(REPO, '.claude', 'settings.json'), 'utf8'));
+    assert.equal(s.worktree?.baseRef, 'head');
+  });
+
+  test('CLAUDE.md authorizes EnterWorktree for the path the script prints', () => {
+    // EnterWorktree acts only on the user's or CLAUDE.md's instruction; without this
+    // line /implement's step is a request the tool is told to ignore.
+    const t = readFileSync(join(REPO, 'CLAUDE.md'), 'utf8');
+    assert.match(t, /scripts\/worktree\.mjs start/);
+    assert.match(t, /EnterWorktree/);
+    assert.match(t, /ExitWorktree/);
+  });
+
+  test('/implement starts the worktree after the claim, not before', () => {
+    const t = readFileSync(join(REPO, '.claude', 'skills', 'implement', 'SKILL.md'), 'utf8');
+    const claim = t.indexOf('in-progress` **via /ship, committed on main before branching**');
+    const wt = t.indexOf('node scripts/worktree.mjs start');
+    assert.ok(claim > 0 && wt > claim, 'the worktree step must follow the claim step');
   });
 });
