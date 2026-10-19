@@ -1,11 +1,12 @@
 # Next up
 
-1. **P15** — the loop drives git. Unblocks P17, whose overlap pick needs a rescope now that A-8 is refuted.
-2. **P23** — feature dependencies gate the queue and claims. Unblocks P24, the
+1. **P23** — feature dependencies gate the queue and claims. Unblocks P24, the
    generated queue.
-3. **P5** — bugs as a third intake class. Unblocks nothing; holds its slot over
+2. **P5** — bugs as a third intake class. Unblocks nothing; holds its slot over
    newcomers by existing order.
-4. **P8** — a review step in the loop. Unblocks nothing; first of the ready leaves by
+3. **P8** — a review step in the loop. Unblocks nothing; first of the ready leaves by
    existing order.
-5. **P7** — a status view for the product owner. Unblocks nothing; newly ready now
-   that P6 no longer blocks it.
+4. **P7** — a status view for the product owner. Unblocks nothing; ready, by existing
+   order.
+5. **P12** — resolve the trunk branch instead of assuming `main`. Unblocks nothing;
+   next ready leaf by existing order, promoted as P15 shipped.
