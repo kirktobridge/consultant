@@ -1,6 +1,6 @@
 # Next up
 
-1. **P15** — the loop drives git. Unblocks P17 (which still waits on A-8).
+1. **P15** — the loop drives git. Unblocks P17, whose overlap pick needs a rescope now that A-8 is refuted.
 2. **P23** — feature dependencies gate the queue and claims. Unblocks P24, the
    generated queue.
 3. **P5** — bugs as a third intake class. Unblocks nothing; holds its slot over
