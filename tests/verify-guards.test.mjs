@@ -11,6 +11,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { REPO, run, out, tempDir, cleanupAll } from './helpers/fixture.mjs';
 
 after(cleanupAll);
@@ -190,5 +191,33 @@ describe('hook mode', () => {
   test('the failure names npm test as the copy that actually holds', () => {
     const dir = guarded(({ settings }) => settings((s) => { delete s.hooks.PreToolUse; return s; }));
     assert.match(check(dir).stderr, /npm test.*cannot be trusted to catch settings\.json being edited/s);
+  });
+});
+
+describe('the hook path git is told to use', () => {
+  const git = (dir, ...a) =>
+    execFileSync('git', ['-C', dir, ...a], { stdio: 'ignore', env: { PATH: process.env.PATH, HOME: process.env.HOME } });
+  const repo = () => {
+    const dir = guarded();
+    git(dir, 'init', '-q');
+    return dir;
+  };
+
+  test('a hooksPath that points at a directory that is gone is disarmed', () => {
+    const dir = repo();
+    git(dir, 'config', 'core.hooksPath', '/nonexistent/old-checkout/.claude/hooks');
+    disarmed(dir, /core\.hooksPath is "\/nonexistent\/old-checkout\/\.claude\/hooks"/);
+  });
+
+  test('a relative hooksPath that resolves to a pre-commit hook is armed', () => {
+    const dir = repo();
+    mkdirSync(join(dir, '.claude', 'hooks'), { recursive: true });
+    writeFileSync(join(dir, '.claude', 'hooks', 'pre-commit'), '#!/bin/sh\n');
+    git(dir, 'config', 'core.hooksPath', '.claude/hooks');
+    assert.equal(check(dir).code, ARMED);
+  });
+
+  test('an unset hooksPath is not flagged — a fresh clone has not installed yet', () => {
+    assert.equal(check(repo()).code, ARMED);
   });
 });

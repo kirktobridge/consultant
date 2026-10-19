@@ -27,7 +27,8 @@
 // Usage: node scripts/verify-guards.mjs [--all]
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { join, resolve } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -183,6 +184,36 @@ if (existsSync(join(ROOT, BLOCKLIST))) {
   }
 } else {
   fail(`${BLOCKLIST} is missing — the guard has no patterns and permits everything.`);
+}
+
+// The pre-commit gate is only as armed as the path git is told to find it at. Setting
+// core.hooksPath to a directory that is gone (a moved checkout, with the absolute path
+// install-hooks once wrote) makes git skip every hook without a word, while the rest of
+// this file still reports armed. An UNSET hooksPath is not flagged: a fresh clone and CI
+// have not run `npm install` yet, and the load-bearing gate there is `npm test`.
+const hooksPath = localHooksPath(ROOT);
+if (hooksPath !== null && !existsSync(join(resolve(ROOT, hooksPath), 'pre-commit'))) {
+  fail(
+    `core.hooksPath is "${hooksPath}", which has no pre-commit hook — git runs no hooks and ` +
+      `the test gate on commit is off. Run \`git config core.hooksPath .claude/hooks\`.`,
+  );
+}
+
+/** This checkout's local core.hooksPath, or null if unset or ROOT is not a git checkout. */
+function localHooksPath(root) {
+  // A hook-run git exports GIT_DIR and friends; inherited, they would answer for the
+  // wrong repository.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+  try {
+    const v = execFileSync('git', ['-C', root, 'config', '--local', '--get', 'core.hooksPath'], {
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return v || null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Report ───────────────────────────────────────────────────────────────────
