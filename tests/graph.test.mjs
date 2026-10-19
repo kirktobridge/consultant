@@ -10,7 +10,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, A, D, project, run, out, cleanupAll, REPO } from './helpers/fixture.mjs';
+import { P, B, A, D, project, run, out, cleanupAll, REPO } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -34,6 +34,7 @@ const chain = () =>
       P('P4', { title: 'After the decision', dependsOn: ['D-1'] }),
       P('P5'),
     ],
+    bugs: [B('B1')],
     assumptions: [A('A-1')],
     decisions: [D('D-1', { waitingOn: 'P5, user' })],
   });

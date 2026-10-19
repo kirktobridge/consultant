@@ -91,7 +91,7 @@ describe('the export', () => {
   test("the copy's own schema check passes", () => {
     const s = schema(dest);
     assert.equal(s.code, 0, out(s));
-    assert.match(s.stdout, /backlog-schema: OK \(3 entries across 3 register\(s\)\)/);
+    assert.match(s.stdout, /backlog-schema: OK \(3 entries across 4 register\(s\)\)/);
   });
 
   test('refuses a target that is not empty', () => {

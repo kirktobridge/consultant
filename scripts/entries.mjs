@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // ── The registers ────────────────────────────────────────────────────────────
 // PORTING: adjust directories and ID namespaces; keep the shapes.
 
-const ID = /^(P\d+|A-\d+|D-\d+)$/;
+const ID = /^(P\d+|B\d+|A-\d+|D-\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Value types. Each returns an error message, or null when the value is good.
@@ -104,7 +104,24 @@ export const DECISIONS = {
   },
 };
 
-export const REGISTERS = [BACKLOG, ASSUMPTIONS, DECISIONS];
+// Bugs: something that worked, or was meant to, and doesn't. Kept apart from the
+// backlog because a bug's shape is a repro and a severity, not a `Value` someone has
+// to invent for it (P5).
+export const BUGS = {
+  dir: 'docs/bugs',
+  readme: 'docs/bugs/README.md',
+  idPattern: /^B\d+$/,
+  keys: {
+    id: 'id',
+    title: 'text',
+    status: 'word',
+    severity: 'word',
+    reported: 'date',
+    depends_on: 'ids',
+  },
+};
+
+export const REGISTERS = [BACKLOG, BUGS, ASSUMPTIONS, DECISIONS];
 
 /** Files in a register directory that are not entries. */
 const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);

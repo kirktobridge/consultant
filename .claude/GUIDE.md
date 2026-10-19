@@ -3,7 +3,8 @@
 Five skills, one loop. **triage** sorts an idea in: things we'd *build* become backlog
 entries and go to **implement**, then **verify** in the running app; things we're
 merely *assuming* become open assumptions, and choices only you can make become open
-decisions; both block whatever depends on them. Work
+decisions; both block whatever depends on them. Things that are *broken* become bugs,
+with your repro and a severity. Work
 ends the same way: **land** the branch on main → **ship** the docs. Each tracking file has exactly one skill that writes it, so nothing goes stale
 or gets double-edited.
 
@@ -13,14 +14,15 @@ whether these skills' own prose still works. See [The checks](#the-checks-behind
 ## The skills
 
 ### /triage — "I have an idea"
-Sorts a raw idea into the backlog, the assumptions register or the decisions register,
-and drafts the entry.
+Sorts a raw idea into the backlog, the bugs register, the assumptions register or the
+decisions register, and drafts the entry.
 Writes nothing until you approve.
 
 ```
 /triage add a sound when an item is placed
 /triage I think the API caps us at 100 req/min
 /triage should exports count toward the disk cap?
+/triage the queue check passes on an empty queue — it's broken
 /triage groom                  ← re-check blockers, sweep resolved assumptions, spot what's about to block
 triage the dev notes
 ```
@@ -156,7 +158,7 @@ included, and `open` says whether the entry's status is an open one in its regis
 }
 ```
 
-Graph registers: `product` / `assumptions` / `decisions`.
+Graph registers: `product` / `bugs` / `assumptions` / `decisions`.
 
 Graph fields: `depends_on` / `waiting_on`.
 
@@ -238,7 +240,7 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 
 | File | Only writer | Where |
 |---|---|---|
-| `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `docs/decisions/`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship (you decide; it records) | **main only** |
+| `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `docs/bugs/`, `docs/decisions/`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship (you decide; it records) | **main only** |
 | `docs/assumptions/` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
 | `src/`, `tests/` | /implement | branch |

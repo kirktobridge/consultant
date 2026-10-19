@@ -109,6 +109,7 @@ docs/
   BUILD_ORDER.md              the phased plan, disposable
   backlog/                    features, one file per P#  ← written only by /ship
     QUEUE.md                  what's next — the queue and nothing else
+  bugs/                       what's broken, one file per B# ← written only by /ship
   assumptions/                unverified assumptions, one file per A-n — no single pen
   decisions/                  the product owner's choices, one file per D-n ← written only by /ship
   LESSONS.md                  the expensive failures, each with the rule it bought

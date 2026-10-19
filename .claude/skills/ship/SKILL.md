@@ -44,7 +44,7 @@ the code:
 
 **Single-writer contract:** this skill is the sole writer of the backlog —
 every entry file in [docs/backlog/](../../../docs/backlog/README.md), plus its
-`QUEUE.md` and `README.md` —
+`QUEUE.md` and `README.md` — [docs/bugs/](../../../docs/bugs/README.md),
 [docs/decisions/](../../../docs/decisions/README.md) (the user decides; this skill
 records), [docs/BUILD_ORDER.md](../../../docs/BUILD_ORDER.md), and
 [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md). It writes **nothing else** — the
@@ -146,6 +146,12 @@ words — so tightening the wording, merging two criteria, or "clarifying" one i
 improvement, it is quietly editing the definition of done. Same standing as the spec:
 if a criterion looks wrong, say so and let the user rewrite it. The schema check holds
 the count (2–4 bullets), never the meaning.
+
+An approved **bug** draft becomes a new `docs/bugs/B#.md` (the next free number) with
+`status: open`, its `severity:` and today's `reported:` date, in the shape
+[docs/bugs/README.md](../../../docs/bugs/README.md) documents. **Copy `## Repro`
+verbatim**, for the same reason as `Accept:`: the reporter's steps are the evidence,
+and a tidied repro is one nobody actually ran. No `Value` — don't add one.
 
 An approved **assumption** draft becomes a new `docs/assumptions/A-n.md` with `status: open` and
 today's `raised:` date. An approved **decision** draft becomes a new
