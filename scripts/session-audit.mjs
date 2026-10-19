@@ -26,6 +26,9 @@
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -135,14 +138,21 @@ for (const e of backlog) {
 
 const unmerged = (git('branch', '--no-merged', BASE, '--format=%(refname:short)') || '')
   .split('\n').filter(Boolean);
-const merged = (git('branch', '--merged', BASE, '--format=%(refname:short)') || '')
-  .split('\n').filter(Boolean).filter((b) => b !== BASE);
+// "Merged" means landed: the branch tip arrived through a merge, so it is off main's
+// first-parent line. A branch just cut by worktree.mjs, with no commits of its own,
+// sits ON that line, and `git branch --merged` counts it too, which read every fresh
+// build as a finished one.
+const firstParent = new Set((git('rev-list', '--first-parent', BASE) || '').split('\n').filter(Boolean));
+const gitMerged = (git('branch', '--merged', BASE, '--format=%(refname:short) %(objectname)') || '')
+  .split('\n').filter(Boolean).map((l) => l.split(' ')).filter(([b]) => b !== BASE);
+const merged = gitMerged.filter(([, sha]) => !firstParent.has(sha)).map(([b]) => b);
+const fresh = gitMerged.filter(([, sha]) => firstParent.has(sha)).map(([b]) => b);
 
 for (const e of backlog.filter((x) => x.status === 'in-progress')) {
   // A word match, not a substring: `includes('p1')` read feat/p18-… as P1's branch,
   // which hid an abandoned P1 claim behind any branch whose ID starts with 1.
   const names = new RegExp(`\\b${e.id}\\b`, 'i');
-  const onUnmerged = unmerged.some((b) => names.test(b));
+  const onUnmerged = [...unmerged, ...fresh].some((b) => names.test(b));
   const onMerged = merged.some((b) => names.test(b));
   if (onUnmerged) continue; // legitimately in flight
   if (onMerged) {
@@ -152,6 +162,52 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
     add('warn', `${e.id} is \`in-progress\` but no branch names it.`,
       'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up: clear it back to `proposed` via /ship. Resolve it — a stale claim is worse than no claim.');
   }
+}
+
+// ── 3b. Worktrees and the land lock left behind (P15 R3) ─────────────────────
+// `land.mjs finish` removes an entry's worktree and releases the lock once it lands.
+// A session that crashed between the merge and the finish, or gave up mid-build,
+// leaves either one behind, and the next session would trip over it: a stale
+// worktree pins its branch, and a held lock stalls every claim and landing.
+
+const landScript = join(dirname(fileURLToPath(import.meta.url)), 'land.mjs');
+let lock = null;
+if (existsSync(landScript)) {
+  try {
+    lock = JSON.parse(execFileSync(process.execPath, [landScript, 'lock', 'status', '--json', '--base', BASE], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+  } catch { /* no lock, or unreadable: land.mjs reports that itself when used */ }
+}
+
+let wtPath = null;
+for (const line of (git('worktree', 'list', '--porcelain') || '').split('\n')) {
+  if (line.startsWith('worktree ')) { wtPath = line.slice(9); continue; }
+  const m = line.match(/^branch refs\/heads\/(.+)$/);
+  if (!m || m[1] === BASE) continue;
+  const branch = m[1];
+  const id = (branch.match(/^feat\/(p\d+)-/i) || [])[1]?.toUpperCase();
+  // Between `merge` and `finish` the landing still holds the lock while /ship writes
+  // its flips: merged, worktree present, and live. Not a leftover.
+  const landing = lock?.owner === branch && lock.state === 'live';
+  if (merged.includes(branch) && !landing) {
+    add('warn', `Worktree ${wtPath} is for ${branch}, which is already merged into ${BASE}.`,
+      `Its landing never finished. From the main checkout: node scripts/land.mjs finish ${branch} (take the lock first if it isn't held: node scripts/land.mjs lock take ${branch}).`);
+  } else if (id) {
+    const e = backlog.find((x) => x.id === id);
+    if (!e || !['in-progress', 'partial'].includes(e.status)) {
+      add('warn', `Worktree ${wtPath} is building ${id} (${branch}), but ${id} is ${e ? `\`${e.status}\`` : 'not in the backlog'} — its claim is gone.`,
+        `Either re-claim ${id} via /ship and carry on, or, if the work is abandoned, ask the user before removing the worktree and branch: it may hold unmerged work.`);
+    }
+  }
+}
+
+if (lock?.state === 'stale') {
+  add('info', `The land lock is held by ${lock.owner} since ${lock.at}, which has finished or gone.`,
+    'It is stale and the next `lock take` clears it automatically; nothing to do unless it recurs.');
+} else if (lock?.state === 'ambiguous') {
+  add('alert', `The land lock has been held by ${lock.owner} (${lock.worktree}) since ${lock.at}, and that branch is not merged.`,
+    `Every claim and landing waits on it. Ask the user whether that landing is still running; if it crashed, release it: node scripts/land.mjs lock release ${lock.owner}`);
 }
 
 // ── 4. Resolutions and decisions nobody swept ────────────────────────────────

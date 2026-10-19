@@ -355,10 +355,19 @@ function mergeCmd(branch) {
   }
   const suite = opt('--suite') || 'npm test';
   try {
-    execSync(suite, { cwd: top, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    // NODE_TEST_CONTEXT makes a nested `node --test` report to a parent runner and exit
+    // 0 whatever happened. Inherited by accident, it would turn a red suite green.
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    execSync(suite, { cwd: top, env, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
   } catch (e) {
     git('reset', '--hard', before);
-    const tail = String(e.stdout ?? '').split('\n').filter((l) => /✖|fail|Error/i.test(l)).slice(0, 15).join('\n');
+    // The node test runner marks each failing test with ✖ (and repeats them in its
+    // summary). Matching "fail" instead picked up passing tests named for failures
+    // and hid the real one. No ✖ at all: some other suite — show its last lines.
+    const lines = `${e.stdout ?? ''}\n${e.stderr ?? ''}`.split('\n');
+    const failed = [...new Set(lines.filter((l) => l.includes('✖') && !/✖ failing tests:?$/.test(l.trim())).map((l) => l.trim()))];
+    const tail = (failed.length ? failed : lines.filter((l) => l.trim()).slice(-15)).slice(0, 15).join('\n');
     die(1, `the suite is red on the merged result, so ${BASE} is back at ${before.slice(0, 7)}.\n${tail}`);
   }
   die(0, `merged ${branch} into ${BASE} (${git('rev-parse', '--short', 'HEAD')}); suite green. Next: /ship's flips, then node scripts/land.mjs finish ${branch}`);
