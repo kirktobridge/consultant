@@ -34,3 +34,9 @@ jobs:
       - run: npm install --no-audit --no-fund
 
       - run: npm test
+
+      # The suite again, in a clean export of itself (P28): a fresh directory with none
+      # of this repo's entries, as a project adopting the suite would hold it. Catches a
+      # test that passes only because this repo's own state exists. Here and not in
+      # the pre-commit hook, because it doubles the suite's run time.
+      - run: npm run test:clean

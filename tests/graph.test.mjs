@@ -99,10 +99,6 @@ describe('graph', () => {
     assert.deepEqual(new Set([...g.edges, ...g.prose].map((e) => e.field)), vocab('Graph fields'));
   });
 
-  test('on the real repo, every edge joins two real entries', () => {
-    const g = JSON.parse(graph(REPO, true).stdout);
-    const ids = new Set(g.entries.map((e) => e.id));
-    assert.ok(g.edges.length > 5, `only ${g.edges.length} edges — did the parse stop matching?`);
-    for (const e of g.edges) assert.ok(ids.has(e.from) && ids.has(e.to), JSON.stringify(e));
-  });
+  // The real-repo version of this lives in tests/instance/ (P28): it reads this repo's
+  // entries, which a clean copy doesn't have.
 });

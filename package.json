@@ -5,9 +5,11 @@
   "type": "module",
   "description": "A doc-driven working loop: five Claude Code skills plus the documents they read and write.",
   "scripts": {
-    "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs && npm run check:guards",
+    "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs && npm run check:guards && npm run check:manifest",
+    "test:clean": "node scripts/test-clean.mjs",
     "check:docs": "node scripts/backlog-schema-check.mjs --all",
     "check:guards": "node scripts/verify-guards.mjs --all",
+    "check:manifest": "node scripts/manifest.mjs --check",
     "audit": "node scripts/session-audit.mjs",
     "history": "node scripts/history.mjs",
     "eval": "node evals/run.mjs",
