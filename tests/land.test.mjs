@@ -368,6 +368,43 @@ describe('merge from the main checkout, then clean up (P15 R2)', () => {
     assert.doesNotMatch(m.stderr, /fails loudly/);
   });
 
+  test('a green merge reports the suite\'s totals, from the run it just made (B2)', () => {
+    // /land had no count to report: merge said only "suite green", and a second
+    // `npm test` had its totals filtered out by the shell's wrapper.
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    land(r.wts['p1-one'], 'rebase');
+    const t = join(tempDir(), 'suite.test.mjs');
+    writeFileSync(t, ["import { test } from 'node:test';", "test('a', () => {});", "test('b', () => {});"].join('\n'));
+    const m = land(r.main, 'merge', 'feat/p1-one', '--suite', `"${process.execPath}" --test --test-reporter=spec "${t}"`);
+    assert.equal(m.code, 0, out(m));
+    assert.match(m.stdout, /suite green \(2 tests, 2 pass, 0 fail\)/);
+  });
+
+  test('the totals read from TAP too, and name the skipped tests that pass + fail fall short by (B2)', () => {
+    // TAP is the default for piped output on older Node; this suite's runner pins it.
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    land(r.wts['p1-one'], 'rebase');
+    const t = join(tempDir(), 'suite.test.mjs');
+    writeFileSync(t, ["import { test } from 'node:test';", "test('a', () => {});", "test.skip('s', () => {});"].join('\n'));
+    const m = land(r.main, 'merge', 'feat/p1-one', '--suite', `"${process.execPath}" --test --test-reporter=tap "${t}"`);
+    assert.equal(m.code, 0, out(m));
+    assert.match(m.stdout, /suite green \(2 tests, 1 pass, 0 fail, 1 skipped\)/);
+  });
+
+  test('a green suite with no runner totals says so, rather than reporting no count silently (B2)', () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    land(r.wts['p1-one'], 'rebase');
+    const m = land(r.main, 'merge', 'feat/p1-one', '--suite', SUITE_OK);
+    assert.equal(m.code, 0, out(m));
+    assert.match(m.stdout, /suite green \(no test totals in its output\)/);
+  });
+
   test('finish removes the worktree, the branch, the record and the lock', () => {
     const r = repo();
     editLine(r.wts['p1-one'], 9, 'mine');
