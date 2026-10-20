@@ -128,6 +128,15 @@ What happened to an entry, read from git: each commit that names the ID in its s
 any branch not yet merged with its latest commit message. Nothing is kept by hand, so
 nothing falls behind.
 
+### Status — `npm run status [-- --html]`
+Where things stand, addressed to you rather than to the next session: what is waiting
+on you (a landed entry awaiting acceptance, a decision only you can take), what is in
+flight with its branch, worktree and claim date, what is ready, and what each blocked
+entry waits on, down to the assumption or decision at the root. It reads main through
+the [graph JSON](#the-dependency-graph), git and the audit, and keeps nothing. `--html`
+writes the same report as one self-contained page, `.claude/status.html` (gitignored),
+stamped with the commit it was built from.
+
 ## The checks behind the skills
 
 The skills are prose, and prose is followed probabilistically. These are the parts that
@@ -145,6 +154,7 @@ aren't — they run whether or not anyone remembers them.
 | `npm run test:clean` | the suite passes in a clean export of itself, with none of this repo's entries | CI only (it doubles the suite's time) |
 | `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |
 | `npm run history` | each entry's commits and close reports, and unmerged branches | on demand |
+| `npm run status` | the product owner's view: waiting on you, in flight, ready, blocked and why — as text, or as one HTML page with `--html` | on demand |
 | `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |
 
 Nothing installs: Node 18+ and nothing else.
