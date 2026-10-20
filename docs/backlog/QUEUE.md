@@ -1,12 +1,12 @@
 # Next up
 
-1. **P12** — resolve the trunk branch instead of assuming `main`; landed on main,
-   awaiting acceptance. Unblocks nothing; ready, by existing order.
-2. **P13** — a research track, ported from photocull. Unblocks nothing; ready, by
+1. **P13** — a research track, ported from photocull. Unblocks nothing; ready, by
    existing order.
-3. **P17** — an orchestrator for parallel subagents. Unblocks nothing; ready, by
+2. **P17** — an orchestrator for parallel subagents. Unblocks nothing; ready, by
    existing order.
-4. **P34** — flag open entries an ad-hoc change relates to. Unblocks nothing; ready,
+3. **P34** — flag open entries an ad-hoc change relates to. Unblocks nothing; ready,
    by existing order.
-5. **P19** — session start says what's next, read from the graph. Unblocks nothing;
-   ready, the first of the pool by ID now that P7 shipped.
+4. **P19** — session start says what's next, read from the graph. Unblocks nothing;
+   ready, by existing order.
+5. **P21** — triage decides whether an entry needs a plan; /implement honours it.
+   Unblocks nothing; ready, the first of the pool by ID now that P12 shipped.
