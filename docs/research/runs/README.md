@@ -1,6 +1,6 @@
 # Runs
 
-The lab notebook: one file per run (`R-n.md`) in this directory. **Append-only.** A new
+The lab notebook: one file per run (`R#.md`) in this directory. **Append-only.** A new
 run is a new file. An old one is never rewritten to fit what was later learned. A wrong
 run stays, flipped to `retracted`, with a line in its `## Read` saying why. Conclusions
 go to [findings/](../findings/README.md), not here. The process is in the
@@ -31,7 +31,7 @@ A run's status is its outcome. Nothing about a run is open.
 
 ```markdown
 ---
-id: R-1
+id: R1
 title: <title> (<n summary>)
 status: answered
 ran: YYYY-MM-DD

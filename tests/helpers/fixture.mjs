@@ -162,7 +162,7 @@ export function R(id, over = {}) {
   };
 }
 
-/** A finding. Defaults are a minimal *valid* current finding from R-1. */
+/** A finding. Defaults are a minimal *valid* current finding from R1. */
 export function F(id, over = {}) {
   return {
     id,
@@ -170,7 +170,7 @@ export function F(id, over = {}) {
     status: 'current',
     confidence: 'directional',
     recorded: '2026-08-03',
-    runs: ['R-1'],
+    runs: ['R1'],
     claim: 'the thing happens in about a third of sessions (n = 100, one project).',
     soWhat: 'worth a default.',
     ...over,

@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // ── The registers ────────────────────────────────────────────────────────────
 // PORTING: adjust directories and ID namespaces; keep the shapes.
 
-const ID = /^(P\d+|B\d+|A-\d+|D-\d+|X\d+|R-\d+|F\d+)$/;
+const ID = /^(P\d+|B\d+|A-\d+|D-\d+|X\d+|R\d+|F\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Value types. Each returns an error message, or null when the value is good.
@@ -154,7 +154,7 @@ export const EXPERIMENTS = {
 export const RUNS = {
   dir: 'docs/research/runs',
   readme: 'docs/research/runs/README.md',
-  idPattern: /^R-\d+$/,
+  idPattern: /^R\d+$/,
   keys: {
     id: 'id',
     title: 'text',

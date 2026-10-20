@@ -21,7 +21,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 | [docs/bugs/](docs/bugs/README.md) | **What's broken** (`B#`): the reporter's repro and a severity, no invented `Value`. |
 | [docs/assumptions/](docs/assumptions/README.md) | **Load-bearing assumptions** (`A-n`) nobody has verified. An `open` assumption blocks work that depends on it. |
 | [docs/decisions/](docs/decisions/README.md) | **Choices only the product owner makes** (`D-n`): open ones with options and what they wait on, decided ones with why. An `open` decision blocks like an open assumption. |
-| [docs/research/](docs/research/README.md) | **Questions a test can't answer** — experiments (`X#`), the append-only run log (`R-n`), findings (`F#`) with confidence labels. An experiment informs a decision; it never makes one. |
+| [docs/research/](docs/research/README.md) | **Questions a test can't answer** — experiments (`X#`), the append-only run log (`R#`), findings (`F#`) with confidence labels. An experiment informs a decision; it never makes one. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
 | [.claude/GUIDE.md](.claude/GUIDE.md) | The five loop skills, how they hand off, and the checks behind them. |
 

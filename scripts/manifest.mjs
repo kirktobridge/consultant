@@ -28,7 +28,8 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 // Patterns: a path, a directory prefix ending in `/`, or a glob where `*` stays inside
-// one path segment.
+// one path segment and `#` stands for a number (in a glob only; a directory prefix is
+// literal).
 export const SUITE = [
   '.claude/GUIDE.md',
   '.claude/edit-blocklist',
@@ -63,13 +64,15 @@ export const INSTANCE = [
   'docs/BUILD_ORDER.md',
   'docs/LESSONS.md',
   'docs/backlog/QUEUE.md',
-  'docs/backlog/P*.md',
-  'docs/bugs/B*.md',
-  'docs/assumptions/A-*.md',
-  'docs/decisions/D-*.md',
-  'docs/research/experiments/X*.md',
-  'docs/research/runs/R-*.md',
-  'docs/research/findings/F*.md',
+  // Entry files by ID, `#` not `*`: `R*.md` would take the runs README too, and any
+  // register could grow a file that starts with its ID letter.
+  'docs/backlog/P#.md',
+  'docs/bugs/B#.md',
+  'docs/assumptions/A-#.md',
+  'docs/decisions/D-#.md',
+  'docs/research/experiments/X#.md',
+  'docs/research/runs/R#.md',
+  'docs/research/findings/F#.md',
   'docs/drills/',
   'docs/dev_notes/',
   // Tests that read this repo's own entries. They can't pass in a clean copy, and a
@@ -80,7 +83,7 @@ export const INSTANCE = [
 const toRegex = (p) =>
   p.endsWith('/')
     ? new RegExp(`^${esc(p)}`)
-    : new RegExp(`^${p.split('*').map(esc).join('[^/]*')}$`);
+    : new RegExp(`^${p.split('*').map((s) => s.split('#').map(esc).join('\\d+')).join('[^/]*')}$`);
 const esc = (s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 
 const SUITE_RE = SUITE.map(toRegex);

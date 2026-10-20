@@ -40,7 +40,7 @@ title: <the claim, short>
 status: current
 confidence: directional
 recorded: YYYY-MM-DD
-runs: R-1
+runs: R1
 ---
 
 ## Claim
@@ -54,6 +54,6 @@ what it changes, or why it changes nothing.
 ```
 
 The header is strict. The keys are `id` (must match the file name), `title`, `status`,
-`confidence`, `recorded` (the date it was written) and `runs` (the `R-n` runs it came
+`confidence`, `recorded` (the date it was written) and `runs` (the `R#` runs it came
 from). Every key is required on every finding, a retracted one too. `runs:` must name
 at least one existing run. `Claim` and `So what` are always required.
