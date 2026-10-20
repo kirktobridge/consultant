@@ -1,6 +1,6 @@
 ---
 name: eval
-description: Run the prompt eval — measure whether the skills' own prose still causes the right decisions, by driving each case through an independent subagent and grading the results mechanically. Use for "run the eval", "did my prompt edit help", "check the skills still gate", or /eval. Maintenance for the suite itself, not a step in the build loop; never gates a commit.
+description: Run the prompt eval. It measures whether the skills' own prose still causes the right decisions. It drives each case through an independent subagent and grades the results mechanically. Use for "run the eval", "did my prompt edit help", "check the skills still gate", or /eval. It maintains the suite itself. It is not a step in the build loop, and it never gates a commit.
 ---
 
 # Eval — measure the skills' prose
@@ -9,9 +9,9 @@ description: Run the prompt eval — measure whether the skills' own prose still
 **prose** in the other skills, because whether prose causes the right decision is a
 property of a model. This skill measures that.
 
-**You are the transport.** `evals/run.mjs` renders prompts and grades replies; it cannot
-spawn a subagent, so the run is two commands with your work between them. Background and
-the honest limits: [evals/README.md](../../../evals/README.md).
+**You are the transport.** `evals/run.mjs` renders prompts and grades replies. It cannot
+start a subagent. So the run is two commands, and you do the work between them. For the
+background and the honest limits, read [evals/README.md](../../../evals/README.md).
 
 ## Steps
 
@@ -21,47 +21,47 @@ the honest limits: [evals/README.md](../../../evals/README.md).
 npm run eval -- --dry-run
 ```
 
-Renders every prompt and, per case, feeds the grader one answer that should pass and one
-that should fail. It spawns nothing and costs nothing. A case whose expectations assert
-nothing would pass no matter what a model said; this is what catches that. **Non-zero
-exit means stop** — a broken case or a renamed skill, and no number you collect
-afterwards would mean anything.
+The dry run renders every prompt. For each case, it gives the grader one answer that
+should pass and one that should fail. It starts no subagent and costs nothing. A case
+whose expectations assert nothing would pass no matter what a model said. The dry run
+catches that case. **A non-zero exit means stop.** It signals a broken case or a renamed
+skill, and no number you collect afterwards would mean anything.
 
-### 2. Agree the scope before spending anything
+### 2. Agree the scope before you spend anything
 
-Each rep is a subagent, and subagents cost the session's token budget. All 12 cases at
-the default 3 reps is **36 invocations**; a single case ran ~25k tokens.
+Each rep is a subagent, and subagents cost the session's token budget. A run starts
+**one subagent per case per rep**. The dry run prints how many cases render. Multiply
+that count by the reps to get the number of subagents.
 
-So propose a scope and confirm it, rather than defaulting to the full run:
+So propose a scope and get the user's agreement. Do not default to the full run:
 
 ```bash
 npm run eval -- --case depends --reps 1     # iterating on one gate's wording
-npm run eval                                # the full sweep, 3 reps — say what it costs first
+npm run eval                                # the full sweep at the default reps — say what it costs first
 ```
 
 This writes `evals/runs/<stamp>/prompts/*.md`, one per case-rep, and prints the paths.
 
 ### 3. One subagent per prompt file
 
-For each file, read it and pass its **entire contents** to a subagent as the prompt.
+For each file, read it. Give its **entire contents** to a subagent as the prompt.
 
-Three ways to produce a number that looks real and means nothing. The harness catches
-only the third; the first two are yours to hold:
+Three mistakes produce a number that looks real and means nothing. The harness catches
+only the third. You must prevent the first two yourself:
 
 - **Never summarise, trim, or add framing to the prompt.** The file *is* the artifact
-  under test — the skill text it contains is verbatim on purpose. Your framing would be
-  the thing you measured.
-- **Reps are independent subagents.** The same agent answering the same prompt twice
-  measures its own consistency. Do not continue one agent across reps, and do not let
+  under test. The skill text in it is verbatim on purpose. If you add framing, your
+  framing would be the thing you measured.
+- **Reps are independent subagents.** If the same agent answers the same prompt twice,
+  it measures its own consistency. Do not continue one agent across reps. Do not let
   one agent answer several cases.
-- **Save every reply verbatim**, including the reasoning above the JSON block, to
-  `evals/runs/<stamp>/replies/<same-key>.txt`. Do not tidy a malformed reply into a
-  well-formed one — a reply the grader can't parse is a *result*, and editing it is
-  fabricating data.
+- **Save every reply verbatim** to `evals/runs/<stamp>/replies/<same-key>.txt`. Include
+  the reasoning above the JSON block. Do not tidy a malformed reply into a well-formed
+  one. A reply the grader can't parse is a *result*, and editing it fabricates data.
 
-The prompt tells each subagent to use no tools. If one reads the repo anyway, note it:
-the fixture state in the prompt is not the state on disk, so that reply answered a
-different question and should be re-run rather than graded.
+The prompt tells each subagent to use no tools. If a subagent reads the repo anyway,
+note it. The fixture state in the prompt is not the state on disk. So that reply
+answered a different question. Re-run that case-rep instead of grading the reply.
 
 ### 4. Grade
 
@@ -69,29 +69,33 @@ different question and should be re-run rather than graded.
 npm run eval -- --grade evals/runs/<stamp> --note 'which model / effort answered'
 ```
 
-Grading is mechanical — parsed fields against the case's expectations, no LLM judge.
-`--note` is the only record of *what* answered, since the harness can't see it.
+Grading is mechanical. It compares parsed fields against the case's expectations, with
+no LLM judge. `--note` is the only record of *what* answered, because the harness can't
+see it.
 
-Exit codes: `0` every case at or above the bar, `1` at least one below, `2` the run
-could not be graded at all (missing or stray replies — an incomplete run is not a
-measurement).
+Exit codes:
+
+- `0`: every case is at or above the bar.
+- `1`: at least one case is below the bar.
+- `2`: the harness could not grade the run at all, because replies are missing or
+  stray. An incomplete run is not a measurement.
 
 ### 5. Report what it can support
 
-- A rate from a handful of reps is **directional**. Report a drop as *a reason to go
-  look at the prompt*, never as evidence that an edit worked or didn't.
-- Name the cases below the bar and their `why`, not just the aggregate.
-- **The pre-registered bar is not adjustable after the fact.** It lives in the source
-  (`BAR`, and each case's `bar` line). Moving it to match a result destroys the only
-  thing making this a measurement rather than a description.
-- If the prose is genuinely wrong, fixing it is a normal change to that skill —
-  re-run the affected case afterwards, and say so plainly if you didn't.
+- A rate from a handful of reps is **directional**. Report a drop as *a reason to
+  examine the prompt*. Never report it as evidence that an edit worked or didn't.
+- Name each case below the bar and its `why`, not only the aggregate.
+- **Do not adjust the pre-registered bar after the fact.** It lives in the source
+  (`BAR`, and each case's `bar` line). If you move it to match a result, you destroy
+  the only thing that makes this a measurement rather than a description.
+- If the prose is genuinely wrong, fix it as a normal change to that skill. Re-run the
+  affected case afterwards. If you did not re-run it, say so plainly.
 
 ## Not this skill
 
-- Anything that gates a commit → `npm test`. Wiring a probabilistic measurement into a
-  commit gate produces a check that fails for unrelated reasons and gets switched off,
-  taking the real tests with it. **Never add the eval to `npm test`.**
-- Adding a case → an object in `evals/cases.mjs`; the harness never changes.
+- Anything that gates a commit → `npm test`. A probabilistic measurement in a commit
+  gate produces a check that fails for unrelated reasons. Someone then disables that
+  check, and that also disables the real tests. **Never add the eval to `npm test`.**
+- Adding a case → add an object in `evals/cases.mjs`. The harness never changes.
 - Observing the real app behave → **/verify**.
 - Deciding whether an idea is a feature or an assumption → **/triage**.
