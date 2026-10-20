@@ -20,7 +20,7 @@
 // Usage: node scripts/next.mjs [--base <branch>] [--json]
 
 import { execFileSync } from 'node:child_process';
-import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf } from './entries.mjs';
+import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf, dependencyMet } from './entries.mjs';
 
 const argv = process.argv.slice(2);
 const baseIdx = argv.indexOf('--base');
@@ -61,15 +61,7 @@ const entriesOf = (reg) => {
 };
 const loaded = new Map(REGISTERS.map((r) => [r, entriesOf(r)]));
 
-// /implement's DEPENDS GATE: what each kind of dependency must be before it stops holding.
-const met = (id) => {
-  const e = byId.get(id);
-  if (!e) return false; // a dangling ref is the schema check's to report; it is not met
-  if (BACKLOG.idPattern.test(id)) return e.status === 'shipped';
-  if (BUGS.idPattern.test(id)) return e.status === 'fixed';
-  return e.status !== 'open'; // an assumption or a decision holds only while open
-};
-const holding = (e) => idsOf(e, 'depends_on').filter((id) => !met(id))
+const holding = (e) => idsOf(e, 'depends_on').filter((id) => !dependencyMet(id, byId.get(id)?.status))
   .map((id) => `${id} (${byId.get(id)?.status ?? 'no entry'})`);
 
 // ── Bugs first ───────────────────────────────────────────────────────────────
