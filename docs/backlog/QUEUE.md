@@ -1,7 +1,7 @@
 # Next up
 
-1. **P13** — a research track, ported from photocull. Unblocks nothing; ready, by
-   existing order.
+1. **P13** — a research track, ported from photocull; R0 landed, R1 (the /research
+   skill) next. Unblocks nothing; ready, by existing order.
 2. **P17** — an orchestrator for parallel subagents. Unblocks nothing; ready, by
    existing order.
 3. **P34** — flag open entries an ad-hoc change relates to. Unblocks nothing; ready,
