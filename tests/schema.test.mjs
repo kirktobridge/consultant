@@ -14,7 +14,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, B, A, D, X, R, F, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
+import { P, B, A, D, X, N, F, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -628,7 +628,7 @@ describe('only the header is read: prose about a field is never the field', () =
   const fields = JSON.parse(run('backlog-schema-check.mjs', ['--fields']).stdout);
   const fileIn = (dir) => `${dir}/${{
     'docs/backlog': 'P1', 'docs/bugs': 'B1', 'docs/assumptions': 'A-1', 'docs/decisions': 'D-1',
-    'docs/research/experiments': 'X1', 'docs/research/runs': 'R1', 'docs/research/findings': 'F1',
+    'docs/research/experiments': 'X1', 'docs/research/runs': 'N1', 'docs/research/findings': 'F1',
   }[dir]}.md`;
 
   // Drop the section from the one entry in `rel`, and add a prose section that names
@@ -661,7 +661,7 @@ describe('only the header is read: prose about a field is never the field', () =
       test(`${regDir}: naming ${label} in prose does not count as carrying it`, () => {
         const dir = project({
           backlog: [P('P1')], bugs: [B('B1')], assumptions: [A('A-1')], decisions: [D('D-1')],
-          research: { experiments: [X('X1')], runs: [R('R1')], findings: [F('F1')] },
+          research: { experiments: [X('X1')], runs: [N('N1')], findings: [F('F1')] },
         });
         passes(dir); // the fixture is valid before the section is taken away
         proseOnly(dir, fileIn(regDir), label);
@@ -850,7 +850,7 @@ describe('the queue file holds the queue and nothing else', () => {
   });
 });
 
-// P13 R0. The research track: experiments (X#), runs (R#), findings (F#), held to the
+// P13 R0. The research track: experiments (X#), runs (N#), findings (F#), held to the
 // framework in docs/research/README.md. Every register may be empty — a seeded finding
 // would be invented — so these cases are what prove the rules still bite (L3).
 describe('research track', () => {
@@ -867,8 +867,8 @@ describe('research track', () => {
   // An answered experiment, its run, and a finding citing it: the whole loop closed.
   const closed = ({ x = {}, r = {}, f = {} } = {}) => ({
     research: {
-      experiments: [X('X1', { status: 'answered', closed: '2026-08-02', runs: ['R1'], ...x })],
-      runs: [R('R1', r)],
+      experiments: [X('X1', { status: 'answered', closed: '2026-08-02', runs: ['N1'], ...x })],
+      runs: [N('N1', r)],
       findings: [F('F1', f)],
     },
   });
@@ -1032,7 +1032,7 @@ describe('research track', () => {
     });
 
     test('an answered experiment naming a run that does not exist fails', () => {
-      fails(project(closed({ x: { runs: ['R1', 'R7'] } })), /X1 runs R7, which has no entry/);
+      fails(project(closed({ x: { runs: ['N1', 'N7'] } })), /X1 runs N7, which has no entry/);
     });
 
     test('a deferred experiment needs no run', () => {
@@ -1042,11 +1042,11 @@ describe('research track', () => {
     test('an experiment closing on a run of another experiment fails', () => {
       const dir = project({
         research: {
-          experiments: [X('X1', { status: 'answered', closed: '2026-08-02', runs: ['R1'] }), X('X2')],
-          runs: [R('R1', { experiment: 'X2' })],
+          experiments: [X('X1', { status: 'answered', closed: '2026-08-02', runs: ['N1'] }), X('X2')],
+          runs: [N('N1', { experiment: 'X2' })],
         },
       });
-      fails(dir, /X1 runs R1, but R1's `experiment:` doesn't name X1/);
+      fails(dir, /X1 runs N1, but N1's `experiment:` doesn't name X1/);
     });
 
     test('an open experiment carrying a closed date fails', () => {
@@ -1070,23 +1070,23 @@ describe('research track', () => {
 
   describe('runs', () => {
     test('a run that names no experiment fails', () => {
-      fails(project(closed({ r: { experiment: null } })), /R1 has no `experiment:` in the header/);
+      fails(project(closed({ r: { experiment: null } })), /N1 has no `experiment:` in the header/);
     });
 
     test('a run naming an experiment that does not exist fails', () => {
-      fails(project(closed({ r: { experiment: 'X4' } })), /R1 experiment X4, which has no entry/);
+      fails(project(closed({ r: { experiment: 'X4' } })), /N1 experiment X4, which has no entry/);
     });
 
     test('a run naming something other than an experiment fails', () => {
-      fails(project(closed({ r: { experiment: 'P1' } })), /R1 `experiment:` must name experiments, not P1/);
+      fails(project(closed({ r: { experiment: 'P1' } })), /N1 `experiment:` must name experiments, not P1/);
     });
 
     test('a run with no Read fails', () => {
-      fails(project(closed({ r: { read: null } })), /R1 missing \*\*Read\*\*/);
+      fails(project(closed({ r: { read: null } })), /N1 missing \*\*Read\*\*/);
     });
 
     test('a run dated in the future fails — it has not happened', () => {
-      fails(project(closed({ r: { ran: daysAhead(30) } })), /R1 is ran in the future/);
+      fails(project(closed({ r: { ran: daysAhead(30) } })), /N1 is ran in the future/);
     });
   });
 
@@ -1106,7 +1106,7 @@ describe('research track', () => {
     });
 
     test('a finding citing a run that was never logged fails', () => {
-      fails(project(closed({ f: { runs: ['R2'] } })), /F1 runs R2, which has no entry/);
+      fails(project(closed({ f: { runs: ['N2'] } })), /F1 runs N2, which has no entry/);
     });
 
     test('a finding citing an experiment instead of a run fails', () => {
@@ -1114,7 +1114,7 @@ describe('research track', () => {
     });
 
     test('a current finding resting only on retracted runs fails', () => {
-      fails(project(closed({ r: { status: 'retracted' } })), /current F1 rests only on retracted runs \(R1\)/);
+      fails(project(closed({ r: { status: 'retracted' } })), /current F1 rests only on retracted runs \(N1\)/);
     });
 
     test('a retracted finding on a retracted run passes', () => {

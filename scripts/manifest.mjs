@@ -64,14 +64,14 @@ export const INSTANCE = [
   'docs/BUILD_ORDER.md',
   'docs/LESSONS.md',
   'docs/backlog/QUEUE.md',
-  // Entry files by ID, `#` not `*`: `R*.md` would take the runs README too, and any
-  // register could grow a file that starts with its ID letter.
+  // Entry files by ID, `#` not `*`: a register can hold a file that starts with its ID
+  // letter (runs/NOTES.md, backlog/PLAN.md), and `*` would mark it instance.
   'docs/backlog/P#.md',
   'docs/bugs/B#.md',
   'docs/assumptions/A-#.md',
   'docs/decisions/D-#.md',
   'docs/research/experiments/X#.md',
-  'docs/research/runs/R#.md',
+  'docs/research/runs/N#.md',
   'docs/research/findings/F#.md',
   'docs/drills/',
   'docs/dev_notes/',

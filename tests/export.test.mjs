@@ -60,12 +60,12 @@ describe('the manifest', () => {
   test('`#` matches a number only — an entry is instance, the README beside it is suite', () => {
     for (const [dir, id] of [
       ['backlog', 'P12'], ['bugs', 'B3'], ['assumptions', 'A-4'], ['decisions', 'D-5'],
-      ['research/experiments', 'X6'], ['research/runs', 'R12'], ['research/findings', 'F7'],
+      ['research/experiments', 'X6'], ['research/runs', 'N12'], ['research/findings', 'F7'],
     ]) {
       assert.equal(classify(`docs/${dir}/${id}.md`), 'instance', id);
       assert.equal(classify(`docs/${dir}/README.md`), 'suite', dir);
     }
-    assert.equal(classify('docs/research/runs/Rx.md'), null);
+    assert.equal(classify('docs/research/runs/NOTES.md'), null);
     assert.equal(classify('docs/backlog/PLAN.md'), null);
   });
 });

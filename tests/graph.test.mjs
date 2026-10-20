@@ -10,7 +10,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, B, A, D, X, R, F, project, run, out, cleanupAll, REPO } from './helpers/fixture.mjs';
+import { P, B, A, D, X, N, F, project, run, out, cleanupAll, REPO } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -71,12 +71,12 @@ describe('graph', () => {
   test('an experiment blocks the decision waiting on it; runs and findings are not graphed', () => {
     const dir = project({
       decisions: [D('D-1', { waitingOn: 'X1', decisionRule: 'adopt if ≥ 60%.' })],
-      research: { experiments: [X('X1', { feeds: ['D-1'] })], runs: [R('R1')], findings: [F('F1')] },
+      research: { experiments: [X('X1', { feeds: ['D-1'] })], runs: [N('N1')], findings: [F('F1')] },
     });
     const g = JSON.parse(graph(dir, true).stdout);
     assert.ok(g.edges.some((e) => e.from === 'X1' && e.to === 'D-1' && e.field === 'waiting_on'));
     assert.equal(g.entries.find((e) => e.id === 'X1').register, 'experiments');
-    assert.ok(!g.entries.some((e) => ['R1', 'F1'].includes(e.id)), 'a record was graphed');
+    assert.ok(!g.entries.some((e) => ['N1', 'F1'].includes(e.id)), 'a record was graphed');
     assert.match(graph(dir).stdout, /D-1 — D-1 example\n {4}<- X1 \(proposed\)/);
   });
 
@@ -101,7 +101,7 @@ describe('graph', () => {
     const guide = readFileSync(join(REPO, '.claude', 'GUIDE.md'), 'utf8');
     const section = guide.split('### The dependency graph')[1].split('\n## ')[0].split('\n### ')[0];
     const doc = JSON.parse(section.split('```json')[1].split('```')[0]);
-    const g = JSON.parse(graph(chain({ research: { experiments: [X('X1')], runs: [R('R1')], findings: [F('F1')] } }), true).stdout);
+    const g = JSON.parse(graph(chain({ research: { experiments: [X('X1')], runs: [N('N1')], findings: [F('F1')] } }), true).stdout);
     assert.equal(g.version, doc.version, 'bump the documented version with the output’s');
     assert.deepEqual(Object.keys(g).sort(), Object.keys(doc).sort());
     const shape = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v]));

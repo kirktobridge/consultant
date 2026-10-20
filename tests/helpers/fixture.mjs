@@ -148,7 +148,7 @@ export function X(id, over = {}) {
 }
 
 /** A run. Defaults are a minimal *valid* answered run of X1. */
-export function R(id, over = {}) {
+export function N(id, over = {}) {
   return {
     id,
     title: `${id} example (n = 100)`,
@@ -162,7 +162,7 @@ export function R(id, over = {}) {
   };
 }
 
-/** A finding. Defaults are a minimal *valid* current finding from R1. */
+/** A finding. Defaults are a minimal *valid* current finding from N1. */
 export function F(id, over = {}) {
   return {
     id,
@@ -170,7 +170,7 @@ export function F(id, over = {}) {
     status: 'current',
     confidence: 'directional',
     recorded: '2026-08-03',
-    runs: ['R1'],
+    runs: ['N1'],
     claim: 'the thing happens in about a third of sessions (n = 100, one project).',
     soWhat: 'worth a default.',
     ...over,
