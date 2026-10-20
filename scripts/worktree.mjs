@@ -8,6 +8,8 @@
 //   - The claim must already be on the integration branch. A worktree cut before the
 //     claim commit carries a backlog in which the entry is still unclaimed, and the
 //     claim gate exists to stop exactly that.
+//   - A claimed entry whose dependencies are unmet is refused, resumed or not (P32):
+//     the claim reaching main does not prove it passed the schema check.
 //   - The branch is cut from *local* main, explicitly, never from origin: the claim is
 //     usually unpushed (A-6). settings.json's `worktree.baseRef: head` says the same
 //     for any worktree EnterWorktree makes itself.
@@ -28,7 +30,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { buildableRegister, parseEntry } from './entries.mjs';
+import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet } from './entries.mjs';
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -90,6 +92,21 @@ const entry = parseEntry(text, REG.keys);
 const status = entry.header.status;
 if (!REG.claimed.includes(status)) {
   done(1, 'refused', `${ID} is \`${status}\` on ${BASE}, not claimed. Claim it on ${BASE} first (via /ship), then start its worktree — a worktree cut before the claim commit cannot see the claim.`);
+}
+
+// /implement's DEPENDS GATE, held here too (P32). The schema check refuses a blocked
+// claim at commit time, but a claim can still reach main past it — no hook installed,
+// `--no-verify`, or a dependency that reopened after the claim. Read from main, like
+// the claim, and applied before resuming as well as before creating. Direct
+// dependencies only: the schema check walks the chains.
+const unmet = idsOf(entry, 'depends_on').map((id) => {
+  const reg = registerOf(id);
+  const dep = reg && git('show', `${BASE}:${reg.dir}/${id}.md`);
+  return { id, status: dep ? parseEntry(dep, reg.keys).header.status ?? null : null };
+}).filter((d) => !dependencyMet(d.id, d.status));
+if (unmet.length) {
+  done(1, 'refused', `${ID} is claimed but blocked on ${BASE}: it depends on ${unmet.map((d) => `${d.id} (${d.status ? `\`${d.status}\`` : 'no entry'})`).join(', ')}. Settle what blocks it first — an open decision is the user's to take, an open assumption needs its Resolution — then re-run.`,
+    { unmet });
 }
 
 // Existing work for this entry is resumed, not duplicated. The `-` keeps P1 from

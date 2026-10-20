@@ -13,7 +13,7 @@ import { spawnSync, execSync } from 'node:child_process';
 import { cpSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  REPO, P, B, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles,
+  REPO, P, B, A, D, decidedD, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles,
 } from './helpers/fixture.mjs';
 
 after(cleanupAll);
@@ -261,6 +261,83 @@ describe('worktree.mjs start gives a claimed entry its own branch and worktree (
     const r = start(main, 'P9');
     assert.equal(r.code, 1, out(r));
     assert.match(r.stderr, /no entry on main.*\/triage/s);
+  });
+});
+
+// ── P32: a claimed entry whose dependencies are unmet gets no worktree ──────
+//
+// The schema check refuses such a claim at commit time, but these fixture repos have no
+// hook — the very gap P32 closes: the claim is on main, and only this script stands
+// between it and a worktree.
+
+/** A main checkout with `state` committed; returns its root and git helpers. */
+function blockedRepo(state) {
+  const main = tempDir();
+  writeFiles(main, { ...renderFiles({ nextUp: [], ...state }), '.gitignore': '.claude/worktrees/\n' });
+  return { main, ...gitInit(main) };
+}
+const claimedOn = (dep) => P('P3', { status: 'in-progress', title: 'Make the widget spin', dependsOn: [dep] });
+const noBranches = (main) => assert.equal(git1(main, 'branch --list "feat/*"'), '');
+
+describe('worktree.mjs refuses a claimed entry whose dependencies are unmet (P32)', () => {
+  test('a claim resting on an open assumption is refused, naming it, and nothing is created', () => {
+    const { main } = blockedRepo({ backlog: [claimedOn('A-1')], assumptions: [A('A-1')] });
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /P3 is claimed but blocked on main: it depends on A-1 \(`open`\)/);
+    noBranches(main);
+    assert.equal(git1(main, 'worktree list').split('\n').length, 1);
+  });
+
+  test('a claim resting on an open decision is refused the same way', () => {
+    const { main } = blockedRepo({ backlog: [claimedOn('D-1')], decisions: [D('D-1')] });
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /depends on D-1 \(`open`\)/);
+    noBranches(main);
+  });
+
+  test('a claim on an unshipped feature, and on a dependency with no entry, is refused', () => {
+    const { main } = blockedRepo({ backlog: [P('P1', { status: 'partial' }), P('P3', { status: 'in-progress', dependsOn: ['P1', 'B9'] })], bugsReadme: true });
+    const r = start(main, 'P3', '--json');
+    assert.equal(r.code, 1, out(r));
+    assert.deepEqual(JSON.parse(r.stdout).unmet, [{ id: 'P1', status: 'partial' }, { id: 'B9', status: null }]);
+  });
+
+  test('a claimed bug resting on an open assumption is refused', () => {
+    const { main } = blockedRepo({ bugs: [B('B2', { status: 'in-progress', dependsOn: ['A-1'] })], assumptions: [A('A-1')] });
+    const r = start(main, 'B2');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /B2 is claimed but blocked on main: it depends on A-1 \(`open`\)/);
+    noBranches(main);
+  });
+
+  test('an entry that already has its worktree is refused once a dependency reopens on main', () => {
+    const settled = { backlog: [claimedOn('D-1')], decisions: [decidedD('D-1')] };
+    const { main, commitAll } = blockedRepo(settled);
+    const wt = pathLine(start(main, 'P3'));
+    assert.ok(wt, 'the unblocked entry should have got its worktree');
+    writeFiles(main, renderFiles({ nextUp: [], backlog: [claimedOn('D-1')], decisions: [D('D-1')] }));
+    commitAll('D-1 reopened');
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /depends on D-1 \(`open`\)/);
+  });
+
+  test('once the dependency is settled, the same command creates the worktree, then resumes it', () => {
+    const { main, commitAll } = blockedRepo({ backlog: [claimedOn('A-1')], assumptions: [A('A-1')] });
+    assert.equal(start(main, 'P3').code, 1);
+    writeFiles(main, renderFiles({
+      nextUp: [], backlog: [claimedOn('A-1')],
+      assumptions: [A('A-1', { status: 'verified', resolved: '2026-08-02', resolution: 'probed; it holds.' })],
+    }));
+    commitAll('A-1 verified');
+    const r = start(main, 'P3', '--json');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(JSON.parse(r.stdout).action, 'created');
+    const again = start(main, 'P3', '--json');
+    assert.equal(again.code, 0, out(again));
+    assert.equal(JSON.parse(again.stdout).action, 'resumed');
   });
 });
 

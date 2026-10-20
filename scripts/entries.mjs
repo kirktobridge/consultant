@@ -137,6 +137,23 @@ export const BUILDABLE = [BACKLOG, BUGS];
 /** The register a buildable ID (`P#` / `B#`) belongs to, or null. */
 export const buildableRegister = (id) => BUILDABLE.find((r) => r.idPattern.test(id)) ?? null;
 
+/** The register any ID belongs to, or null. */
+export const registerOf = (id) => REGISTERS.find((r) => r.idPattern.test(id)) ?? null;
+
+/**
+ * Whether a dependency has stopped holding what depends on it — /implement's DEPENDS
+ * GATE, in one place so every script that applies it agrees (P32). A `P#` must be
+ * `shipped` (not `partial`), a `B#` `fixed`; an assumption or decision holds only
+ * while `open`. `status` is the dependency's, or null when it has no entry: a dangling
+ * ref is the schema check's to report, and it is not met.
+ */
+export function dependencyMet(id, status) {
+  if (!status) return false;
+  if (BACKLOG.idPattern.test(id)) return status === 'shipped';
+  if (BUGS.idPattern.test(id)) return status === 'fixed';
+  return status !== 'open';
+}
+
 /** Files in a register directory that are not entries. */
 const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);
 

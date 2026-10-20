@@ -97,7 +97,8 @@ run all of them.
   with `lock release claim:<ID>`. Another session may be landing in the same main
   checkout.
 - Then, from the main checkout, `node scripts/worktree.mjs start <ID>`. It refuses
-  an unclaimed entry or a dirty tree (exit 1, says which), cuts `feat/p<#>-<slug>` off
+  an unclaimed entry, a claimed one whose `depends_on:` is unmet on main (the DEPENDS
+  GATE, held in code), or a dirty tree (exit 1, says which), cuts `feat/p<#>-<slug>` off
   local main into `.claude/worktrees/`, or resumes the entry's existing branch. Enter
   the `path:` it prints with **EnterWorktree** (`path`, not `name`) — CLAUDE.md
   authorizes this — and build there. You don't ask the user about any of it.
