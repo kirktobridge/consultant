@@ -29,14 +29,15 @@ skill, and no number you collect afterwards would mean anything.
 
 ### 2. Agree the scope before you spend anything
 
-Each rep is a subagent, and subagents cost the session's token budget. All 12 cases at
-the default 3 reps is **36 invocations**. A single case used ~25k tokens.
+Each rep is a subagent, and subagents cost the session's token budget. A run starts
+**one subagent per case per rep**. The dry run prints how many cases render. Multiply
+that count by the reps to get the number of subagents.
 
 So propose a scope and get the user's agreement. Do not default to the full run:
 
 ```bash
 npm run eval -- --case depends --reps 1     # iterating on one gate's wording
-npm run eval                                # the full sweep, 3 reps — say what it costs first
+npm run eval                                # the full sweep at the default reps — say what it costs first
 ```
 
 This writes `evals/runs/<stamp>/prompts/*.md`, one per case-rep, and prints the paths.
