@@ -13,7 +13,7 @@ This file owns the *process*. The three registers own the records:
 | Register | IDs | What it holds |
 |----------|-----|---------------|
 | [experiments/](experiments/README.md) | `X#` | questions we intend to answer, one file each, with the kind and what it owes |
-| [runs/](runs/README.md) | `R-n` | the lab notebook: one file per run, **append-only** (a wrong run stays, marked `retracted`) |
+| [runs/](runs/README.md) | `N#` | the lab notebook: one file per run, **append-only** (a wrong run stays, marked `retracted`) |
 | [findings/](findings/README.md) | `F#` | what we now believe, each finding with a confidence label and the run it came from |
 
 **Where a question belongs:** a yes/no fact about the outside world is an assumption
@@ -50,7 +50,7 @@ the template. The schema check reads it from there.
 question → experiment X# (kind + objective + method + power / precision / budget)
          → (a test, or a measure a decision waits on) the decision rule goes on that D-n first,
            and the D-n's waiting_on: names the X#
-         → run it → a new runs/R-n.md (never an edit to an old one)
+         → run it → a new runs/N#.md (never an edit to an old one)
          → distil the durable claim into findings/F#.md, citing the run
          → close the experiment (answered + closed: + runs:); for each D it feeds,
            report what the rule now says to /ship, which records the decision

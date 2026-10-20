@@ -65,7 +65,7 @@ echo '{"tool_input":{"file_path":"docs/SPEC.md"}}' | node .claude/edit-guard.mjs
 | `B#` | bugs — what's broken | `docs/bugs/`, `scripts/entries.mjs`, /triage, /ship, schema check |
 | `A-n` | load-bearing assumptions nobody has verified | `docs/assumptions/`, `scripts/entries.mjs`, schema check |
 | `D-n` | the product owner's decisions | `docs/decisions/`, `scripts/entries.mjs`, schema check, session audit |
-| `X#`, `R-n`, `F#` | the research track: experiments, runs, findings | `docs/research/`, `scripts/entries.mjs`, schema check |
+| `X#`, `N#`, `F#` | the research track: experiments, runs, findings | `docs/research/`, `scripts/entries.mjs`, schema check |
 | `L#` | lessons | LESSONS.md |
 | `docs/SPEC.md` | your human-owned source of truth | blocklist, /ship, /implement |
 | `main` | integration branch | /land, /implement, session-audit, history |

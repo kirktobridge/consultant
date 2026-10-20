@@ -78,7 +78,7 @@ The header is strict, as in the backlog. The keys are:
 - `drafted`: when its claims were last established.
 - `feeds`: the decisions (`D-n`) this result informs, or `—`.
 - `depends_on`: `P#` / `A-n` / `D-n`, or `—`.
-- `runs`: the `R-n` runs it closed on.
+- `runs`: the `N#` runs it closed on.
 - `closed`: the date it closed.
 
 Required sections: `Objective` always; `Method` and `Cost / risk` while open; plus
