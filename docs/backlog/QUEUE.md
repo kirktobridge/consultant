@@ -1,7 +1,7 @@
 # Next up
 
-1. **P7** — a status view for the product owner. Unblocks nothing; ready, by existing
-   order.
+1. **P7** — a status view for the product owner; landed on main, awaiting acceptance.
+   Unblocks nothing; ready, by existing order.
 2. **P12** — resolve the trunk branch instead of assuming `main`. Unblocks nothing;
    ready, by existing order.
 3. **P13** — a research track, ported from photocull. Unblocks nothing; ready, by
