@@ -62,6 +62,10 @@ visible to other sessions — and the terminal flip + queue refresh happen at la
 time, with /ship running as **/land**'s last step after the merge passes tests. Only
 work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly.
 
+*Main* in this skill is the **trunk**: the integration branch `node scripts/trunk.mjs`
+names, which is `main` only when the clone has one. Get it from that command; never
+write a branch name into a git command.
+
 ## Steps
 1. **Identify what shipped** — from the user's description or git:
    `git log --oneline -5`, `git diff --stat` if unsure which files/areas changed.

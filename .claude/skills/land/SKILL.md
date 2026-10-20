@@ -24,6 +24,11 @@ and give it a verdict of its own with the evidence. Name every criterion that is
 not observed or not exercised first; that is what the user is accepting despite.
 
 ## Preconditions (stop if any fail)
+
+*Main* in this skill is the **trunk**: the integration branch `node scripts/trunk.mjs`
+names, which is `main` only when the clone has one. Get it from that command; never
+write a branch name into a git command (`<trunk>` below).
+
 - You are in the main checkout, and it is clean. The session left its worktree
   before invoking you.
 - The branch holds the land lock (`node scripts/land.mjs lock status`) and is
@@ -32,7 +37,7 @@ not observed or not exercised first; that is what the user is accepting despite.
   through /implement's close, because a rebase can't happen from here.
 - The branch carries its **per-criterion close report** — /implement writes it into
   the feature commit's message: each `Accept:` criterion, verbatim, as observed /
-  not observed / not exercised. Read it with `git log main..<branch>`. No report →
+  not observed / not exercised. Read it with `git log <trunk>..<branch>`. No report →
   stop: the user is about to be asked to accept against it, and you cannot write it
   from here (you never saw the build). Send the branch back through /verify.
   Then read `node scripts/land.mjs report <branch>`. If conflicts were resolved and
@@ -52,7 +57,7 @@ and the rebase included.
 What it owes instead is a record. Step 1 is `node scripts/land.mjs merge <branch>
 --adhoc "<what changed, one line>"`, plus `--relates <ID,…>` when the change touches
 existing entries; the merge commit carries them as `Ad-hoc:` and `Relates:` trailers.
-Write the `<what>` from `git log main..<branch>`, and the `Relates:` IDs from what
+Write the `<what>` from `git log <trunk>..<branch>`, and the `Relates:` IDs from what
 those commits name. land.mjs refuses the merge without `--adhoc`, and refuses a
 `Relates:` ID that has no entry in any register. Your report gives the merge sha, the
 trailers, the suite result and the cleanup.

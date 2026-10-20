@@ -33,6 +33,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, normalize } from 'node:path';
+import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
 
 // PORTING: paths in your project that execute unasked or grant permissions and that no
 // hook in .claude/settings.json names. Patterns: a path, or a directory prefix ending in `/`.
@@ -77,8 +78,8 @@ if (baseIdx >= 0) {
   if (git('rev-parse', '--verify', '--quiet', `${BASE}^{commit}`) === null) stop(`--base ${BASE} is not a commit.${gitSays()}`);
 } else {
   const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-  BASE = ['main', 'master', 'trunk'].find((b) => branches.includes(b));
-  if (!BASE) stop(`no integration branch found (looked for main/master/trunk among: ${branches.join(', ') || 'none'}). Pass --base <ref>.`);
+  BASE = findTrunk(branches);
+  if (!BASE) stop(`no integration branch found (looked for ${TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}). Pass --base <ref>.`);
 }
 
 const mergeBase = git('merge-base', BASE, 'HEAD')?.trim();

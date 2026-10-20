@@ -25,17 +25,20 @@ run all of them.
 - **No ID given?** Run `node scripts/next.mjs` and propose what it prints. Every open,
   dependency-ready bug comes before the queue, most severe first; a bug is never
   ranked into [QUEUE.md](../../../docs/backlog/QUEUE.md). With no bug ready, it gives the
-  queue's head. It reads main and skips claimed entries. Exit 1 means nothing is ready:
+  queue's head. It reads the trunk and skips claimed entries. Exit 1 means nothing is ready:
   say so, with the bugs it lists as held.
 - Find the entry: `cat docs/backlog/<ID>.md` (a bug: `cat docs/bugs/<ID>.md`) — the whole file, never a fixed line
   count: entries run long, and a truncated read drops `Accept`, the half of the
   contract that comes last. No such file → it's an untriaged idea; bounce to
   **/triage**, don't invent an entry.
-- **CLAIM GATE:** `git grep -n -m1 "^status: " main -- docs/backlog/ docs/bugs/ | grep ":status: in-progress$"`
-  first — **main's version, never the checked-out copy**: in a worktree the local
-  files reflect when you branched, so they can miss a claim another session made since.
-  (`-m1` reads each file's first `status:` line, which is its header's: an entry
-  whose prose quotes `status: in-progress` is not a claim.)
+- **CLAIM GATE:** `node scripts/claims.mjs`
+  first. It reads the **trunk's** version, never the checked-out copy: in a worktree
+  the local files reflect when you branched, so they can miss a claim another session
+  made since. *Trunk* is the integration branch `node scripts/trunk.mjs` names
+  (usually `main`); never write a branch name into a git command here. It prints one
+  line per `in-progress` entry, read from headers (an entry whose prose quotes
+  `status: in-progress` is not a claim). **Exit 2 means the gate never ran** — no
+  trunk was found — so it has not passed: name the trunk with `--base <branch>`.
   Target entry already `in-progress` → stop; it's claimed by another session/branch
   (stale claims are cleared via /ship — the session-start audit surfaces them — not
   overridden here). Another entry

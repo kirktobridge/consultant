@@ -245,9 +245,9 @@ honest limits are in [evals/README.md](../evals/README.md).
   (`scripts/worktree.mjs start`, after the claim). The main checkout belongs to
   whichever session is integrating (/land, /ship on main); branch sessions never
   edit it.
-- **Claims are read from main**, not your checkout — a worktree's copy of the backlog
-  predates claims made since you branched. /implement's claim gate does this
-  (`git grep … main -- docs/backlog/`).
+- **Claims are read from the trunk**, not your checkout — a worktree's copy of the
+  backlog predates claims made since you branched. /implement's claim gate does this
+  (`node scripts/claims.mjs`; the trunk is whatever `node scripts/trunk.mjs` names).
 - **End-to-end runs are serialized — one session at a time.** Browser automation
   reuses whatever server holds the port, so a parallel run silently tests the *other*
   worktree's code and passes anyway. Branch sessions run targeted tests only; the full

@@ -37,6 +37,7 @@ import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildableRegister, registerOf } from './entries.mjs';
+import { findTrunk } from './trunk.mjs';
 
 const STALE_MINUTES = 30;
 
@@ -73,7 +74,7 @@ const common = resolve(top, git('rev-parse', '--git-common-dir'));
 const inLinkedWorktree = gitDir !== common;
 
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = opt('--base') || ['main', 'master', 'trunk'].find((b) => branches.includes(b)) || null;
+const BASE = opt('--base') || findTrunk(branches) || null;
 if (!BASE) die(2, `no integration branch found among: ${branches.join(', ') || 'none'}. Pass --base <branch>.`);
 
 const LOCK = join(common, 'loop-land.lock');
@@ -335,9 +336,9 @@ function reportText(rec) {
   if (!rec?.conflicts.length) return '';
   const lines = [`Conflicts resolved: ${rec.conflicts.length}`];
   for (const c of rec.conflicts) {
-    const o = c.others.map((x) => x.id || x.merge).join(', ') || 'main';
+    const o = c.others.map((x) => x.id || x.merge).join(', ') || BASE;
     lines.push(`- ${c.file} (replaying ${c.commit}; other side: ${o})`,
-      `  main:     ${c.main.join(' / ') || '(nothing)'}`,
+      `  ${`${BASE}:`.padEnd(10)}${c.main.join(' / ') || '(nothing)'}`,
       `  branch:   ${c.branch.join(' / ') || '(nothing)'}`,
       `  resolved: ${c.resolved.join(' / ') || '(nothing)'}`);
   }

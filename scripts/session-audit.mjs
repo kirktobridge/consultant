@@ -30,6 +30,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
+import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -77,10 +78,10 @@ if (git('rev-parse', '--git-dir') === null) {
 // The integration branch. Guessing wrong would make every merge-state check lie, so
 // this resolves against branches that actually exist rather than assuming `main`.
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = baseArg || ['main', 'master', 'trunk'].find((b) => branches.includes(b)) || null;
+const BASE = baseArg || findTrunk(branches) || null;
 if (!BASE) {
   console.error(
-    `session-audit: no integration branch found (looked for main/master/trunk among: ${branches.join(', ') || 'none'}).\n` +
+    `session-audit: no integration branch found (looked for ${TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}).\n` +
       `Pass --base <branch>.`,
   );
   process.exit(2);

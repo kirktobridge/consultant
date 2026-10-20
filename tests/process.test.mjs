@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, mkdirSy
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
 import { REPO, tempDir, gitInit, P, B, renderFiles, writeFiles } from './helpers/fixture.mjs';
+import { TRUNK_CANDIDATES } from '../scripts/trunk.mjs';
 
 // ── Corpus ───────────────────────────────────────────────────────────────────
 
@@ -211,40 +212,128 @@ describe('the orientation reads (P20)', () => {
   // P20 was built, every hit it returned was a sentence, not a claim.
   const implement = read(join(SKILL_DIR, 'implement', 'SKILL.md'));
 
-  test('the claim gate finds exactly the entries whose header says in-progress', () => {
+  // The gate, exactly as /implement prints it, run in a fixture clone. Its scripts live
+  // in this repo, not the fixture's, so only the `node scripts/` prefix is repointed.
+  const gate = () => {
     const m = implement.match(/\*\*CLAIM GATE:\*\* `([^`]+)`/);
     assert.ok(m, '/implement no longer names its claim-gate command');
-    assert.match(m[1], / main -- /, 'the claim gate must read main, not the checkout');
-    // Run against the working tree rather than main: in a pre-commit run, main does not
-    // hold the change under test yet. Same search, different tree.
-    const cmd = m[1].replace(' main -- ', ' -- ');
-    const r = spawnSync('sh', ['-c', cmd], { cwd: REPO, encoding: 'utf8' });
-    const found = [...r.stdout.matchAll(/docs\/backlog\/(P\d+)\.md/g)].map((x) => x[1]).sort();
-    const claimed = readdirSync(join(REPO, 'docs', 'backlog'))
-      .filter((f) => /^P\d+\.md$/.test(f) && /^status: in-progress$/m.test(read(join(REPO, 'docs', 'backlog', f))))
-      .map((f) => f.slice(0, -3))
-      .sort();
-    assert.deepEqual(found, claimed);
-    // Prose that says "in-progress" is everywhere in the backlog; none of it may match.
-    assert.equal(r.stdout.trim().split('\n').filter(Boolean).length, claimed.length, r.stdout);
-  });
-
-  test('the claim gate, run verbatim on main, ignores a body line that quotes a status', () => {
-    // Found by /verify P20: a plain grep for the status line matched prose too, so an
-    // entry *describing* a claim read as claimed.
-    const cmd = implement.match(/\*\*CLAIM GATE:\*\* `([^`]+)`/)[1];
+    return m[1].replace(/^node scripts\//, `node ${JSON.stringify(join(REPO, 'scripts'))}/`);
+  };
+  const claimFixture = (base) => {
     const dir = tempDir();
     writeFiles(dir, renderFiles({
       backlog: [P('P1', { notes: 'status: in-progress\nwas what the old grep matched.' }), P('P2', { status: 'in-progress' })],
       bugs: [B('B1', { status: 'in-progress' }), B('B2')],
     }));
-    gitInit(dir);
-    const r = spawnSync('sh', ['-c', cmd], { cwd: dir, encoding: 'utf8' });
-    assert.equal(r.stdout, 'main:docs/backlog/P2.md:4:status: in-progress\nmain:docs/bugs/B1.md:4:status: in-progress\n', r.stderr);
+    gitInit(dir, base);
+    return dir;
+  };
+
+  test('the claim gate, run verbatim, ignores a body line that quotes a status', () => {
+    // Found by /verify P20: a plain grep for the status line matched prose too, so an
+    // entry *describing* a claim read as claimed.
+    const r = spawnSync('sh', ['-c', gate()], { cwd: claimFixture('main'), encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, 'P2 in-progress docs/backlog/P2.md on main\nB1 in-progress docs/bugs/B1.md on main\n', r.stderr);
+  });
+
+  test('the claim gate reads the trunk, not the checkout (P12)', () => {
+    // A worktree's files are as old as its branch: a claim made on the trunk since must
+    // show, and one only in the checkout must not.
+    const dir = claimFixture('main');
+    const sh = (c) => assert.equal(spawnSync('sh', ['-c', c], { cwd: dir }).status, 0, c);
+    sh('git checkout -qb feat/x && git rm -q docs/backlog/P2.md');
+    sh("sed -i 's/^status: proposed$/status: in-progress/' docs/backlog/P1.md && git commit -qam checkout-only");
+    const r = spawnSync('sh', ['-c', gate()], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^P2 in-progress docs\/backlog\/P2\.md on main$/m, 'a claim on the trunk must show');
+    assert.doesNotMatch(r.stdout, /^P1 /m, 'a claim only in the checkout must not');
+  });
+
+  test('an entry whose header does not parse stops the gate, rather than reading as unclaimed (P12)', () => {
+    const dir = claimFixture('main');
+    const p = join(dir, 'docs', 'backlog', 'P2.md');
+    writeFileSync(p, `\n${read(p)}`); // a stray first line: the header no longer parses
+    spawnSync('sh', ['-c', 'git commit -qam stray-line'], { cwd: dir });
+    const r = spawnSync('sh', ['-c', gate()], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 2, r.stdout);
+    assert.match(r.stderr, /docs\/backlog\/P2\.md .*no readable `status:`/);
+  });
+
+  test('a register absent on the trunk holds no claims, and is not a read failure', () => {
+    const dir = claimFixture('main');
+    spawnSync('sh', ['-c', 'git rm -rq docs/bugs && git commit -qm no-bugs'], { cwd: dir });
+    const r = spawnSync('sh', ['-c', gate()], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, 'P2 in-progress docs/backlog/P2.md on main\n');
+  });
+
+  test('in a clone whose only branch is master, the claim gate reads master and finds the claim (P12)', () => {
+    const r = spawnSync('sh', ['-c', gate()], { cwd: claimFixture('master'), encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^P2 in-progress docs\/backlog\/P2\.md on master$/m);
+  });
+
+  test('in a clone with no recognisable trunk, the claim gate stops and says how to name one (P12)', () => {
+    const r = spawnSync('sh', ['-c', gate()], { cwd: claimFixture('develop'), encoding: 'utf8' });
+    assert.equal(r.status, 2, `the gate must not pass when it never read a trunk:\n${r.stdout}${r.stderr}`);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /no trunk found/);
+    assert.match(r.stderr, /--base <branch>/);
   });
 
   test('with no ID, /implement asks next.mjs, which puts open bugs before the queue (P5 R1)', () => {
     assert.match(implement, /\*\*No ID given\?\*\* Run `node scripts\/next\.mjs`/);
+  });
+});
+
+describe('no loop skill hard-codes the trunk in a git command (P12)', () => {
+  // A porter whose trunk is `master` got `fatal: invalid object name 'main'` from the
+  // claim gate's first command. The trunk comes from scripts/trunk.mjs; a branch name
+  // typed into a git command is the assumption coming back.
+  /** Every git command a text tells you to run: inline code spans and fenced lines. */
+  const gitCommands = (text) => {
+    const fenced = [...text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)].flatMap((m) => m[1].split('\n'));
+    const spans = [...unfenced(text).matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
+    return [...fenced, ...spans].filter((c) => /(^|[\s|;&(])git\s+[a-z]/.test(c));
+  };
+  // Every candidate, bare or remote-qualified (`origin/main`): any of them typed into a
+  // git command is a trunk that didn't come from trunk.mjs.
+  // `<trunk>` is the placeholder skills write instead, so `<`/`>` bound a non-match.
+  const trunkName = new RegExp(`(?<![\\w.<-])(?:[\\w.-]+/)?(?:${TRUNK_CANDIDATES.join('|')})(?![\\w>-])`);
+  const namesMain = (cmd) => {
+    const m = cmd.match(/(^|[\s|;&(])git\s+[a-z]/);
+    return !!m && trunkName.test(cmd.slice(m.index));
+  };
+
+  test('the detector bites: it flags the commands this entry removed, and passes their replacements', () => {
+    for (const bad of [
+      'git show main:docs/backlog/P1.md',
+      'git log main..<branch>',
+      'git grep -n -m1 "^status: " main -- docs/backlog/',
+      'cd x && git diff main --stat',
+      'git log origin/main..HEAD',
+      'git checkout master',
+    ]) assert.ok(namesMain(bad), `not flagged: ${bad}`);
+    for (const fine of ['git log <trunk>..<branch>', 'git status', 'node scripts/claims.mjs', 'git log --oneline -5'])
+      assert.ok(!namesMain(fine), `flagged: ${fine}`);
+    assert.deepEqual(gitCommands('run `git show main:x`, or:\n```sh\ngit log main..y\n```\n'), ['git log main..y', 'git show main:x']);
+  });
+
+  for (const skill of LOOP_SKILLS) {
+    test(`/${skill} names no branch in a git command`, () => {
+      const cmds = gitCommands(read(join(SKILL_DIR, skill, 'SKILL.md')));
+      assert.deepEqual(cmds.filter(namesMain), [], `/${skill} hard-codes main; take the trunk from node scripts/trunk.mjs`);
+    });
+  }
+
+  test('no script keeps its own copy of the trunk list; they import trunk.mjs', () => {
+    const list = TRUNK_CANDIDATES.map((b) => `'${b}'`).join(', ');
+    const copies = readdirSync(join(REPO, 'scripts'))
+      .filter((f) => f.endsWith('.mjs') && f !== 'trunk.mjs')
+      .filter((f) => read(join(REPO, 'scripts', f)).includes(list));
+    assert.ok(read(join(REPO, 'scripts', 'trunk.mjs')).includes(list), 'the control: trunk.mjs must hold the list verbatim');
+    assert.deepEqual(copies, []);
   });
 });
 
