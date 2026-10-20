@@ -1,6 +1,6 @@
 ---
 name: land
-description: Merge one finished feature branch into main, verify the merged result (full test suite), then run /ship's doc flips on main — the integration step between branch work (/implement) and the user's acceptance. Use for "land this branch", "merge to main", "integrate feat/…", or /land.
+description: Merge one finished feature branch into main, verify the merged result (full test suite), then run /ship's doc flips on main — the integration step between branch work (/implement) and the user's acceptance. Also lands an ad-hoc `adhoc/…` branch, which has no entry. Use for "land this branch", "merge to main", "integrate feat/…", "land adhoc/…", or /land.
 context: fork
 ---
 
@@ -39,6 +39,26 @@ not observed or not exercised first; that is what the user is accepting despite.
   no commit after the resolution carries a fresh report, the verdicts describe the
   code from before the resolution: mark each one *observed before conflict
   resolution* in the handshake.
+
+## An ad-hoc branch (`adhoc/<slug>`)
+
+A change too small to be an entry (a prose rewrite, a doc fix) lands through the same
+lock, rebase, merge and suite, from a branch `node scripts/worktree.mjs start --adhoc
+<slug>` cut. It has no entry, so the close-report precondition, step 3 and the
+acceptance handshake do not apply: there is nothing to report against, nothing for
+/ship to flip, and nothing for the user to accept. Everything else holds, the lock
+and the rebase included.
+
+What it owes instead is a record. Step 1 is `node scripts/land.mjs merge <branch>
+--adhoc "<what changed, one line>"`, plus `--relates <ID,…>` when the change touches
+existing entries; the merge commit carries them as `Ad-hoc:` and `Relates:` trailers.
+Write the `<what>` from `git log main..<branch>`, and the `Relates:` IDs from what
+those commits name. land.mjs refuses the merge without `--adhoc`, and refuses a
+`Relates:` ID that has no entry in any register. Your report gives the merge sha, the
+trailers, the suite result and the cleanup.
+
+The precondition holds as written for every `feat/` branch: no close report, no
+landing, whatever the size of the change.
 
 ## Steps
 1. `node scripts/land.mjs merge <branch>`, wrapped in `time`. It merges `--no-ff`
