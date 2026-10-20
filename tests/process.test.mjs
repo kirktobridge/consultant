@@ -278,7 +278,7 @@ describe('the orientation reads (P20)', () => {
     const r = spawnSync('sh', ['-c', gate()], { cwd: claimFixture('develop'), encoding: 'utf8' });
     assert.equal(r.status, 2, `the gate must not pass when it never read a trunk:\n${r.stdout}${r.stderr}`);
     assert.equal(r.stdout, '');
-    assert.match(r.stderr, /no trunk found/);
+    assert.match(r.stderr, /no integration branch found/);
     assert.match(r.stderr, /--base <branch>/);
   });
 

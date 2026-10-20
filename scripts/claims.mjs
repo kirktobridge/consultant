@@ -19,12 +19,10 @@
 
 import { execFileSync } from 'node:child_process';
 import { BUILDABLE, parseEntry } from './entries.mjs';
-import { resolveTrunk, NAME_IT } from './trunk.mjs';
+import { trunkFromArgv } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
 const asJson = argv.includes('--json');
-const baseIdx = argv.indexOf('--base');
-const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] ?? null : null;
 
 // Same git invocation as next.mjs, for the reasons given in session-audit.
 const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
@@ -43,10 +41,9 @@ const git = (...args) => gitRaw(...args)?.trim() ?? null;
 git.raw = gitRaw;
 const stop = (msg) => { console.error(`claims: ${msg}`); process.exit(2); };
 
-if (baseIdx >= 0 && (!baseArg || baseArg.startsWith('--'))) stop(`--base needs a branch. ${NAME_IT}`);
 if (git('rev-parse', '--git-dir') === null) stop(`not a git repository, or git refused it.${lastError ? ` git: ${lastError.split('\n')[0]}` : ''}`);
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const { trunk: TRUNK, error } = resolveTrunk(branches, baseArg);
+const { trunk: TRUNK, error } = trunkFromArgv(argv, branches);
 if (error) stop(`${error} The claim gate cannot pass without reading the trunk.`);
 
 const claims = [];

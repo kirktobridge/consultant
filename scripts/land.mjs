@@ -37,7 +37,7 @@ import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildableRegister, registerOf } from './entries.mjs';
-import { findTrunk } from './trunk.mjs';
+import { trunkFromArgv } from './trunk.mjs';
 
 const STALE_MINUTES = 30;
 
@@ -74,8 +74,8 @@ const common = resolve(top, git('rev-parse', '--git-common-dir'));
 const inLinkedWorktree = gitDir !== common;
 
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = opt('--base') || findTrunk(branches) || null;
-if (!BASE) die(2, `no integration branch found among: ${branches.join(', ') || 'none'}. Pass --base <branch>.`);
+const { trunk: BASE, error: baseError } = trunkFromArgv(argv, branches);
+if (baseError) die(2, baseError);
 
 const LOCK = join(common, 'loop-land.lock');
 const RECORDS = join(common, 'loop-land');

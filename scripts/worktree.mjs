@@ -37,7 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet } from './entries.mjs';
-import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
+import { trunkFromArgv } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -93,10 +93,8 @@ if (gitDir !== commonDir) {
 }
 
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = flag('--base') || findTrunk(branches) || null;
-if (!BASE || !branches.includes(BASE)) {
-  done(2, 'error', `no integration branch found (looked for ${flag('--base') || TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}). Pass --base <branch>.`);
-}
+const { trunk: BASE, error: baseError } = trunkFromArgv(argv, branches);
+if (baseError) done(2, 'error', baseError);
 
 const worktrees = new Map(); // branch → path
 let wtPath = null;
