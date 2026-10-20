@@ -118,6 +118,61 @@ export function D(id, over = {}) {
     why: null,
     reopenIf: null,
     supersededBy: null,
+    // `## Decision rule`: what an open decision waiting on an experiment carries.
+    decisionRule: null,
+    ...over,
+  };
+}
+
+/** An experiment. Defaults are a minimal *valid* open `measure`. */
+export function X(id, over = {}) {
+  return {
+    id,
+    title: `${id} example`,
+    status: 'proposed',
+    kind: 'measure',
+    drafted: '2026-08-01',
+    feeds: [],
+    dependsOn: [],
+    runs: null,
+    closed: null,
+    objective: 'how often does the thing happen?',
+    hypothesis: null,
+    method: 'count it over the last 100 sessions.',
+    power: null,
+    precision: 'n = 100 gives a 95% interval of about ±10 points.',
+    budget: null,
+    cost: 'an hour.',
+    ...over,
+  };
+}
+
+/** A run. Defaults are a minimal *valid* answered run of X1. */
+export function R(id, over = {}) {
+  return {
+    id,
+    title: `${id} example (n = 100)`,
+    status: 'answered',
+    ran: '2026-08-02',
+    experiment: 'X1',
+    measuredUnder: 'commit abc1234, `node count.mjs`.',
+    results: '| arm | n | share | 95% CI |\n|---|---|---|---|\n| v0 | 100 | 0.30 | 0.22–0.40 |',
+    read: 'about a third; the harness counts every session.',
+    ...over,
+  };
+}
+
+/** A finding. Defaults are a minimal *valid* current finding from R-1. */
+export function F(id, over = {}) {
+  return {
+    id,
+    title: `${id} example`,
+    status: 'current',
+    confidence: 'directional',
+    recorded: '2026-08-03',
+    runs: ['R-1'],
+    claim: 'the thing happens in about a third of sessions (n = 100, one project).',
+    soWhat: 'worth a default.',
     ...over,
   };
 }
@@ -212,8 +267,76 @@ const renderD = (d) =>
       section('Decided', d.choice),
       section('Why', d.why),
       section('Reopen if', d.reopenIf),
+      section('Decision rule', d.decisionRule),
     ],
   );
+
+// An ID list renders `—` when empty; null omits the key.
+const ids = (v) => (v == null ? null : v.length ? v.join(', ') : '—');
+
+const renderX = (e) =>
+  entry(
+    [
+      key('id', e.id),
+      key('title', e.title),
+      key('status', e.status),
+      key('kind', e.kind),
+      key('drafted', e.drafted),
+      key('feeds', ids(e.feeds)),
+      key('depends_on', ids(e.dependsOn)),
+      key('runs', ids(e.runs)),
+      key('closed', e.closed),
+    ],
+    [
+      section('Objective', e.objective),
+      section('Hypothesis', e.hypothesis),
+      section('Method', e.method),
+      section('Power', e.power),
+      section('Precision', e.precision),
+      section('Budget', e.budget),
+      section('Cost / risk', e.cost),
+    ],
+  );
+
+const renderR = (e) =>
+  entry(
+    [key('id', e.id), key('title', e.title), key('status', e.status), key('ran', e.ran), key('experiment', e.experiment)],
+    [section('Measured under', e.measuredUnder), section('Results', e.results), section('Read', e.read)],
+  );
+
+const renderF = (e) =>
+  entry(
+    [
+      key('id', e.id),
+      key('title', e.title),
+      key('status', e.status),
+      key('confidence', e.confidence),
+      key('recorded', e.recorded),
+      key('runs', ids(e.runs)),
+    ],
+    [section('Claim', e.claim), section('So what', e.soWhat)],
+  );
+
+// The research track's docs as the checker needs them: the framework's headings, and
+// each register's vocab lines verbatim (they are read, not hardcoded). Shaped like the
+// real READMEs — a `## … vocab` heading over each line, backticked prose after it — so
+// a test that deletes a line meets what the real doc would leave behind.
+const vocabSection = (label, words) =>
+  `## ${label}\n\n${label}: ${words.map((w) => `\`${w}\``).join(' / ')}.\n\nWhat each \`word\` means.\n`;
+const RESEARCH_DOCS = {
+  'docs/research/README.md':
+    '# Research\n\n## The three kinds\n\n## The loop\n\n## Stats discipline\n\n## Confidence labels\n',
+  'docs/research/experiments/README.md':
+    '# Experiments\n\n' +
+    vocabSection('Status vocab', ['proposed', 'active', 'answered', 'abandoned', 'deferred', 'played-out']) + '\n' +
+    vocabSection('Kind vocab', ['test', 'measure', 'probe']) + '\nThe header keys: `id`, `kind`, `feeds`.\n',
+  'docs/research/runs/README.md':
+    '# Runs\n\n' + vocabSection('Status vocab', ['answered', 'inconclusive', 'abandoned', 'retracted']),
+  'docs/research/findings/README.md':
+    '# Findings\n\n' +
+    vocabSection('Status vocab', ['current', 'retracted']) + '\n' +
+    vocabSection('Confidence vocab', ['replicated', 'significant', 'directional']) + '\nThe header keys: `id`, `confidence`, `runs`.\n',
+};
 
 // Rendered as text, not just written to disk: the eval harness feeds these exact
 // files to a model as context. One renderer means the state a model reasons about
@@ -227,8 +350,10 @@ const renderD = (d) =>
  * them* — a fixture that omitted them would be testing a different contract than the
  * real docs have. The bugs, assumptions and decisions registers are only written when
  * they have entries — pass `bugs: []` with `bugsReadme: true` for an empty bug register.
+ * The research track is written when `research` is given, as `{ experiments, runs,
+ * findings }` (any may be omitted).
  */
-export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false, assumptions = [], decisions = [], nextUp = ['P1'] } = {}) {
+export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false, assumptions = [], decisions = [], research = null, nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
       '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
@@ -248,6 +373,13 @@ export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false
   if (decisions.length) {
     files['docs/decisions/README.md'] = '# Decisions\n\nStatus vocab: `open` / `decided` / `superseded`.\n';
     for (const d of decisions) files[`docs/decisions/${d.id}.md`] = renderD(d);
+  }
+  // `research: {}` adopts the track with every register empty.
+  if (research) {
+    Object.assign(files, RESEARCH_DOCS);
+    for (const e of research.experiments ?? []) files[`docs/research/experiments/${e.id}.md`] = renderX(e);
+    for (const e of research.runs ?? []) files[`docs/research/runs/${e.id}.md`] = renderR(e);
+    for (const e of research.findings ?? []) files[`docs/research/findings/${e.id}.md`] = renderF(e);
   }
   return files;
 }

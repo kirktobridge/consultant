@@ -102,7 +102,8 @@ let graph = null;
 let failed = null;
 const headers = new Map();
 try {
-  const files = lines(git('ls-tree', '-r', '--name-only', BASE, '--', ...REGISTERS.map((r) => r.dir)));
+  // docs/research whole: the graph's experiments, and the framework that adopts the track.
+  const files = lines(git('ls-tree', '-r', '--name-only', BASE, '--', ...REGISTERS.map((r) => r.dir), 'docs/research'));
   blobs(files.map((f) => `${BASE}:${f}`)).forEach((text, n) => {
     mkdirSync(dirname(join(tmp, files[n])), { recursive: true });
     writeFileSync(join(tmp, files[n]), text ?? '');
@@ -275,7 +276,7 @@ try { report.looseEnds = JSON.parse(audit.stdout).findings; } catch { report.loo
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
-const KIND = { product: 'feature', bugs: 'bug', assumptions: 'assumption', decisions: 'decision' };
+const KIND = { product: 'feature', bugs: 'bug', assumptions: 'assumption', decisions: 'decision', experiments: 'experiment' };
 const why = (b) => `${b.id} (${KIND[b.register] ?? b.register}, ${b.status}${b.waitingOnYou ? ', waiting on you' : ''}): ${b.title}`;
 const readyTags = (x) => [
   x.bug ? `${x.severity ?? 'unrated'} bug — picked up before the queue` : x.queued ? `queued #${x.queued}` : 'not queued',

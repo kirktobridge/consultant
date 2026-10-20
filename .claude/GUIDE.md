@@ -165,7 +165,9 @@ Nothing installs: Node 18+ and nothing else.
 `waiting_on:` headers and prints what can start now (no open blocker; most-unblocking
 first, counting everything downstream), the chain behind each blocked entry, and the
 blockers that name no entry — a decision `waiting_on: user` — which it lists but cannot
-follow, so they never hold an entry out of "start now".
+follow, so they never hold an entry out of "start now". An experiment a decision waits
+on blocks it like any entry; runs and findings are records, never blockers, so they
+are not graphed.
 
 `--graph --json` is the contract other tools read, the same shape as photocull's
 `doc_check.py --graph --json`, so one renderer serves both. `tests/graph.test.mjs`
@@ -183,7 +185,7 @@ included, and `open` says whether the entry's status is an open one in its regis
 }
 ```
 
-Graph registers: `product` / `bugs` / `assumptions` / `decisions`.
+Graph registers: `product` / `bugs` / `assumptions` / `decisions` / `experiments`.
 
 Graph fields: `depends_on` / `waiting_on`.
 
@@ -268,6 +270,7 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 | `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `docs/bugs/`, `docs/decisions/`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship (you decide; it records) | **main only** |
 | `docs/assumptions/` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
+| `docs/research/` (experiments, runs, findings) | the research skill, from P13 R1; until then, shape enforced by the schema check | anywhere |
 | `src/`, `tests/` | /implement | branch |
 | *(nothing tracked — scratchpad scripts, gitignored eval runs)* | /verify, /triage, /eval | — |
 | `docs/SPEC.md`, `docs/dev_notes/` | **you** (human-only, hook-enforced) | — |

@@ -67,6 +67,19 @@ waiting_on: user
 what forced the question, and what rests on it.
 ```
 
+A decision that waits on an experiment (an `X#` in `waiting_on:`, from
+[../research/](../research/README.md)) also carries, before that experiment runs:
+
+```markdown
+## Decision rule
+
+the metric, the threshold, and what each side of it means.
+```
+
+The experiment names the decision back in its `feeds:`. The schema check holds both
+while they are open: the rule exists, and the two sides name each other. A rule written
+after the numbers fits the numbers.
+
 On decide, flip `status: decided`, add `decided: YYYY-MM-DD` and `leads_to:` to the
 header, and add the sections:
 
@@ -86,9 +99,10 @@ what would make this worth revisiting.
 
 The header is strict, as in the backlog. The keys are `id` (must match the file
 name), `title`, `status`, `raised`, `waiting_on` (required while open: IDs it waits on,
-and/or `user`), `decided` (the date it was taken), `leads_to` (the `P#` that carries it
+an experiment's `X#` among them, and/or `user`), `decided` (the date it was taken), `leads_to` (the `P#` that carries it
 forward, or `—` for no change) and `superseded_by` (the `D-n` that replaced it).
-Required sections: `Options` always; `Decided`, `Why` and `Reopen if` once decided.
+Required sections: `Options` always; `Decision rule` while open and waiting on an
+`X#`; `Decided`, `Why` and `Reopen if` once decided.
 
 `leads_to:` is how a decision's consequence gets an owner (LESSONS
 [L2](../LESSONS.md)). Because it is a header field, the schema check reads the status

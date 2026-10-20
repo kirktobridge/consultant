@@ -46,7 +46,10 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
-import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, parseQueue, idsOf, dependencyGraph } from './entries.mjs';
+import {
+  BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
+  loadRegister, parseQueue, idsOf, dependencyGraph,
+} from './entries.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -133,7 +136,81 @@ const REGISTERS = [
     dated: 'raised',
     closed: 'decided',
   },
+  // ── The research track (P13) ──
+  // Ported from photocull's FRAMEWORK.md; docs/research/README.md is the framework.
+  // Every research register may be empty — a finding or a run seeded before anything
+  // ran would be invented — so the guard against a parser gone quiet is the entry
+  // count below, plus tests that feed each rule known-bad input (LESSONS L3). What
+  // may NOT be missing is the structure: see "the research track is all there".
+  {
+    ...EXPERIMENTS,
+    kind: 'experiments',
+    research: true,
+    open: new Set(['proposed', 'active']),
+    terminal: new Set(['answered', 'abandoned', 'deferred', 'played-out']),
+    always: ['Objective'],
+    whileOpen: ['Method', 'Cost / risk'],
+    whileOpenKeys: ['kind'],
+    vocabKeys: { kind: 'Kind vocab' },
+    // What each kind owes before it runs. A test gates a change, so it feeds a decision
+    // whose rule is written first; a measure plans its precision; a probe its budget.
+    byKind: {
+      test: { keys: ['feeds'], sections: ['Hypothesis', 'Power'] },
+      measure: { keys: [], sections: ['Precision'] },
+      probe: { keys: [], sections: ['Budget'] },
+    },
+    // A closed experiment names the run that closed it. `deferred` ran nothing yet.
+    onStatus: Object.fromEntries(['answered', 'abandoned', 'played-out'].map((s) => [s, { keys: ['closed', 'runs'], sections: [] }])),
+    // Header keys that must name at least one entry when present (`—` is not enough),
+    // and the register each ID-list key points into.
+    mustName: ['feeds', 'runs'],
+    refs: { feeds: DECISIONS, runs: RUNS },
+    // An `active` experiment is collecting data now: like a claimed build, it may not
+    // rest on an open assumption or decision.
+    claimed: ['active'],
+    mayBeEmpty: true,
+    dated: 'drafted',
+    closed: 'closed',
+    closedBy: new Set(['answered', 'abandoned', 'played-out']),
+  },
+  {
+    ...RUNS,
+    kind: 'runs',
+    research: true,
+    // A run is a record, not work: nothing about it is open. Its status is its outcome.
+    open: new Set(),
+    terminal: new Set(['answered', 'inconclusive', 'abandoned', 'retracted']),
+    always: ['Measured under', 'Results', 'Read'],
+    whileOpen: [],
+    alwaysKeys: ['experiment', 'ran'],
+    mustName: ['experiment'],
+    refs: { experiment: EXPERIMENTS },
+    mayBeEmpty: true,
+    graph: false,
+    dated: 'ran',
+  },
+  {
+    ...FINDINGS,
+    kind: 'findings',
+    research: true,
+    open: new Set(['current']),
+    terminal: new Set(['retracted']),
+    always: ['Claim', 'So what'],
+    whileOpen: [],
+    // Every finding — a retracted one too — says how strongly it is held and which
+    // logged run it came from.
+    alwaysKeys: ['confidence', 'runs', 'recorded'],
+    vocabKeys: { confidence: 'Confidence vocab' },
+    mustName: ['runs'],
+    refs: { runs: RUNS },
+    mayBeEmpty: true,
+    graph: false,
+    dated: 'recorded',
+  },
 ];
+
+// The framework's own structure: the headings the registers' rules are explained under.
+const FRAMEWORK_SECTIONS = ['The three kinds', 'The loop', 'Stats discipline', 'Confidence labels'];
 
 // Open entries in these registers gate what depends on them: an entry resting on one
 // may sit in the pool, but may not be queued or claimed.
@@ -184,7 +261,7 @@ if (!run) {
       /* unparseable → treat as a no-op, never block an unrelated edit */
     }
     const norm = `/${file.replaceAll('\\', '/')}`;
-    run = REGISTERS.some((r) => norm.includes(`/${r.dir}/`));
+    run = REGISTERS.some((r) => norm.includes(`/${r.dir}/`)) || norm.endsWith(`/${RESEARCH_FRAMEWORK}`);
     // Check the checkout the edit landed in. In a worktree session the hook still
     // runs from the launch checkout (A-7), which would validate main's copy.
     if (run) ROOT = checkoutOf(file, ROOT);
@@ -199,10 +276,15 @@ if (!run) process.exit(0);
  * Status vocabulary is read *from the register's README* — the backtick-quoted
  * words in its "Status vocab:" line — not hardcoded here. A doc that documents
  * its own vocabulary and a checker that reads it cannot drift apart.
+ *
+ * The line itself, `<label>:` at the start of a line — not the label anywhere. A
+ * `## Status vocab` heading, or a sentence naming the vocab, would otherwise stand in
+ * for a deleted line and harvest whatever backticked words follow, so a README that
+ * lost its vocabulary would still pass (P13 R0's /verify found exactly that).
  */
 function sectionVocab(text, label = 'Status vocab') {
   const out = new Set();
-  const m = text.match(new RegExp(`${label}\\b[\\s\\S]{0,600}`, 'i'));
+  const m = text.match(new RegExp(`^${label}:[\\s\\S]{0,600}`, 'im'));
   if (!m) return out;
   // A vocab list may wrap across lines, so consume consecutive token-bearing
   // lines; stop at the first gap after tokens have started, so an explanatory
@@ -235,6 +317,35 @@ const bullets = (lines) => (lines ?? []).filter((l) => /^[-*]\s+\S/.test(l));
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
+
+// — the research track is all there, or not adopted —
+// Like any register, a project that has not adopted the track has none of it. But one
+// part present and another missing is a doc gone astray, and a register that is absent
+// passes exactly like one with nothing to report — so once any of it exists, all of it
+// must, with its structure: the framework's headings here, each register's vocab lines
+// below. Zero entries is fine; a missing doc is not.
+{
+  const research = REGISTERS.filter((r) => r.research);
+  const framework = readIf(RESEARCH_FRAMEWORK);
+  const present = research.filter((r) => loaded.some((l) => l.reg === r));
+  if (framework !== null || present.length) {
+    if (framework === null) fail(`${RESEARCH_FRAMEWORK}: missing — the research track's framework, which its registers are held to`);
+    else {
+      for (const s of FRAMEWORK_SECTIONS) {
+        if (!new RegExp(`^## ${s}\\s*$`, 'm').test(framework)) fail(`${RESEARCH_FRAMEWORK}: no \`## ${s}\` section`);
+      }
+    }
+    for (const r of research) if (!present.includes(r)) fail(`${r.dir}/: missing — the research track has its other docs, so it needs this one`);
+  }
+}
+
+/** A required header key: present, and naming an entry where the register says it must. */
+const requireKey = (e, b, key, who) => {
+  if (!e.header[key]) fail(`${e.file}: ${who} has no \`${key}:\` in the header`);
+  else if (b.mustName?.includes(key) && idsOf(e, key).length === 0) {
+    fail(`${e.file}: ${who} has \`${key}: ${e.header[key]}\` — it must name at least one entry`);
+  }
+};
 
 // Every ID in the queue. The queue is documented as the *dependency-ready* head,
 // which is what gives assumption blocking its severity tiers below.
@@ -309,9 +420,18 @@ for (const { reg: b, entries } of loaded) {
     for (const s of b.never ?? []) {
       if (e.sections.has(s)) fail(`${e.file}: ${e.id} carries **${s}** — a ${b.kind.replace(/s$/, '')} entry never does`);
     }
+    for (const key of b.alwaysKeys ?? []) requireKey(e, b, key, e.id);
     if (!b.open.has(e.status ?? '')) continue;
     for (const s of b.whileOpen) {
       if (!e.sections.has(s)) fail(`${e.file}: open ${e.id} missing **${s}**`);
+    }
+    // What this kind owes before it runs (docs/research/README.md, "The three kinds").
+    const k = e.header.kind;
+    const owes = b.byKind?.[k];
+    if (!owes) continue;
+    for (const key of owes.keys) requireKey(e, b, key, `open ${e.id} (${k})`);
+    for (const s of owes.sections) {
+      if (!e.sections.has(s)) fail(`${e.file}: open ${e.id} (${k}) missing **${s}**`);
     }
   }
 
@@ -340,10 +460,16 @@ for (const { reg: b, entries } of loaded) {
   // one written this morning — which is how an entry gets built against a premise
   // two other entries had already voided. The date is what makes the premise gate
   // *affordable*: re-verify the old ones rather than all of them.
+  // A record dated on every entry (a run's `ran:`, a finding's `recorded:`) may never be
+  // in the future either: a run dated ahead is a run that hasn't happened.
+  const datedAlways = b.alwaysKeys?.includes(b.dated);
   for (const e of entries) {
-    if (!b.open.has(e.status ?? '')) continue;
+    if (!datedAlways && !b.open.has(e.status ?? '')) continue;
     const d = e.header[b.dated];
-    if (!d) { fail(`${e.file}: open ${e.id} has no \`${b.dated}: YYYY-MM-DD\``); continue; }
+    if (!d) {
+      if (!datedAlways) fail(`${e.file}: open ${e.id} has no \`${b.dated}: YYYY-MM-DD\``); // else requireKey reported it
+      continue;
+    }
     if (d > today) fail(`${e.file}: ${e.id} is ${b.dated} in the future (${d})`);
   }
 
@@ -411,7 +537,7 @@ for (const { reg: b, entries } of loaded) {
         continue;
       }
       if (dep.status !== 'open') continue;
-      const claimed = e.status === 'in-progress' || e.status === 'partial';
+      const claimed = (b.claimed ?? []).includes(e.status);
       if (!claimed && !queued.has(e.id)) continue; // parked in the pool — fine
       const isDecision = depId.startsWith('D-');
       fail(
@@ -435,27 +561,36 @@ for (const { reg: b, entries } of loaded) {
     // A dependency no other check reads: the gate above owns `A-n`/`D-n`, and the graph
     // block below owns the backlog's own `P#` edges. Everything else dangles here.
     for (const id of idsOf(e, 'depends_on')) {
+      // A build never waits on research directly: an experiment informs a decision, and
+      // the build rests on that. The build tools could not resolve one anyway.
+      if ((b.kind === 'product' || b.kind === 'bugs') && [EXPERIMENTS, RUNS, FINDINGS].some((r) => r.idPattern.test(id))) {
+        fail(`${e.file}: ${e.id} depends on ${id} — a build never rests on research directly; depend on the decision it feeds`);
+        continue;
+      }
       if (GATING.test(id) || (b.kind === 'product' && b.idPattern.test(id))) continue;
       if (!byId.has(id)) fail(`${e.file}: ${e.id} depends on ${id}, which has no entry`);
     }
-    for (const key of ['waiting_on', 'leads_to', 'superseded_by', 'moved_to']) {
+    for (const key of ['waiting_on', 'leads_to', 'superseded_by', 'moved_to', 'feeds', 'runs', 'experiment']) {
       for (const id of idsOf(e, key)) {
         if (!byId.has(id)) fail(`${e.file}: ${e.id} ${key} ${id}, which has no entry`);
       }
     }
-    if (b.whileOpenKeys && b.open.has(e.status ?? '')) {
-      for (const key of b.whileOpenKeys) {
-        if (!e.header[key]) fail(`${e.file}: open ${e.id} has no \`${key}:\` in the header`);
+    // An ID-list key points into one register: an experiment feeds decisions, a finding
+    // cites runs. The ID type alone would accept any register's ID.
+    for (const [key, target] of Object.entries(b.refs ?? {})) {
+      for (const id of idsOf(e, key)) {
+        if (!target.idPattern.test(id)) fail(`${e.file}: ${e.id} \`${key}:\` must name ${target.dir.split('/').pop()}, not ${id}`);
       }
+    }
+    if (b.whileOpenKeys && b.open.has(e.status ?? '')) {
+      for (const key of b.whileOpenKeys) requireKey(e, b, key, `open ${e.id}`);
     }
     if (b.closedBy && e.header[b.closed] && !b.closedBy.has(e.status ?? '')) {
       fail(`${e.file}: ${e.id} is \`${e.status}\` but carries \`${b.closed}:\` — only a ${[...b.closedBy].join('/')} entry has that date`);
     }
     const owes = b.onStatus?.[e.status ?? ''];
     if (!owes) continue;
-    for (const key of owes.keys) {
-      if (!e.header[key]) fail(`${e.file}: ${e.status} ${e.id} has no \`${key}:\` in the header`);
-    }
+    for (const key of owes.keys) requireKey(e, b, key, `${e.status} ${e.id}`);
     for (const s of owes.sections) {
       if (!e.sections.has(s)) fail(`${e.file}: ${e.status} ${e.id} missing **${s}**`);
     }
@@ -512,6 +647,67 @@ for (const { reg: b, entries } of loaded) {
             `write what the spike found into its **Resolution**, then sweep the entries ` +
             `that were blocked on it. A finding nobody wrote down is inventory.`,
         );
+      }
+    }
+  }
+}
+
+// — research names its other side: the rule comes first, and each pointer is answered —
+//
+// Whether a result is good enough to act on is the decision's call, written on the
+// decision as its `## Decision rule` before the run (photocull's M2: a threshold chosen
+// after the numbers fits the numbers). An open experiment's fed decisions carry the rule
+// whatever their status — a decided one gets no new rule after the fact — and, while
+// both are open, the experiment's `feeds:` and the decision's `waiting_on:` must agree,
+// or one of them is an obligation nobody on the other side knows about (LESSONS L2).
+for (const { reg, entries } of loaded) {
+  for (const e of entries) {
+    // A closed experiment and the runs it names point at each other, like feeds and
+    // waiting_on: closing on a run that answered another question is closing on nothing.
+    if (reg.kind === 'experiments') {
+      for (const rId of idsOf(e, 'runs')) {
+        const r = byId.get(rId);
+        if (r && RUNS.idPattern.test(rId) && !idsOf(r, 'experiment').includes(e.id)) {
+          fail(`${e.file}: ${e.id} runs ${rId}, but ${rId}'s \`experiment:\` doesn't name ${e.id} — an experiment closes on a run of its own question.`);
+        }
+      }
+    }
+    // A finding held on evidence that was withdrawn is not held.
+    if (reg.kind === 'findings' && reg.open.has(e.status ?? '')) {
+      const runs = idsOf(e, 'runs').filter((id) => byId.has(id));
+      if (runs.length && runs.every((id) => byId.get(id).status === 'retracted')) {
+        fail(`${e.file}: current ${e.id} rests only on retracted runs (${runs.join(', ')}) — retract it, or cite the run that replaced them.`);
+      }
+    }
+    if (!reg.open.has(e.status ?? '')) continue;
+    if (reg.kind === 'experiments') {
+      for (const dId of idsOf(e, 'feeds')) {
+        const d = byId.get(dId);
+        if (!d || !DECISIONS.idPattern.test(dId)) continue;
+        if (!d.sections.has('Decision rule')) {
+          fail(
+            `${e.file}: ${e.id} feeds ${dId}, which has no **Decision rule** — write the rule on ${dId} ` +
+              `before the run: the metric, the threshold, and what each side of it means.`,
+          );
+        }
+        if (d.status === 'open' && !idsOf(d, 'waiting_on').includes(e.id)) {
+          fail(`${e.file}: ${e.id} feeds ${dId}, but ${dId}'s \`waiting_on:\` doesn't name ${e.id} — an experiment and the decision it feeds name each other.`);
+        }
+      }
+    }
+    if (reg.kind === 'decisions') {
+      const xs = idsOf(e, 'waiting_on').filter((id) => EXPERIMENTS.idPattern.test(id));
+      if (xs.length && !e.sections.has('Decision rule')) {
+        fail(
+          `${e.file}: open ${e.id} waits on an experiment (${xs.join(', ')}) but has no **Decision rule** — ` +
+            `write it before the run: the metric, the threshold, and what each side of it means.`,
+        );
+      }
+      for (const xId of xs) {
+        const x = byId.get(xId);
+        if (x && !idsOf(x, 'feeds').includes(e.id)) {
+          fail(`${e.file}: open ${e.id} waits on ${xId}, but ${xId}'s \`feeds:\` doesn't name ${e.id} — an experiment and the decision it feeds name each other.`);
+        }
       }
     }
   }
@@ -609,13 +805,15 @@ function graph() {
   const entries = [];
   const edges = [];
   const prose = [];
+  const inGraph = new Set(loaded.filter((l) => l.reg.graph !== false).flatMap((l) => l.entries.map((e) => e.id)));
   for (const { reg, entries: es } of loaded) {
+    if (reg.graph === false) continue;
     for (const e of es) {
       if (!e.id) continue;
       entries.push({ id: e.id, register: reg.kind, status: e.status, open: reg.open.has(e.status ?? ''), title: e.header.title ?? '' });
       for (const field of GRAPH_FIELDS) {
         for (const id of idsOf(e, field)) {
-          if (byId.has(id) && id !== e.id) edges.push({ from: id, to: e.id, field });
+          if (inGraph.has(id) && id !== e.id) edges.push({ from: id, to: e.id, field });
         }
         // `user` is the one non-ID a header may name (`waiting_on:`): a blocker with
         // no entry to follow, so it is listed, never chased.

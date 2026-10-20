@@ -408,7 +408,8 @@ describe('every skill handoff points at a skill that exists', () => {
     const bad = [];
     for (const doc of ['README.md', '.claude/GUIDE.md', 'CLAUDE.md', 'PORTING.md']) {
       const t = read(join(REPO, doc));
-      for (const m of t.matchAll(/\/(triage|implement|verify|land|ship|checkpoint|eval|research)\b/g)) {
+      // Not after a path segment: `docs/research/` is a directory, not the skill.
+      for (const m of t.matchAll(/(?<![\w.-])\/(triage|implement|verify|land|ship|checkpoint|eval|research)\b/g)) {
         const name = m[1];
         if (SKILLS.includes(name)) continue;
         // /research is deliberately named as the thing the retired measurement-track variant has.

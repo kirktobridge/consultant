@@ -35,7 +35,7 @@ import { join } from 'node:path';
 // ── The registers ────────────────────────────────────────────────────────────
 // PORTING: adjust directories and ID namespaces; keep the shapes.
 
-const ID = /^(P\d+|B\d+|A-\d+|D-\d+)$/;
+const ID = /^(P\d+|B\d+|A-\d+|D-\d+|X\d+|R-\d+|F\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Value types. Each returns an error message, or null when the value is good.
@@ -128,6 +128,59 @@ export const BUGS = {
   },
 };
 
+// The research track (P13): questions a test can't answer, answered from data. Three
+// registers, one per document kind photocull keeps — what we intend to measure, what was
+// run, and what we now believe. They are not part of the build loop's REGISTERS: nothing
+// here is claimed, queued or built. The schema check reads them; /research (P13 R1)
+// writes them. docs/research/README.md is the framework they are held to.
+export const EXPERIMENTS = {
+  dir: 'docs/research/experiments',
+  readme: 'docs/research/experiments/README.md',
+  idPattern: /^X\d+$/,
+  keys: {
+    id: 'id',
+    title: 'text',
+    status: 'word',
+    kind: 'word',
+    drafted: 'date',
+    feeds: 'ids',
+    depends_on: 'ids',
+    runs: 'ids',
+    closed: 'date',
+  },
+};
+
+// Append-only: a wrong run stays, marked `retracted`, rather than being rewritten.
+export const RUNS = {
+  dir: 'docs/research/runs',
+  readme: 'docs/research/runs/README.md',
+  idPattern: /^R-\d+$/,
+  keys: {
+    id: 'id',
+    title: 'text',
+    status: 'word',
+    ran: 'date',
+    experiment: 'ids',
+  },
+};
+
+export const FINDINGS = {
+  dir: 'docs/research/findings',
+  readme: 'docs/research/findings/README.md',
+  idPattern: /^F\d+$/,
+  keys: {
+    id: 'id',
+    title: 'text',
+    status: 'word',
+    confidence: 'word',
+    recorded: 'date',
+    runs: 'ids',
+  },
+};
+
+/** The research track's framework: its presence means the track is adopted. */
+export const RESEARCH_FRAMEWORK = 'docs/research/README.md';
+
 export const REGISTERS = [BACKLOG, BUGS, ASSUMPTIONS, DECISIONS];
 
 // The registers /implement builds from: a feature (`P#`) or a bug fix (`B#`). Assumptions
@@ -143,14 +196,17 @@ export const registerOf = (id) => REGISTERS.find((r) => r.idPattern.test(id)) ??
 /**
  * Whether a dependency has stopped holding what depends on it — /implement's DEPENDS
  * GATE, in one place so every script that applies it agrees (P32). A `P#` must be
- * `shipped` (not `partial`), a `B#` `fixed`; an assumption or decision holds only
- * while `open`. `status` is the dependency's, or null when it has no entry: a dangling
+ * `shipped` (not `partial`), a `B#` `fixed`, an `X#` closed; an assumption or decision
+ * holds only while `open`. `status` is the dependency's, or null when it has no entry: a dangling
  * ref is the schema check's to report, and it is not met.
  */
 export function dependencyMet(id, status) {
   if (!status) return false;
   if (BACKLOG.idPattern.test(id)) return status === 'shipped';
   if (BUGS.idPattern.test(id)) return status === 'fixed';
+  // A decision waiting on an experiment is held until the experiment closes — answered,
+  // or given up on. A `deferred` one has not run, so it still holds.
+  if (EXPERIMENTS.idPattern.test(id)) return ['answered', 'abandoned', 'played-out'].includes(status);
   return status !== 'open';
 }
 
