@@ -112,6 +112,8 @@ docs/
   bugs/                       what's broken, one file per B# ← written only by /ship
   assumptions/                unverified assumptions, one file per A-n — no single pen
   decisions/                  the product owner's choices, one file per D-n ← written only by /ship
+  research/                   questions answered from data: the framework, experiments (X#),
+                              runs (R-n, append-only) and findings (F#)
   LESSONS.md                  the expensive failures, each with the rule it bought
   dev_notes/OPEN_IDEAS.md     your raw dump              ← human-only, hook-blocked
 scripts/

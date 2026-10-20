@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
-import { P, A, D, B, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles, REPO } from './helpers/fixture.mjs';
+import { P, A, D, B, X, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles, REPO } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -47,6 +47,20 @@ describe('status.mjs tells the owner why each blocked item is blocked', () => {
 
     const t = status(dir).stdout;
     assert.match(t, /P2 .*\n\s+waits on P1 \(feature, proposed\).*\n\s+which rests on A-1 \(assumption, open\): the API returns pages/);
+  });
+
+  // P13 R0. The research track reaches the report: a decision waiting on an experiment
+  // is held by it until it closes, and that reads through to what rests on the decision.
+  test('an experiment holds the decision waiting on it, and what rests on that decision', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { dependsOn: ['D-1'] })],
+      decisions: [D('D-1', { waitingOn: 'X1', decisionRule: 'adopt if ≥ 60%.' })],
+      research: { experiments: [X('X1', { title: 'how often does it happen', feeds: ['D-1'] })] },
+      nextUp: [],
+    });
+    const p1 = report(dir).blocked.find((b) => b.id === 'P1');
+    assert.deepEqual(p1.roots.map((w) => [w.id, w.register]), [['X1', 'experiments']]);
+    assert.match(status(dir).stdout, /X1 \(experiment, proposed\): how often does it happen/);
   });
 
   test('a decision waiting on the owner is listed as waiting on them, with what it holds back', () => {

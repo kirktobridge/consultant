@@ -14,7 +14,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, B, A, D, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
+import { P, B, A, D, X, R, F, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -626,7 +626,10 @@ describe('identity and ID hygiene', () => {
 // one added to its config later is covered without anyone adding a test for it.
 describe('only the header is read: prose about a field is never the field', () => {
   const fields = JSON.parse(run('backlog-schema-check.mjs', ['--fields']).stdout);
-  const fileIn = (dir) => `${dir}/${{ 'docs/backlog': 'P1', 'docs/bugs': 'B1', 'docs/assumptions': 'A-1', 'docs/decisions': 'D-1' }[dir]}.md`;
+  const fileIn = (dir) => `${dir}/${{
+    'docs/backlog': 'P1', 'docs/bugs': 'B1', 'docs/assumptions': 'A-1', 'docs/decisions': 'D-1',
+    'docs/research/experiments': 'X1', 'docs/research/runs': 'R-1', 'docs/research/findings': 'F1',
+  }[dir]}.md`;
 
   // Drop the section from the one entry in `rel`, and add a prose section that names
   // it in every shape it used to be written in.
@@ -648,12 +651,18 @@ describe('only the header is read: prose about a field is never the field', () =
     assert.ok(fields['docs/assumptions'].required.includes('Assumption'));
     assert.ok(fields['docs/decisions'].required.includes('Options'));
     assert.ok(fields['docs/backlog'].keys.includes('depends_on'));
+    assert.ok(fields['docs/research/experiments'].required.includes('Objective'));
+    assert.ok(fields['docs/research/runs'].required.includes('Read'));
+    assert.ok(fields['docs/research/findings'].required.includes('Claim'));
   });
 
   for (const [regDir, { required }] of Object.entries(fields)) {
     for (const label of required) {
       test(`${regDir}: naming ${label} in prose does not count as carrying it`, () => {
-        const dir = project({ backlog: [P('P1')], bugs: [B('B1')], assumptions: [A('A-1')], decisions: [D('D-1')] });
+        const dir = project({
+          backlog: [P('P1')], bugs: [B('B1')], assumptions: [A('A-1')], decisions: [D('D-1')],
+          research: { experiments: [X('X1')], runs: [R('R-1')], findings: [F('F1')] },
+        });
         passes(dir); // the fixture is valid before the section is taken away
         proseOnly(dir, fileIn(regDir), label);
         fails(dir, new RegExp(`missing \\*\\*${label}\\*\\*`));
@@ -838,5 +847,282 @@ describe('the queue file holds the queue and nothing else', () => {
     const dir = project();
     patch(dir, 'docs/backlog/QUEUE.md', '— queued.', '— queued, for a reason\n   that runs onto a second line.');
     passes(dir);
+  });
+});
+
+// P13 R0. The research track: experiments (X#), runs (R-n), findings (F#), held to the
+// framework in docs/research/README.md. Every register may be empty — a seeded finding
+// would be invented — so these cases are what prove the rules still bite (L3).
+describe('research track', () => {
+  // A test experiment, the decision it feeds carrying its rule, each naming the other.
+  const gated = (x = {}, d = {}) => ({
+    decisions: [D('D-1', { waitingOn: 'X1', decisionRule: 'adopt B if it wins ≥ 60% of disagreements.', ...d })],
+    research: {
+      experiments: [X('X1', {
+        kind: 'test', feeds: ['D-1'], precision: null,
+        hypothesis: 'B wins: it reads the signal A ignores.', power: 'n = 80 detects 60% vs 50%.', ...x,
+      })],
+    },
+  });
+  // An answered experiment, its run, and a finding citing it: the whole loop closed.
+  const closed = ({ x = {}, r = {}, f = {} } = {}) => ({
+    research: {
+      experiments: [X('X1', { status: 'answered', closed: '2026-08-02', runs: ['R-1'], ...x })],
+      runs: [R('R-1', r)],
+      findings: [F('F1', f)],
+    },
+  });
+
+  describe('structure: zero entries is fine, a missing doc is not', () => {
+    test('an adopted track with every register empty passes, and its registers are counted', () => {
+      const o = passes(project({ research: {} }));
+      assert.match(o, /OK \(1 entries across 4 register\(s\)\)/, 'the research registers were not loaded');
+    });
+
+    test('a project that has not adopted the track passes', () => {
+      passes(project());
+    });
+
+    test('registers without the framework fail', () => {
+      const dir = project({ research: {} });
+      rmSync(join(dir, 'docs/research/README.md'));
+      fails(dir, /docs\/research\/README\.md: missing/);
+    });
+
+    test('the framework without a register fails', () => {
+      const dir = project({ research: {} });
+      rmSync(join(dir, 'docs/research/runs'), { recursive: true });
+      fails(dir, /docs\/research\/runs\/: missing/);
+    });
+
+    test('a framework missing one of its sections fails', () => {
+      const dir = project({ research: {} });
+      patch(dir, 'docs/research/README.md', '## Stats discipline', '## Stats');
+      fails(dir, /no `## Stats discipline` section/);
+    });
+
+    test('a register README with no status vocab fails', () => {
+      const dir = project({ research: {} });
+      patch(dir, 'docs/research/findings/README.md', 'Status vocab:', 'Statuses:');
+      fails(dir, /docs\/research\/findings\/README\.md: no documented status vocabulary resolved/);
+    });
+
+    test('no Kind vocab, or no Confidence vocab, fails', () => {
+      const dir = project({ research: {} });
+      patch(dir, 'docs/research/experiments/README.md', 'Kind vocab:', 'Kinds:');
+      patch(dir, 'docs/research/findings/README.md', 'Confidence vocab:', 'Labels:');
+      const o = fails(dir, /no documented Kind vocab resolved/);
+      assert.match(o, /no documented Confidence vocab resolved/);
+    });
+
+    // /verify found the heading standing in for a deleted line, and harvesting the
+    // backticked prose below it: an empty register then passed with no vocabulary.
+    for (const [rel, label] of [
+      ['docs/research/experiments/README.md', 'Kind vocab'],
+      ['docs/research/findings/README.md', 'Confidence vocab'],
+      ['docs/research/runs/README.md', 'Status vocab'],
+    ]) {
+      test(`deleting the ${label} line under its heading fails, even with the register empty`, () => {
+        const dir = project({ research: {} });
+        const f = join(dir, rel);
+        writeFileSync(f, readFileSync(f, 'utf8').replace(new RegExp(`^${label}: .*\\n`, 'm'), ''));
+        fails(dir, label === 'Status vocab' ? /runs\/README\.md: no documented status vocabulary resolved/ : new RegExp(`no documented ${label} resolved`));
+      });
+    }
+  });
+
+  describe('experiments: what each kind owes', () => {
+    test('a measure with its precision passes', () => {
+      passes(project({ research: { experiments: [X('X1')] } }));
+    });
+
+    test('an open experiment with no kind fails', () => {
+      fails(project({ research: { experiments: [X('X1', { kind: null })] } }), /open X1 has no `kind:` in the header/);
+    });
+
+    test('a kind outside the vocab fails', () => {
+      fails(project({ research: { experiments: [X('X1', { kind: 'trial' })] } }), /kind "trial" for X1 not in vocab/);
+    });
+
+    test('a measure with no Precision fails', () => {
+      fails(project({ research: { experiments: [X('X1', { precision: null })] } }), /open X1 \(measure\) missing \*\*Precision\*\*/);
+    });
+
+    test('a probe with no Budget fails', () => {
+      fails(project({ research: { experiments: [X('X1', { kind: 'probe', precision: null })] } }), /open X1 \(probe\) missing \*\*Budget\*\*/);
+    });
+
+    test('a test with no Hypothesis, or no Power, fails', () => {
+      const o = fails(project(gated({ hypothesis: null })), /open X1 \(test\) missing \*\*Hypothesis\*\*/);
+      assert.doesNotMatch(o, /Power/);
+      fails(project(gated({ power: null })), /open X1 \(test\) missing \*\*Power\*\*/);
+    });
+
+    test('an open experiment with no Method fails', () => {
+      fails(project({ research: { experiments: [X('X1', { method: null })] } }), /open X1 missing \*\*Method\*\*/);
+    });
+  });
+
+  // Accept: "A test experiment without a pre-registered decision rule is rejected by
+  // `npm run check:docs`" — which is `backlog-schema-check.mjs --all`, what `schema()`
+  // runs. Every way a test can lack one.
+  describe('a test runs only against a rule written first', () => {
+    test('a test feeding a decision that carries its rule, each naming the other, passes', () => {
+      passes(project(gated()));
+    });
+
+    test('a test that feeds nothing fails', () => {
+      fails(project({ research: { experiments: [X('X1', { kind: 'test', precision: null, hypothesis: 'h.', power: 'p.' })] } }),
+        /open X1 \(test\) has `feeds: —` — it must name at least one entry/);
+    });
+
+    test('a test with no feeds key at all fails', () => {
+      fails(project(gated({ feeds: null }, { waitingOn: 'user' })), /open X1 \(test\) has no `feeds:` in the header/);
+    });
+
+    test('a test feeding a decision with no Decision rule fails, from both sides', () => {
+      const o = fails(project(gated({}, { decisionRule: null })), /X1 feeds D-1, which has no \*\*Decision rule\*\* — write the rule on D-1 before the run/);
+      assert.match(o, /open D-1 waits on an experiment \(X1\) but has no \*\*Decision rule\*\*/);
+    });
+
+    test('a test feeding something other than a decision fails', () => {
+      fails(project(gated({ feeds: ['P1'] }, { waitingOn: 'user' })), /X1 `feeds:` must name decisions, not P1/);
+    });
+
+    test('a test feeding a decision that does not exist fails', () => {
+      fails(project(gated({ feeds: ['D-9'] }, { waitingOn: 'user' })), /X1 feeds D-9, which has no entry/);
+    });
+  });
+
+  // P10 handed this over: an experiment and the decision it feeds name each other.
+  describe('feeds and waiting_on name each other', () => {
+    test('an experiment feeding a decision that does not wait on it fails', () => {
+      fails(project(gated({}, { waitingOn: 'user' })), /X1 feeds D-1, but D-1's `waiting_on:` doesn't name X1/);
+    });
+
+    test('a decision waiting on an experiment that does not feed it fails', () => {
+      fails(project(gated({ feeds: [], kind: 'measure', precision: 'n.' })), /open D-1 waits on X1, but X1's `feeds:` doesn't name D-1/);
+    });
+
+    test('a measure a decision waits on owes the rule too', () => {
+      fails(project(gated({ kind: 'measure', precision: 'n.' }, { decisionRule: null })), /X1 feeds D-1, which has no \*\*Decision rule\*\*/);
+    });
+
+    test('a decided decision no longer needs the experiment to be named back', () => {
+      passes(project({
+        decisions: [decidedD('D-1', { decisionRule: 'adopt if ≥ 60%.' })],
+        research: { experiments: [X('X1', { feeds: ['D-1'] })] },
+      }));
+    });
+
+    test('an open test feeding a decided decision that has no rule fails — no rule after the fact', () => {
+      fails(project(gated({}, { ...decidedD('D-1'), decisionRule: null })), /X1 feeds D-1, which has no \*\*Decision rule\*\*/);
+    });
+  });
+
+  describe('closing: an experiment names its run', () => {
+    test('an answered experiment, its run, and a finding citing it pass', () => {
+      const o = passes(project(closed()));
+      assert.match(o, /OK \(4 entries across 4 register\(s\)\)/);
+    });
+
+    test('an answered experiment that names no run fails', () => {
+      fails(project(closed({ x: { runs: null } })), /answered X1 has no `runs:` in the header/);
+      fails(project(closed({ x: { runs: [] } })), /answered X1 has `runs: —` — it must name at least one entry/);
+    });
+
+    test('an answered experiment naming a run that does not exist fails', () => {
+      fails(project(closed({ x: { runs: ['R-1', 'R-7'] } })), /X1 runs R-7, which has no entry/);
+    });
+
+    test('a deferred experiment needs no run', () => {
+      passes(project({ research: { experiments: [X('X1', { status: 'deferred' })] } }));
+    });
+
+    test('an experiment closing on a run of another experiment fails', () => {
+      const dir = project({
+        research: {
+          experiments: [X('X1', { status: 'answered', closed: '2026-08-02', runs: ['R-1'] }), X('X2')],
+          runs: [R('R-1', { experiment: 'X2' })],
+        },
+      });
+      fails(dir, /X1 runs R-1, but R-1's `experiment:` doesn't name X1/);
+    });
+
+    test('an open experiment carrying a closed date fails', () => {
+      fails(project({ research: { experiments: [X('X1', { closed: '2026-08-02' })] } }), /X1 is `proposed` but carries `closed:`/);
+    });
+
+    test('an active experiment resting on an open assumption fails, like a claimed build', () => {
+      fails(project({ assumptions: [A('A-1')], research: { experiments: [X('X1', { status: 'active', dependsOn: ['A-1'] })] } }),
+        /X1 is `active` but depends on A-1, still `open`/);
+    });
+
+    test('a proposed experiment resting on one is parked, and passes', () => {
+      passes(project({ assumptions: [A('A-1')], research: { experiments: [X('X1', { dependsOn: ['A-1'] })] } }));
+    });
+  });
+
+  test('a build that depends on research directly fails — it depends on the decision', () => {
+    fails(project({ backlog: [P('P1', { dependsOn: ['X1'] })], research: { experiments: [X('X1')] } }),
+      /P1 depends on X1 — a build never rests on research directly/);
+  });
+
+  describe('runs', () => {
+    test('a run that names no experiment fails', () => {
+      fails(project(closed({ r: { experiment: null } })), /R-1 has no `experiment:` in the header/);
+    });
+
+    test('a run naming an experiment that does not exist fails', () => {
+      fails(project(closed({ r: { experiment: 'X4' } })), /R-1 experiment X4, which has no entry/);
+    });
+
+    test('a run naming something other than an experiment fails', () => {
+      fails(project(closed({ r: { experiment: 'P1' } })), /R-1 `experiment:` must name experiments, not P1/);
+    });
+
+    test('a run with no Read fails', () => {
+      fails(project(closed({ r: { read: null } })), /R-1 missing \*\*Read\*\*/);
+    });
+
+    test('a run dated in the future fails — it has not happened', () => {
+      fails(project(closed({ r: { ran: daysAhead(30) } })), /R-1 is ran in the future/);
+    });
+  });
+
+  // Accept: "Every finding carries a confidence label and names the logged run it came from."
+  describe('findings carry a confidence label and their run', () => {
+    test('a finding with no confidence fails', () => {
+      fails(project(closed({ f: { confidence: null } })), /F1 has no `confidence:` in the header/);
+    });
+
+    test('a confidence outside the vocab fails', () => {
+      fails(project(closed({ f: { confidence: 'high' } })), /confidence "high" for F1 not in vocab/);
+    });
+
+    test('a finding that names no run fails', () => {
+      fails(project(closed({ f: { runs: null } })), /F1 has no `runs:` in the header/);
+      fails(project(closed({ f: { runs: [] } })), /F1 has `runs: —` — it must name at least one entry/);
+    });
+
+    test('a finding citing a run that was never logged fails', () => {
+      fails(project(closed({ f: { runs: ['R-2'] } })), /F1 runs R-2, which has no entry/);
+    });
+
+    test('a finding citing an experiment instead of a run fails', () => {
+      fails(project(closed({ f: { runs: ['X1'] } })), /F1 `runs:` must name runs, not X1/);
+    });
+
+    test('a current finding resting only on retracted runs fails', () => {
+      fails(project(closed({ r: { status: 'retracted' } })), /current F1 rests only on retracted runs \(R-1\)/);
+    });
+
+    test('a retracted finding on a retracted run passes', () => {
+      passes(project(closed({ r: { status: 'retracted' }, f: { status: 'retracted' } })));
+    });
+
+    test('a retracted finding still carries both', () => {
+      fails(project(closed({ f: { status: 'retracted', confidence: null } })), /F1 has no `confidence:` in the header/);
+    });
   });
 });
