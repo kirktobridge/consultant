@@ -12,6 +12,7 @@
     "check:manifest": "node scripts/manifest.mjs --check",
     "audit": "node scripts/session-audit.mjs",
     "history": "node scripts/history.mjs",
+    "status": "node scripts/status.mjs",
     "eval": "node evals/run.mjs",
     "prepare": "node scripts/install-hooks.mjs",
     "install-git-hooks": "node scripts/install-hooks.mjs"
