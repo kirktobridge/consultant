@@ -143,6 +143,21 @@ run all of them.
 
 ### 4. Verify + close
 - Run the full check suite (tests, typecheck, lint). Wrap long runs with `time`.
+- **REVIEW** — the loop's one point where the diff is reviewed, before /verify so
+  that /verify observes the reviewed code. `node scripts/review.mjs` decides it:
+  - **Exit 0 = required.** Run the harness's **/code-review** on the diff, and
+    **/security-review** too when it prints `security-review: warranted`. Fix each
+    finding that holds, then re-run the suite; one you leave, say why in the close
+    report. A finding outside this entry's Scope is discovered work (step 3): a new
+    entry, not a wider build.
+  - **Exit 1 = skippable** — the diff changes only Markdown. That is the whole rule;
+    "it's a small change" is not a skip. If it says *no changes* instead, you are
+    on the wrong branch or base, not done.
+  - **Exit 2 = it never ran.** Not a skip: fix what it names and run it again.
+
+  The close report carries one review line: the script's plain-output `review:`
+  line (not `--json`), and which
+  findings were fixed or left.
 - Run **/verify `<ID>`** — it drives the entry's `Accept:` criteria in the real app,
   not a flow guessed from the diff. A docs-only change has no app to drive: check
   each criterion directly (read the file, run the command it names) and say in the
@@ -157,8 +172,8 @@ run all of them.
   the verdict in its handshake.
   A bug closes the same way against its two sections: the `Repro`, re-run, as
   observed / not observed to still break, and the `Expected` as observed or not.
-- Commit on the feature branch, **with that per-criterion report in the commit
-  message** and the entry's ID in the subject (`feat: … (P#)`; a bug: `fix: … (B#)`). `npm run history`
+- Commit on the feature branch, **with that per-criterion report and the REVIEW
+  line in the commit message** and the entry's ID in the subject (`feat: … (P#)`; a bug: `fix: … (B#)`). `npm run history`
   finds an entry's commits by that ID, so a commit without it drops out of the
   record; and /land runs forked and reads git, not this conversation, and it is the
   report the user will be asked to accept against.
