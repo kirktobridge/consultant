@@ -15,6 +15,7 @@
 // Usage: node scripts/history.mjs [P#|B#] [--base <branch>]
 
 import { execFileSync } from 'node:child_process';
+import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -42,10 +43,10 @@ if (git('rev-parse', '--git-dir') === null) {
 }
 
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = baseArg || ['main', 'master', 'trunk'].find((b) => branches.includes(b)) || null;
+const BASE = baseArg || findTrunk(branches) || null;
 if (!BASE) {
   console.error(
-    `history: no integration branch found (looked for main/master/trunk among: ${branches.join(', ') || 'none'}).\n` +
+    `history: no integration branch found (looked for ${TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}).\n` +
       'Pass --base <branch>.',
   );
   process.exit(2);

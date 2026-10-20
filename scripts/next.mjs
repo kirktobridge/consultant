@@ -21,6 +21,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf, dependencyMet } from './entries.mjs';
+import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
 const baseIdx = argv.indexOf('--base');
@@ -43,8 +44,8 @@ const stop = (msg) => { console.error(`next: ${msg}`); process.exit(2); };
 
 if (git('rev-parse', '--git-dir') === null) stop(`not a git repository, or git refused it.${lastError ? ` git: ${lastError.split('\n')[0]}` : ''}`);
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = (baseIdx >= 0 ? argv[baseIdx + 1] : null) || ['main', 'master', 'trunk'].find((b) => branches.includes(b)) || null;
-if (!BASE || !branches.includes(BASE)) stop(`no integration branch found (looked for ${baseIdx >= 0 ? argv[baseIdx + 1] : 'main/master/trunk'} among: ${branches.join(', ') || 'none'}). Pass --base <branch>.`);
+const BASE = (baseIdx >= 0 ? argv[baseIdx + 1] : null) || findTrunk(branches) || null;
+if (!BASE || !branches.includes(BASE)) stop(`no integration branch found (looked for ${baseIdx >= 0 ? argv[baseIdx + 1] : TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}). Pass --base <branch>.`);
 
 // ── The registers, as they are on the integration branch ─────────────────────
 
