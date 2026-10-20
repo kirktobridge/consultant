@@ -14,7 +14,9 @@ from conversation state.
 **What to drive comes from the entry's `Accept:`, not the diff.** Take the backlog ID
 from the argument (`/verify P4`), or else from the branch name (`feat/p<#>-…`), and
 read the whole entry:
-`cat docs/backlog/<ID>.md`. Its
+`cat docs/backlog/<ID>.md`. A bug (`B#`, `feat/b<#>-…`) is `docs/bugs/<ID>.md`, and its
+two flows are its sections: run the `Repro` as the reporter gave it, and observe the
+`Expected`. Its
 `Accept` criteria are the flows — each is something the product owner said they could
 watch pass or fail, so drive *that*, in their terms. The diff (`git diff`/`git log`)
 plays a supporting role: it tells you where a criterion's flow lives, and what else the

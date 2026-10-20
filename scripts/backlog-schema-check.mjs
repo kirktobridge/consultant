@@ -289,6 +289,11 @@ for (const { reg: b, entries } of loaded) {
   for (const [key, label] of Object.entries(b.vocabKeys ?? {})) {
     const words = readme === null ? new Set() : sectionVocab(readme, label);
     if (words.size === 0) { fail(`${b.readme}: no documented ${label} resolved`); continue; }
+    // The order bugs are picked up in lives in entries.mjs; the words live here. Both
+    // must name the same vocabulary, most urgent first, or one of them is lying.
+    if (key === 'severity' && b.severity && [...words].join() !== b.severity.join()) {
+      fail(`${b.readme}: ${label} {${[...words].join(', ')}} is not the pick-up order in scripts/entries.mjs {${b.severity.join(', ')}} — change both together, most urgent first`);
+    }
     for (const e of entries) {
       const v = e.header[key];
       if (v && !words.has(v)) fail(`${e.file}: ${key} "${v}" for ${e.id} not in vocab {${[...words].join(', ')}}`);

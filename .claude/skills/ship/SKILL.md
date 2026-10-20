@@ -70,6 +70,7 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 | What shipped | Doc | Edit |
 |---|---|---|
 | Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
+| A bug fix landed | `docs/bugs/B#.md` | it stays `in-progress` (a bug has no milestones); `status: fixed` — **only on the user's word**, the same rule as `shipped` (below). A bug never enters `QUEUE.md`: every open bug is picked up before it (`scripts/next.mjs`). |
 | A spike landed (`resolves: A-n`) | `docs/assumptions/A-n.md` | write the assumption's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | An assumption was misfiled (a choice, our own code's behavior, a quantity) | `docs/assumptions/A-n.md` | `status: moved`, add `resolved:` and `moved_to:` (its new home, filed first), and a one-line `## Resolution` saying why it moved. Repoint the `depends_on:` of every open entry that named it. |
 | The user took a decision | `docs/decisions/D-n.md` | `status: decided`, add `decided: YYYY-MM-DD` and `leads_to:` (the `P#` that carries it, or `—`) to the header, and add `## Decided` (the choice), `## Why` and `## Reopen if`; drop `waiting_on:`. **Only on the user's word**, as with `shipped`: recording a choice they didn't make is the one edit here that invents product direction. |
@@ -101,7 +102,8 @@ work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly
 
 Every other edit here is bookkeeping; `shipped` is a verdict — *this is what I asked
 for* — and only the product owner can give it, because `Accept:` is their definition
-of done. So flip an entry to `shipped` only when **the user says so in this
+of done. A bug's `fixed` is the same verdict against its `Repro` and `Expected`, under
+the same rule. So flip an entry to `shipped` only when **the user says so in this
 conversation**, after seeing the per-criterion report ("mark P4 shipped", "yes, ship
 it"). None of these is the user saying so: /land handing you a merged branch, a green
 suite, every criterion observed, a commit message. Invoked from /land, or

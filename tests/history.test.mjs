@@ -74,6 +74,21 @@ describe('every entry', () => {
   });
 });
 
+describe('bugs (P5 R1)', () => {
+  test('a B# is found by its ID, through its feat/b<#>- merge too, and kept apart from P#', () => {
+    const { dir, g, commit } = lifecycle();
+    commit('docs: claim B2 in-progress');
+    g.checkout('feat/b2-the-fix', true);
+    commit('fix: the fix (B2)');
+    g.checkout('main');
+    g.sh(`git merge -q --no-ff feat/b2-the-fix -m "Merge branch 'feat/b2-the-fix'"`);
+    const r = history(dir, ['b2']);
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /## B2 — 3 commit\(s\)/);
+    assert.doesNotMatch(r.stdout, /P7/);
+  });
+});
+
 describe('unmerged branches', () => {
   test('are listed with their latest commit message', () => {
     const { dir, g, commit } = lifecycle();

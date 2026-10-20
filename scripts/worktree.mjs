@@ -1,4 +1,5 @@
 // worktree — give a claimed entry its own branch and worktree, off local main (P15 R1).
+// A bug (`B#`) gets one the same way as a feature (`P#`), from its own register (P5 R1).
 //
 // /implement used to leave this to the user: when to take a worktree, what to call the
 // branch, whether the claim was visible from it. Every one of those is decidable from
@@ -22,12 +23,12 @@
 // Exit: 0 created or resumed (last stdout line: `path: <abs>`) | 1 refused — a gate
 // failed, the message says which | 2 could not run (not a repo, no integration branch)
 //
-// Usage: node scripts/worktree.mjs start <P#> [--slug <slug>] [--base <branch>] [--json]
+// Usage: node scripts/worktree.mjs start <P#|B#> [--slug <slug>] [--base <branch>] [--json]
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { BACKLOG, parseEntry } from './entries.mjs';
+import { buildableRegister, parseEntry } from './entries.mjs';
 
 const argv = process.argv.slice(2);
 const flag = (name) => {
@@ -37,10 +38,11 @@ const flag = (name) => {
 const asJson = argv.includes('--json');
 const [cmd, rawId] = argv.filter((a, i) => !a.startsWith('--') && !['--slug', '--base'].includes(argv[i - 1]));
 
-const usage = 'usage: node scripts/worktree.mjs start <P#> [--slug <slug>] [--base <branch>] [--json]';
+const usage = 'usage: node scripts/worktree.mjs start <P#|B#> [--slug <slug>] [--base <branch>] [--json]';
 if (cmd !== 'start' || !rawId) { console.error(usage); process.exit(2); }
 const ID = rawId.toUpperCase();
-if (!/^P\d+$/.test(ID)) { console.error(`worktree: "${rawId}" is not a backlog id (P#).\n${usage}`); process.exit(2); }
+const REG = buildableRegister(ID);
+if (!REG) { console.error(`worktree: "${rawId}" is not a buildable id (P# or B#).\n${usage}`); process.exit(2); }
 
 // Same git invocation as session-audit: no shell, and the WSL/Windows ownership and
 // filemode workarounds, for the same reasons given there.
@@ -82,16 +84,17 @@ if (!BASE || !branches.includes(BASE)) {
 }
 
 // The claim, read from the integration branch — never the checked-out copy.
-const text = git('show', `${BASE}:${BACKLOG.dir}/${ID}.md`);
+const text = git('show', `${BASE}:${REG.dir}/${ID}.md`);
 if (text === null) done(1, 'refused', `${ID} has no entry on ${BASE} — untriaged ideas go to /triage first.`);
-const entry = parseEntry(text, BACKLOG.keys);
+const entry = parseEntry(text, REG.keys);
 const status = entry.header.status;
-if (!['in-progress', 'partial'].includes(status)) {
+if (!REG.claimed.includes(status)) {
   done(1, 'refused', `${ID} is \`${status}\` on ${BASE}, not claimed. Claim it on ${BASE} first (via /ship), then start its worktree — a worktree cut before the claim commit cannot see the claim.`);
 }
 
 // Existing work for this entry is resumed, not duplicated. The `-` keeps P1 from
-// matching P15's branch.
+// matching P15's branch. A bug's branch is `feat/b<#>-…` too: every script that finds an
+// entry from its branch reads the ID after `feat/`, whichever register it is in.
 const prefix = `feat/${ID.toLowerCase()}-`;
 const mine = branches.filter((b) => b.startsWith(prefix));
 if (mine.length > 1) {

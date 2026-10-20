@@ -20,7 +20,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
-import { REPO, tempDir, gitInit, P, renderFiles, writeFiles } from './helpers/fixture.mjs';
+import { REPO, tempDir, gitInit, P, B, renderFiles, writeFiles } from './helpers/fixture.mjs';
 
 // ── Corpus ───────────────────────────────────────────────────────────────────
 
@@ -236,14 +236,15 @@ describe('the orientation reads (P20)', () => {
     const dir = tempDir();
     writeFiles(dir, renderFiles({
       backlog: [P('P1', { notes: 'status: in-progress\nwas what the old grep matched.' }), P('P2', { status: 'in-progress' })],
+      bugs: [B('B1', { status: 'in-progress' }), B('B2')],
     }));
     gitInit(dir);
     const r = spawnSync('sh', ['-c', cmd], { cwd: dir, encoding: 'utf8' });
-    assert.equal(r.stdout, 'main:docs/backlog/P2.md:4:status: in-progress\n', r.stderr);
+    assert.equal(r.stdout, 'main:docs/backlog/P2.md:4:status: in-progress\nmain:docs/bugs/B1.md:4:status: in-progress\n', r.stderr);
   });
 
-  test('the queue read names the queue file', () => {
-    assert.match(implement, /`git show main:docs\/backlog\/QUEUE\.md`/);
+  test('with no ID, /implement asks next.mjs, which puts open bugs before the queue (P5 R1)', () => {
+    assert.match(implement, /\*\*No ID given\?\*\* Run `node scripts\/next\.mjs`/);
   });
 });
 

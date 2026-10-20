@@ -29,7 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BACKLOG, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
+import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -93,6 +93,9 @@ if (!BASE) {
 // shows up as a red check rather than as a quietly different audit.
 
 const backlog = loadRegister(ROOT, BACKLOG).entries;
+// What a branch can be building: a feature or a bug fix (P5 R1). Claims are audited
+// across both; spikes and dependents below stay the backlog's business.
+const buildable = [...backlog, ...loadRegister(ROOT, BUGS).entries];
 const assumptions = loadRegister(ROOT, ASSUMPTIONS).entries;
 const aById = new Map(assumptions.map((d) => [d.id, d]));
 const decisions = loadRegister(ROOT, DECISIONS).entries;
@@ -148,7 +151,8 @@ const gitMerged = (git('branch', '--merged', BASE, '--format=%(refname:short) %(
 const merged = gitMerged.filter(([, sha]) => !firstParent.has(sha)).map(([b]) => b);
 const fresh = gitMerged.filter(([, sha]) => firstParent.has(sha)).map(([b]) => b);
 
-for (const e of backlog.filter((x) => x.status === 'in-progress')) {
+for (const e of buildable.filter((x) => x.status === 'in-progress')) {
+  const bug = BUGS.idPattern.test(e.id);
   // A word match, not a substring: `includes('p1')` read feat/p18-… as P1's branch,
   // which hid an abandoned P1 claim behind any branch whose ID starts with 1.
   const names = new RegExp(`\\b${e.id}\\b`, 'i');
@@ -156,11 +160,13 @@ for (const e of backlog.filter((x) => x.status === 'in-progress')) {
   const onMerged = merged.some((b) => names.test(b));
   if (onUnmerged) continue; // legitimately in flight
   if (onMerged) {
-    add('warn', `${e.id} is \`in-progress\` but its branch is already merged into ${BASE}.`,
-      `If milestones remain, its \`partial\` flip was missed — run /ship on ${BASE}. If that was the last one, it awaits the user's acceptance: show them /land's per-criterion report and ask. \`shipped\` is their flip, never yours.`);
+    add('warn', `${e.id} is \`in-progress\` but its branch is already merged into ${BASE}.`, bug
+      ? `It awaits the user's acceptance: show them /land's per-criterion report and ask. \`fixed\` is their flip, never yours.`
+      : `If milestones remain, its \`partial\` flip was missed — run /ship on ${BASE}. If that was the last one, it awaits the user's acceptance: show them /land's per-criterion report and ask. \`shipped\` is their flip, never yours.`);
   } else {
-    add('warn', `${e.id} is \`in-progress\` but no branch names it.`,
-      'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up: clear it back to `proposed` via /ship. Resolve it — a stale claim is worse than no claim.');
+    add('warn', `${e.id} is \`in-progress\` but no branch names it.`, bug
+      ? 'Either the fix merged and awaits the user\'s acceptance (`fixed` is their flip — ask them), or this is an abandoned claim blocking another session from picking the bug up: clear it back to `open` via /ship. Resolve it — a stale claim is worse than no claim.'
+      : 'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up: clear it back to `proposed` via /ship. Resolve it — a stale claim is worse than no claim.');
   }
 }
 
@@ -186,7 +192,7 @@ for (const line of (git('worktree', 'list', '--porcelain') || '').split('\n')) {
   const m = line.match(/^branch refs\/heads\/(.+)$/);
   if (!m || m[1] === BASE) continue;
   const branch = m[1];
-  const id = (branch.match(/^feat\/(p\d+)-/i) || [])[1]?.toUpperCase();
+  const id = (branch.match(/^feat\/([pb]\d+)-/i) || [])[1]?.toUpperCase();
   // Between `merge` and `finish` the landing still holds the lock while /ship writes
   // its flips: merged, worktree present, and live. Not a leftover.
   const landing = lock?.owner === branch && lock.state === 'live';
@@ -194,9 +200,10 @@ for (const line of (git('worktree', 'list', '--porcelain') || '').split('\n')) {
     add('warn', `Worktree ${wtPath} is for ${branch}, which is already merged into ${BASE}.`,
       `Its landing never finished. From the main checkout: node scripts/land.mjs finish ${branch} (take the lock first if it isn't held: node scripts/land.mjs lock take ${branch}).`);
   } else if (id) {
-    const e = backlog.find((x) => x.id === id);
-    if (!e || !['in-progress', 'partial'].includes(e.status)) {
-      add('warn', `Worktree ${wtPath} is building ${id} (${branch}), but ${id} is ${e ? `\`${e.status}\`` : 'not in the backlog'} — its claim is gone.`,
+    const e = buildable.find((x) => x.id === id);
+    const claimed = BUGS.idPattern.test(id) ? BUGS.claimed : BACKLOG.claimed;
+    if (!e || !claimed.includes(e.status)) {
+      add('warn', `Worktree ${wtPath} is building ${id} (${branch}), but ${id} is ${e ? `\`${e.status}\`` : 'not in its register'} — its claim is gone.`,
         `Either re-claim ${id} via /ship and carry on, or, if the work is abandoned, ask the user before removing the worktree and branch: it may hold unmerged work.`);
     }
   }

@@ -748,6 +748,17 @@ describe('bugs', () => {
     fails(project({ backlog: [P('P1', { dependsOn: ['B9'] })], bugsReadme: true }), /P1 depends on B9, which has no entry/);
   });
 
+  test('a bug ranked into the queue fails, saying bugs go before it (P5 R1)', () => {
+    const o = fails(project({ bugs: [B('B1')], nextUp: ['P1', 'B1'] }), /QUEUE\.md:4: a bug is never ranked into the queue/);
+    assert.match(o, /scripts\/next\.mjs/);
+  });
+
+  test('a severity scale out of the pick-up order fails, naming both (P5 R1)', () => {
+    const dir = project({ bugs: [B('B1')] });
+    patch(dir, 'docs/bugs/README.md', '`critical` / `major`', '`major` / `critical`');
+    fails(dir, /Severity vocab \{major, critical, minor\} is not the pick-up order in scripts\/entries\.mjs \{critical, major, minor\}/);
+  });
+
   test('an in-progress bug resting on an open assumption fails', () => {
     fails(
       project({ bugs: [B('B1', { status: 'in-progress', dependsOn: ['A-1'] })], assumptions: [A('A-1')] }),

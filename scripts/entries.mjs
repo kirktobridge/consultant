@@ -61,6 +61,9 @@ export const BACKLOG = {
   readme: 'docs/backlog/README.md',
   queue: 'docs/backlog/QUEUE.md',
   idPattern: /^P\d+$/,
+  // The statuses a build may start or resume from: a feature mid-milestone sits
+  // `partial` between claims.
+  claimed: ['in-progress', 'partial'],
   keys: {
     id: 'id',
     title: 'text',
@@ -111,6 +114,10 @@ export const BUGS = {
   dir: 'docs/bugs',
   readme: 'docs/bugs/README.md',
   idPattern: /^B\d+$/,
+  claimed: ['in-progress'],
+  // Most urgent first. Every open bug is picked up before the queue, in this order,
+  // rather than being ranked into it (P5 R1) — so it lives in code, not in QUEUE.md.
+  severity: ['critical', 'major', 'minor'],
   keys: {
     id: 'id',
     title: 'text',
@@ -122,6 +129,13 @@ export const BUGS = {
 };
 
 export const REGISTERS = [BACKLOG, BUGS, ASSUMPTIONS, DECISIONS];
+
+// The registers /implement builds from: a feature (`P#`) or a bug fix (`B#`). Assumptions
+// and decisions are settled, not built.
+export const BUILDABLE = [BACKLOG, BUGS];
+
+/** The register a buildable ID (`P#` / `B#`) belongs to, or null. */
+export const buildableRegister = (id) => BUILDABLE.find((r) => r.idPattern.test(id)) ?? null;
 
 /** Files in a register directory that are not entries. */
 const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);
@@ -225,6 +239,10 @@ export function parseQueue(text) {
     const m = l.match(/^\d+\.\s+\*\*(P\d+)\*\*\s+—\s+\S/);
     if (m) { ids.push(m[1]); inItem = true; return; }
     if (inItem && /^\s+\S/.test(l)) return; // the item above, wrapped
+    if (/^\d+\.\s+\*\*B\d+\*\*/.test(l)) {
+      errors.push({ line: n + 1, msg: `a bug is never ranked into the queue — every open bug is picked up before it, by severity (scripts/next.mjs): "${l}"` });
+      return;
+    }
     errors.push({ line: n + 1, msg: `not a queue item (expected "N. **P#** — why"): "${l}"` });
   });
   return { ids, errors };

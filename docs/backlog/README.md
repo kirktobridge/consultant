@@ -103,6 +103,12 @@ if a queued ID is missing, terminal, or resting on an open assumption, or if it 
 (directly or through another entry) on an unshipped `P#` that isn't queued above it:
 "dependency-ready" is a claim the queue makes, so it has to be true.
 
+**Bugs never enter the queue** (P5, on the user's word, 2026-10-19). Every open,
+dependency-ready `B#` is picked up *before* the queue's head, most severe first, so
+ranking one against features would only hide it. `node scripts/next.mjs` gives the
+answer to "what next" with bugs included; a `B#` line in QUEUE.md fails the check
+(*mechanically enforced*).
+
 **Ranking is the agent's job, not the user's** (user decision, 2026-10-16). /ship
 ranks on every refresh by one rule: the dependency-ready entry that unblocks the most
 open entries goes first, counted transitively through the `depends_on` graph. Ties keep

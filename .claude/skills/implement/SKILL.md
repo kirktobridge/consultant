@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Build a specific product-backlog item (P#) from docs/backlog/ — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Writes code + tests only, never the backlog docs.
+description: Build a specific product-backlog item (P#) from docs/backlog/, or fix a bug (B#) from docs/bugs/ — check its dependencies, pick the milestone, branch, implement, test, and verify — then hand integration to /land (which runs /ship's doc flips on main). Use for "implement P4", "build the tutorial item", "pick up P3 R1", or /implement. Writes code + tests only, never the backlog docs.
 ---
 
 # Implement — build a product backlog item
@@ -11,7 +11,9 @@ on a feature branch. This skill **writes code and tests only** — every backlog
 edit goes through its owner: **/ship** owns the backlog and the architecture docs; the
 spec is human-owned.
 
-`<ID>` = a product id like `P4`, optionally with a milestone (`P3 R1`).
+`<ID>` = a product id like `P4`, optionally with a milestone (`P3 R1`), or a bug id
+like `B2` from [docs/bugs/](../../../docs/bugs/README.md). A bug runs the same steps;
+where they differ, the step says so.
 
 ## Steps
 
@@ -20,13 +22,16 @@ spec is human-owned.
 Each gate below exists because skipping it shipped something broken. They are cheap;
 run all of them.
 
-- **No ID given?** The queue — `git show main:docs/backlog/QUEUE.md` — is the ranked,
-  dependency-ready head; propose its first entry.
-- Find the entry: `cat docs/backlog/<ID>.md` — the whole file, never a fixed line
+- **No ID given?** Run `node scripts/next.mjs` and propose what it prints. Every open,
+  dependency-ready bug comes before the queue, most severe first; a bug is never
+  ranked into [QUEUE.md](../../../docs/backlog/QUEUE.md). With no bug ready, it gives the
+  queue's head. It reads main and skips claimed entries. Exit 1 means nothing is ready:
+  say so, with the bugs it lists as held.
+- Find the entry: `cat docs/backlog/<ID>.md` (a bug: `cat docs/bugs/<ID>.md`) — the whole file, never a fixed line
   count: entries run long, and a truncated read drops `Accept`, the half of the
   contract that comes last. No such file → it's an untriaged idea; bounce to
   **/triage**, don't invent an entry.
-- **CLAIM GATE:** `git grep -n -m1 "^status: " main -- docs/backlog/ | grep ":status: in-progress$"`
+- **CLAIM GATE:** `git grep -n -m1 "^status: " main -- docs/backlog/ docs/bugs/ | grep ":status: in-progress$"`
   first — **main's version, never the checked-out copy**: in a worktree the local
   files reflect when you branched, so they can miss a claim another session made since.
   (`-m1` reads each file's first `status:` line, which is its header's: an entry
@@ -38,11 +43,13 @@ run all of them.
   first claimant builds the shared piece.
 - **DEPENDS GATE:** read its header's `depends_on:`. A dependency that is an unshipped
   `P#` (directly or through another entry's `depends_on:`; only `shipped` counts, not
-  `partial` — the schema check refuses the claim the same way), an **`open` `A-n`**
+  `partial` — the schema check refuses the claim the same way), a `B#` not yet `fixed`,
+  an **`open` `A-n`**
   ([docs/assumptions/](../../../docs/assumptions/README.md)) or an **`open` `D-n`**
   ([docs/decisions/](../../../docs/decisions/README.md)) blocks the build — stop
   and tell the user what's blocking, unless the specific milestone is explicitly marked
-  unblocked. An open decision has one way forward: ask the user to take it, and have
+  unblocked. A bug gets this gate exactly as a feature does: severity buys it a place
+  ahead of the queue, never a way past an open assumption or decision. An open decision has one way forward: ask the user to take it, and have
   /ship record it. Building on a guess about which way they'll choose is building on
   an unverified figure.
   **Never build on an unverified figure.** An open assumption is a fact nobody has
@@ -115,6 +122,8 @@ run all of them.
   renegotiate the entry with the user (the rescope note lands in the entry via
   /ship), don't drift. Accept is the user's wording: never reinterpret a criterion
   into one the build happens to satisfy.
+- **A bug's contract is its `Repro` and `Expected`.** The reporter's steps must stop
+  reproducing, and what they expected must happen; nothing more gets built.
 - **The project's invariants govern** — don't re-derive them here. *PORTING: list your
   project's non-negotiable architectural rules in CLAUDE.md and reference them from
   this line; they belong in one place, not duplicated per skill.*
@@ -145,8 +154,10 @@ run all of them.
   rounding it up. A criterion that only the landing can show ("on main, …") is
   *not exercised — observable after landing*. /land observes it on main and gives
   the verdict in its handshake.
+  A bug closes the same way against its two sections: the `Repro`, re-run, as
+  observed / not observed to still break, and the `Expected` as observed or not.
 - Commit on the feature branch, **with that per-criterion report in the commit
-  message** and the entry's ID in the subject (`feat: … (P#)`). `npm run history`
+  message** and the entry's ID in the subject (`feat: … (P#)`; a bug: `fix: … (B#)`). `npm run history`
   finds an entry's commits by that ID, so a commit without it drops out of the
   record; and /land runs forked and reads git, not this conversation, and it is the
   report the user will be asked to accept against.
