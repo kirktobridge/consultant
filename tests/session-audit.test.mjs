@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { P, A, D, decidedD, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
+import { P, B, A, D, decidedD, REPO, project, gitInit, run, out, daysAgo, tempDir, cleanupAll } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -103,6 +103,22 @@ describe('claims that no longer match reality', () => {
     assert.match(r.stdout, /P1 is `in-progress` but no branch names it/);
     assert.match(r.stdout, /a stale claim is worse than no claim/);
     assert.match(r.stdout, /`shipped` once the user accepts it/);
+  });
+
+  test('an in-progress bug with no branch is a stale claim, cleared back to `open` (P5 R1)', () => {
+    const { dir } = repo({ bugs: [B('B1', { status: 'in-progress' })] });
+    const r = audit(dir);
+    assert.match(r.stdout, /B1 is `in-progress` but no branch names it/);
+    assert.match(r.stdout, /clear it back to `open`/);
+    assert.match(r.stdout, /`fixed` is their flip/);
+  });
+
+  test('a bug\'s feat/b<#>- branch counts as its claim being in flight (P5 R1)', () => {
+    const { dir, g } = repo({ bugs: [B('B1', { status: 'in-progress' })] });
+    g.checkout('feat/b1-the-fix', true);
+    g.commitAll('work');
+    g.checkout('main');
+    assert.doesNotMatch(audit(dir).stdout, /B1 is `in-progress`/);
   });
 
   test('a branch for a longer ID does not hide an abandoned claim', () => {
@@ -250,6 +266,13 @@ describe('worktrees and the land lock left behind (P15 R3)', () => {
     writeLock(dir, 'feat/p1-thing', 1);
     const r = audit(dir);
     assert.doesNotMatch(r.stdout, /already merged into main/, out(r));
+  });
+
+  test('a worktree building a bug whose claim is gone is flagged too (P5 R1)', () => {
+    const { dir, g } = repo({ bugs: [B('B1')] });
+    const wt = addWorktree(g, 'feat/b1-the-fix');
+    execInWt(wt, 'work');
+    assert.match(audit(dir).stdout, /building B1 \(feat\/b1-the-fix\), but B1 is `open` — its claim is gone/);
   });
 
   test('a worktree building an entry whose claim is gone is flagged, and removing it is the user\'s call', () => {

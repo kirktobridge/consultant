@@ -13,7 +13,7 @@ import { spawnSync, execSync } from 'node:child_process';
 import { cpSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  REPO, P, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles,
+  REPO, P, B, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles,
 } from './helpers/fixture.mjs';
 
 after(cleanupAll);
@@ -226,6 +226,34 @@ describe('worktree.mjs start gives a claimed entry its own branch and worktree (
     const r = start(main, 'P3', '--json');
     assert.equal(r.code, 0, out(r));
     assert.equal(JSON.parse(r.stdout).action, 'created');
+  });
+
+  test('a claimed bug gets feat/b<#>-<slug>, read from docs/bugs/ (P5 R1)', () => {
+    const main = tempDir();
+    writeFiles(main, {
+      ...renderFiles({ bugs: [B('B2', { status: 'in-progress', title: 'Queue check passes empty' })] }),
+      '.gitignore': '.claude/worktrees/\n',
+    });
+    gitInit(main);
+    const r = start(main, 'B2');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(git1(pathLine(r), 'rev-parse --abbrev-ref HEAD'), 'feat/b2-queue-check-passes-empty');
+  });
+
+  test('an open bug is not claimed, and is refused like an unclaimed feature', () => {
+    const main = tempDir();
+    writeFiles(main, renderFiles({ bugs: [B('B2')] }));
+    gitInit(main);
+    const r = start(main, 'B2');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /B2 is `open` on main, not claimed/);
+  });
+
+  test('an id from a register nobody builds from is a usage error', () => {
+    const { main } = claimedRepo();
+    const r = start(main, 'A-3');
+    assert.equal(r.code, 2, out(r));
+    assert.match(r.stderr, /not a buildable id \(P# or B#\)/);
   });
 
   test('an id with no entry on main is refused toward /triage', () => {

@@ -30,6 +30,7 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { buildableRegister } from './entries.mjs';
 
 const STALE_MINUTES = 30;
 
@@ -232,8 +233,8 @@ const otherEntries = (rec, file) =>
   (git('log', '--merges', '--first-parent', '--format=%h %s', `${rec.oldBase}..${BASE}`) || '').split('\n').filter(Boolean)
     .filter((l) => (git('diff', '--name-only', `${l.split(' ')[0]}^1`, l.split(' ')[0], '--', file) || '') !== '')
     .map((l) => {
-      const id = (l.match(/feat\/(p\d+)-/i) || [])[1]?.toUpperCase();
-      return { merge: l, id: id || null, entry: id ? `docs/backlog/${id}.md` : null };
+      const id = (l.match(/feat\/([pb]\d+)-/i) || [])[1]?.toUpperCase();
+      return { merge: l, id: id || null, entry: id ? `${buildableRegister(id).dir}/${id}.md` : null };
     });
 
 /** Record this rebase step's conflicts; exit 3 for the session, or 4 if it can't resolve them. */

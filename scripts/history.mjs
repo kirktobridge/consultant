@@ -12,7 +12,7 @@
 //
 // Exit: 0 history printed | 1 the ID names no commit | 2 could not read history
 //
-// Usage: node scripts/history.mjs [P#] [--base <branch>]
+// Usage: node scripts/history.mjs [P#|B#] [--base <branch>]
 
 import { execFileSync } from 'node:child_process';
 
@@ -22,7 +22,7 @@ const baseIdx = argv.indexOf('--base');
 const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] : null;
 // The same -1 trap as session-audit: with no --base, baseIdx + 1 is 0, which would
 // skip the first argument — the ID, in the common case.
-const idArg = argv.find((a, i) => /^P\d+$/i.test(a) && !(baseIdx >= 0 && i === baseIdx + 1))?.toUpperCase() ?? null;
+const idArg = argv.find((a, i) => /^[PB]\d+$/i.test(a) && !(baseIdx >= 0 && i === baseIdx + 1))?.toUpperCase() ?? null;
 
 // safe.directory=*: Windows git refuses a repo inside WSL as another user's. The
 // reasoning is session-audit's: running this script already trusts this repository.
@@ -74,15 +74,15 @@ const commits = raw.split(RS).map((r) => r.replace(/^\n/, '')).filter(Boolean).m
     subject,
     body: body.split('\n').filter((l) => !TRAILER.test(l)).join('\n').trim(),
     // Case-insensitive so the merge of `feat/p16-…` counts; the word boundary keeps
-    // P16 from matching P160.
-    ids: [...new Set([...subject.matchAll(/\bp(\d+)\b/gi)].map((m) => `P${m[1]}`))],
+    // P16 from matching P160. Bugs (`B#`, `feat/b3-…`) are read the same way (P5 R1).
+    ids: [...new Set([...subject.matchAll(/\b([pb])(\d+)\b/gi)].map((m) => `${m[1].toUpperCase()}${m[2]}`))],
   };
 });
 
 const byId = new Map();
 for (const c of commits) for (const id of c.ids) (byId.get(id) ?? byId.set(id, []).get(id)).push(c);
 
-const ids = idArg ? [idArg] : [...byId.keys()].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+const ids = idArg ? [idArg] : [...byId.keys()].sort((a, b) => b[0].localeCompare(a[0]) || Number(a.slice(1)) - Number(b.slice(1)));
 const indent = (s, pad) => s.split('\n').map((l) => (l ? pad + l : l)).join('\n');
 
 for (const id of ids) {

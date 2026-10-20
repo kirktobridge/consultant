@@ -202,6 +202,16 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
     assert.match(x.stdout, /P2 .*docs\/backlog\/P2\.md/);
   });
 
+  test('when a bug fix landed the other side, its entry is named in docs/bugs/ (P5 R1)', () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 5, 'five, by this branch');
+    otherLands(r, 'b2-fix', 5, 'five, by the fix');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    const x = land(r.wts['p1-one'], 'rebase');
+    assert.equal(x.code, 3, out(x));
+    assert.match(x.stdout, /B2 .*docs\/bugs\/B2\.md/);
+  });
+
   test('a blended resolution passes the check, the rebase completes, and the record keeps it', () => {
     const r = repo();
     editLine(r.wts['p1-one'], 5, 'five, by this branch');
