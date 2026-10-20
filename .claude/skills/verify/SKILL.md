@@ -102,7 +102,8 @@ looks fine".
 ## Not this skill
 - Running the suite / typecheck / lint → that's /implement step 4's first bullet; do
   not duplicate it here.
-- Judging code quality → a code-review skill.
+- Judging code quality → /implement's REVIEW point, just before this skill: the
+  harness's /code-review, when `node scripts/review.mjs` says the diff needs it.
 - Merging or doc flips → **/land**, **/ship**.
 - Settling an assumption → that's a **spike** `P#` built through /implement. This
   skill observes *your change* working; a spike investigates something you didn't

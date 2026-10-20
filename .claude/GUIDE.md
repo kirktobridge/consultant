@@ -41,6 +41,11 @@ Takes one backlog entry (or one milestone of it) to verified code on a feature b
 Claims the entry `in-progress` on main first (via /ship) so parallel sessions see the
 claim; writes code + tests only, never the docs.
 
+Its close-out has the loop's one **review** point: after the suite, before /verify, the
+harness's `/code-review` reads the diff (and `/security-review`, when the diff touches
+a file that runs unasked or grants permissions — the list is `SECURITY` in the script). `node scripts/review.mjs` decides whether it
+runs: it may be skipped only when the diff changes nothing but Markdown.
+
 ```
 /implement P4
 pick up P3 R1
@@ -126,6 +131,7 @@ aren't — they run whether or not anyone remembers them.
 | `npm run check:docs` | the docs stay greppable — the schema every skill's grep depends on | in-session (PostToolUse hook) + `npm test` |
 | `node scripts/backlog-schema-check.mjs --graph` | what blocks what: open entries with no open blocker ranked by how much they unblock, the chain behind each blocked one, prose blockers ([below](#the-dependency-graph)) | /triage groom; any "what's next?" |
 | `node scripts/next.mjs` | what to build next, read from main: every open, dependency-ready bug before the queue, most severe first, then the queue's head | /implement with no ID |
+| `node scripts/review.mjs` | whether the diff gets /code-review (anything but Markdown changed) and /security-review (a file that runs unasked or grants permissions) | /implement's review point |
 | `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
 | `npm run check:manifest` | every tracked file is marked *suite* or *instance* (`scripts/manifest.mjs`), so the export knows what ships | `npm test` |
 | `npm run test:clean` | the suite passes in a clean export of itself, with none of this repo's entries | CI only (it doubles the suite's time) |
@@ -198,7 +204,7 @@ honest limits are in [evals/README.md](../evals/README.md).
 
 **Feature idea → shipped:**
 ```
-/triage <idea>  →  /implement P#  →  /verify  →  /land  →  you accept  →  /ship
+/triage <idea>  →  /implement P#  →  review  →  /verify  →  /land  →  you accept  →  /ship
 ```
 
 **Assumption discovered → settled:**
