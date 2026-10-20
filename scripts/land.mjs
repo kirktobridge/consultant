@@ -11,9 +11,15 @@
 //                                      local main; on a conflict, record each region
 //   continue                           check the session's resolution, then go on
 //   merge <branch> [--suite <cmd>]     in the main checkout: --no-ff merge, suite, and
-//                                      main put back if the suite is red
+//         [--adhoc <what>]             main put back if the suite is red. An `adhoc/`
+//         [--relates <ID,…>]           branch (P33) must say what it is: the merge
+//                                      carries `Ad-hoc:` and `Relates:` trailers
 //   finish <branch>                    remove worktree, branch, record and lock
 //   report <branch> [--json]           the conflicts resolved, for /land's report
+//
+// An ad-hoc branch has no entry, so nothing in the registers records that it happened.
+// The `Ad-hoc:` trailer is that record, which is why the merge refuses to run without
+// it; a `Relates:` ID that names nothing would be a record pointing nowhere.
 //
 // The resolution itself is judgement, so it stays with the session. What the script
 // holds it to is the took-one-side check: a conflicted region resolved to exactly one
@@ -30,17 +36,18 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { buildableRegister } from './entries.mjs';
+import { buildableRegister, registerOf } from './entries.mjs';
 
 const STALE_MINUTES = 30;
 
 const argv = process.argv.slice(2);
 const opt = (name) => {
   const i = argv.indexOf(name);
-  return i >= 0 ? argv[i + 1] ?? null : null;
+  const v = i >= 0 ? argv[i + 1] ?? null : null;
+  return v?.startsWith('--') ? null : v; // `--adhoc --suite x` has no value, not "--suite"
 };
 const asJson = argv.includes('--json');
-const pos = argv.filter((a, i) => !a.startsWith('--') && !['--wait', '--suite', '--base'].includes(argv[i - 1]));
+const pos = argv.filter((a, i) => !a.startsWith('--') && !['--wait', '--suite', '--base', '--adhoc', '--relates'].includes(argv[i - 1]));
 
 const die = (code, msg) => { (code === 0 ? console.log : console.error)(`land: ${msg}`); process.exit(code); };
 
@@ -337,6 +344,26 @@ function reportText(rec) {
   return lines.join('\n');
 }
 
+/** The `Ad-hoc:`/`Relates:` trailers an `adhoc/` branch's merge carries; '' for an entry's branch. */
+function adhocTrailers(branch) {
+  const what = (opt('--adhoc') ?? '').replace(/\s+/g, ' ').trim();
+  const relates = (opt('--relates') ?? '').split(/[\s,]+/).filter(Boolean).map((id) => id.toUpperCase());
+  if (!branch.startsWith('adhoc/')) {
+    if (argv.includes('--adhoc') || argv.includes('--relates')) {
+      die(1, `--adhoc and --relates are for adhoc/ branches. ${branch} lands as an entry, with its close report.`);
+    }
+    return '';
+  }
+  if (!what) die(1, `${branch} is ad-hoc, so its merge must say what it is: --adhoc "<what changed>". Nothing else records that it happened.`);
+  if (argv.includes('--relates') && !relates.length) die(1, '--relates needs at least one ID.');
+  const missing = relates.filter((id) => {
+    const reg = registerOf(id);
+    return !reg || !ok('cat-file', '-e', `${BASE}:${reg.dir}/${id}.md`);
+  });
+  if (missing.length) die(1, `--relates names ${missing.join(', ')}, which ${missing.length > 1 ? 'have' : 'has'} no entry in any register on ${BASE}.`);
+  return `Ad-hoc: ${what}${relates.length ? `\nRelates: ${[...new Set(relates)].join(', ')}` : ''}`;
+}
+
 function mergeCmd(branch) {
   if (inLinkedWorktree) die(1, 'merge runs in the main checkout. Leave the worktree first (ExitWorktree keep).');
   if (!branches.includes(branch)) die(1, `no branch ${branch}.`);
@@ -347,9 +374,10 @@ function mergeCmd(branch) {
   if (!ok('merge-base', '--is-ancestor', BASE, branch)) {
     die(1, `${branch} is not rebased onto the current ${BASE}. From its worktree: node scripts/land.mjs rebase`);
   }
+  const trailers = adhocTrailers(branch);
   const before = git('rev-parse', 'HEAD');
   const rep = reportText(readRecord(branch));
-  const msg = `Merge branch '${branch}'${rep ? `\n\n${rep}` : ''}`;
+  const msg = `Merge branch '${branch}'${rep ? `\n\n${rep}` : ''}${trailers ? `\n\n${trailers}` : ''}`;
   if (!ok('merge', '--no-ff', '-m', msg, branch)) {
     git('merge', '--abort');
     die(1, `merge failed although ${branch} was rebased onto ${BASE} — something moved ${BASE} without the lock. ${lastError.split('\n')[0]}`);
@@ -371,7 +399,8 @@ function mergeCmd(branch) {
     const tail = (failed.length ? failed : lines.filter((l) => l.trim()).slice(-15)).slice(0, 15).join('\n');
     die(1, `the suite is red on the merged result, so ${BASE} is back at ${before.slice(0, 7)}.\n${tail}`);
   }
-  die(0, `merged ${branch} into ${BASE} (${git('rev-parse', '--short', 'HEAD')}); suite green. Next: /ship's flips, then node scripts/land.mjs finish ${branch}`);
+  const next = trailers ? '' : '/ship\'s flips, then ';
+  die(0, `merged ${branch} into ${BASE} (${git('rev-parse', '--short', 'HEAD')}); suite green. Next: ${next}node scripts/land.mjs finish ${branch}`);
 }
 
 function finishCmd(branch) {
@@ -403,7 +432,7 @@ function reportCmd(branch) {
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 const [cmd, a, b] = pos;
-const usage = 'usage: land.mjs lock take|release|status <owner> [--wait s] | rebase | continue | merge <branch> [--suite cmd] | finish <branch> | report <branch> [--json]';
+const usage = 'usage: land.mjs lock take|release|status <owner> [--wait s] | rebase | continue | merge <branch> [--suite cmd] [--adhoc what] [--relates IDs] | finish <branch> | report <branch> [--json]';
 if (cmd === 'lock') await lockCmd(a, b);
 else if (cmd === 'rebase') rebaseCmd();
 else if (cmd === 'continue') continueCmd();

@@ -19,6 +19,11 @@
 //   - An entry that already has its branch is resumed, never duplicated — "continue
 //     P15" in a fresh session lands back in the same worktree.
 //
+// Ad-hoc work (P33), a change too small to be an entry, gets `adhoc/<slug>` the same
+// way, minus everything an entry supplies: no claim, no dependencies, no register. The
+// main-checkout, clean-tree and resume rules still hold; they protect the checkout, not
+// the backlog.
+//
 // The session then enters the printed path with EnterWorktree (`path:`), which is what
 // lets ExitWorktree `keep` hand it back to the main checkout for the landing (R2).
 //
@@ -26,6 +31,7 @@
 // failed, the message says which | 2 could not run (not a repo, no integration branch)
 //
 // Usage: node scripts/worktree.mjs start <P#|B#> [--slug <slug>] [--base <branch>] [--json]
+//        node scripts/worktree.mjs start --adhoc <slug> [--base <branch>] [--json]
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -35,16 +41,22 @@ import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet } from 
 const argv = process.argv.slice(2);
 const flag = (name) => {
   const i = argv.indexOf(name);
-  return i >= 0 ? argv[i + 1] ?? null : null;
+  const v = i >= 0 ? argv[i + 1] ?? null : null;
+  return v?.startsWith('--') ? null : v; // `--adhoc --json` has no slug; `json` is not one
 };
 const asJson = argv.includes('--json');
-const [cmd, rawId] = argv.filter((a, i) => !a.startsWith('--') && !['--slug', '--base'].includes(argv[i - 1]));
+const [cmd, rawId] = argv.filter((a, i) => !a.startsWith('--') && !['--slug', '--base', '--adhoc'].includes(argv[i - 1]));
 
-const usage = 'usage: node scripts/worktree.mjs start <P#|B#> [--slug <slug>] [--base <branch>] [--json]';
-if (cmd !== 'start' || !rawId) { console.error(usage); process.exit(2); }
-const ID = rawId.toUpperCase();
-const REG = buildableRegister(ID);
-if (!REG) { console.error(`worktree: "${rawId}" is not a buildable id (P# or B#).\n${usage}`); process.exit(2); }
+const usage = 'usage: node scripts/worktree.mjs start <P#|B#> [--slug <slug>] [--base <branch>] [--json]\n'
+  + '       node scripts/worktree.mjs start --adhoc <slug> [--base <branch>] [--json]';
+const slugify = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const ADHOC = argv.includes('--adhoc');
+if (cmd !== 'start' || (ADHOC ? rawId || argv.includes('--slug') : !rawId)) { console.error(usage); process.exit(2); }
+const adhocSlug = ADHOC ? slugify(flag('--adhoc')) : null;
+if (ADHOC && !adhocSlug) { console.error(`worktree: --adhoc needs a slug naming the change.\n${usage}`); process.exit(2); }
+const ID = ADHOC ? `adhoc/${adhocSlug}` : rawId.toUpperCase();
+const REG = ADHOC ? null : buildableRegister(ID);
+if (!ADHOC && !REG) { console.error(`worktree: "${rawId}" is not a buildable id (P# or B#).\n${usage}`); process.exit(2); }
 
 // Same git invocation as session-audit: no shell, and the WSL/Windows ownership and
 // filemode workarounds, for the same reasons given there.
@@ -85,6 +97,44 @@ if (!BASE || !branches.includes(BASE)) {
   done(2, 'error', `no integration branch found (looked for ${flag('--base') || 'main/master/trunk'} among: ${branches.join(', ') || 'none'}). Pass --base <branch>.`);
 }
 
+const worktrees = new Map(); // branch → path
+let wtPath = null;
+for (const line of (git('worktree', 'list', '--porcelain') || '').split('\n')) {
+  if (line.startsWith('worktree ')) wtPath = line.slice('worktree '.length);
+  else if (line.startsWith('branch refs/heads/')) worktrees.set(line.slice('branch refs/heads/'.length), wtPath);
+}
+
+// A worktree lives at .claude/worktrees/<branch after `feat/`>; an ad-hoc one keeps an
+// `adhoc-` prefix, so a slug can never land on an entry's directory.
+const pathFor = (branch) => join(top, '.claude', 'worktrees', branch.replace(/^feat\//, '').replace(/^adhoc\//, 'adhoc-'));
+
+/** Resume `branch` if it exists (giving it its worktree back if need be), else cut it off BASE. */
+function provision(branch, exists) {
+  const path = worktrees.get(branch) || pathFor(branch);
+  const what = ADHOC ? branch : `${ID} → ${branch}`;
+  const has = ADHOC ? `${branch} exists` : `${ID} already has ${branch}`;
+  if (exists) {
+    if (worktrees.has(branch)) done(0, 'resumed', `${has}; resuming its worktree.`, { branch, path });
+    if (existsSync(path)) done(1, 'refused', `${path} exists but is not ${branch}'s worktree. Move it aside, then re-run.`);
+    if (git('worktree', 'add', '-q', path, branch) === null) done(2, 'error', `git worktree add failed: ${lastError.split('\n')[0]}`);
+    done(0, 'resumed', `${has}; gave it a worktree again.`, { branch, path });
+  }
+  // A new branch. Same rule as /implement's clean-tree gate: a dirty main checkout is
+  // another task's live state, and the integration step will refuse it later anyway.
+  const dirty = git('status', '--porcelain');
+  if (dirty === null) done(2, 'error', `git status failed: ${lastError.split('\n')[0]}`);
+  if (dirty) {
+    done(1, 'refused', `the main checkout has uncommitted changes:\n${dirty.split('\n').map((l) => `  ${l}`).join('\n')}\nCommit them as their own unit (or ask whose they are) before starting ${ID}.`);
+  }
+  if (existsSync(path)) done(1, 'refused', `${path} already exists and is not a worktree of ${branch}. Move it aside, then re-run.`);
+  if (git('worktree', 'add', '-q', '-b', branch, path, BASE) === null) {
+    done(2, 'error', `git worktree add failed: ${lastError.split('\n')[0]}`);
+  }
+  done(0, 'created', `${what}, off local ${BASE} (${git('rev-parse', '--short', BASE)}).`, { branch, path });
+}
+
+if (ADHOC) provision(ID, branches.includes(ID));
+
 // The claim, read from the integration branch — never the checked-out copy.
 const text = git('show', `${BASE}:${REG.dir}/${ID}.md`);
 if (text === null) done(1, 'refused', `${ID} has no entry on ${BASE} — untriaged ideas go to /triage first.`);
@@ -117,41 +167,8 @@ const mine = branches.filter((b) => b.startsWith(prefix));
 if (mine.length > 1) {
   done(1, 'refused', `${ID} has ${mine.length} branches (${mine.join(', ')}). Which one is live is a judgement — delete the stale one, then re-run.`);
 }
+if (mine.length === 1) provision(mine[0], true);
 
-const worktrees = new Map(); // branch → path
-let wtPath = null;
-for (const line of (git('worktree', 'list', '--porcelain') || '').split('\n')) {
-  if (line.startsWith('worktree ')) wtPath = line.slice('worktree '.length);
-  else if (line.startsWith('branch refs/heads/')) worktrees.set(line.slice('branch refs/heads/'.length), wtPath);
-}
-
-if (mine.length === 1) {
-  const branch = mine[0];
-  const have = worktrees.get(branch);
-  if (have) done(0, 'resumed', `${ID} already has ${branch}; resuming its worktree.`, { branch, path: have });
-  const path = join(top, '.claude', 'worktrees', branch.slice('feat/'.length));
-  if (existsSync(path)) done(1, 'refused', `${path} exists but is not ${branch}'s worktree. Move it aside, then re-run.`);
-  if (git('worktree', 'add', '-q', path, branch) === null) done(2, 'error', `git worktree add failed: ${lastError.split('\n')[0]}`);
-  done(0, 'resumed', `${ID} already has ${branch}; gave it a worktree again.`, { branch, path });
-}
-
-// A new branch. Same rule as /implement's clean-tree gate: a dirty main checkout is
-// another task's live state, and the integration step will refuse it later anyway.
-const dirty = git('status', '--porcelain');
-if (dirty === null) done(2, 'error', `git status failed: ${lastError.split('\n')[0]}`);
-if (dirty) {
-  done(1, 'refused', `the main checkout has uncommitted changes:\n${dirty.split('\n').map((l) => `  ${l}`).join('\n')}\nCommit them as their own unit (or ask whose they are) before starting ${ID}.`);
-}
-
-const slug = (flag('--slug') || entry.header.title || '')
-  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-  .split('-').filter(Boolean).slice(0, 4).join('-');
+const slug = slugify(flag('--slug') || entry.header.title).split('-').filter(Boolean).slice(0, 4).join('-');
 if (!slug) done(1, 'refused', `${ID} has no title to name its branch after. Pass --slug <slug>.`);
-
-const branch = `${prefix}${slug}`;
-const path = join(top, '.claude', 'worktrees', branch.slice('feat/'.length));
-if (existsSync(path)) done(1, 'refused', `${path} already exists and is not a worktree of ${branch}. Move it aside, then re-run.`);
-if (git('worktree', 'add', '-q', '-b', branch, path, BASE) === null) {
-  done(2, 'error', `git worktree add failed: ${lastError.split('\n')[0]}`);
-}
-done(0, 'created', `${ID} → ${branch}, off local ${BASE} (${git('rev-parse', '--short', BASE)}).`, { branch, path });
+provision(`${prefix}${slug}`, false);

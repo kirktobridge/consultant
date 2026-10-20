@@ -341,6 +341,73 @@ describe('worktree.mjs refuses a claimed entry whose dependencies are unmet (P32
   });
 });
 
+// ── P33: ad-hoc work gets a worktree with no entry ──────────────────────────
+
+/** A main checkout with no registers at all: ad-hoc work needs none. */
+function bareRepo() {
+  const main = tempDir();
+  writeFiles(main, { '.gitignore': '.claude/worktrees/\n', 'README.md': 'x\n' });
+  return { main, ...gitInit(main) };
+}
+
+describe('worktree.mjs start --adhoc cuts adhoc/<slug> with no entry (P33)', () => {
+  test('it creates adhoc/<slug> and its worktree off local main, with no backlog or bug ID', () => {
+    const { main } = bareRepo();
+    const r = start(main, '--adhoc', 'fix-readme-typo');
+    assert.equal(r.code, 0, out(r));
+    const wt = pathLine(r);
+    assert.equal(wt, join(main, '.claude', 'worktrees', 'adhoc-fix-readme-typo'));
+    assert.equal(git1(wt, 'rev-parse --abbrev-ref HEAD'), 'adhoc/fix-readme-typo');
+    assert.equal(git1(wt, 'rev-parse HEAD'), git1(main, 'rev-parse main'));
+    assert.equal(git1(main, 'status --porcelain'), '');
+  });
+
+  test('the slug is lowercased and hyphenated, never cut short: it is the caller\'s own name', () => {
+    const { main } = bareRepo();
+    const r = start(main, '--adhoc', 'Reword  the GUIDE!', '--json');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(JSON.parse(r.stdout).branch, 'adhoc/reword-the-guide');
+  });
+
+  test('a second start resumes it, and a removed worktree is given back', () => {
+    const { main, sh } = bareRepo();
+    const wt = pathLine(start(main, '--adhoc', 'x'));
+    assert.equal(JSON.parse(start(main, '--adhoc', 'x', '--json').stdout).action, 'resumed');
+    sh(`git worktree remove "${wt}"`);
+    const r = start(main, '--adhoc', 'x', '--json');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(JSON.parse(r.stdout).path, wt);
+  });
+
+  test('the main-checkout rules still hold: a dirty tree and a linked worktree are refused', () => {
+    const { main } = bareRepo();
+    const wt = pathLine(start(main, '--adhoc', 'first'));
+    assert.match(start(wt, '--adhoc', 'second').stderr, /linked worktree/);
+    writeFileSync(join(main, 'stray.txt'), 'someone else\'s work');
+    const r = start(main, '--adhoc', 'second');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /uncommitted changes[\s\S]*stray\.txt/);
+  });
+
+  test('--adhoc with no slug, or with an ID as well, is a usage error', () => {
+    const { main } = bareRepo();
+    assert.equal(start(main, '--adhoc').code, 2);
+    assert.equal(start(main, '--adhoc', '!!!').code, 2);
+    assert.equal(start(main, 'P3', '--adhoc', 'x').code, 2);
+    assert.equal(start(main, '--adhoc', 'x', '--slug', 'y').code, 2);
+    // A flag right after --adhoc is the next flag, not a slug.
+    assert.equal(start(main, '--adhoc', '--json').code, 2);
+    assert.equal(git1(main, 'branch --list "adhoc/*"'), '');
+  });
+
+  test('an entry ID without --adhoc is still gated exactly as before', () => {
+    const { main } = bareRepo();
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /no entry on main.*\/triage/s);
+  });
+});
+
 describe('the repo is set up for the worktrees /implement makes (P15 R1)', () => {
   test('.claude/worktrees/ is gitignored, so the main checkout stays clean', () => {
     const r = spawnSync('git', ['check-ignore', '-q', '.claude/worktrees/p1-x/file'], { cwd: REPO });

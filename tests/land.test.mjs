@@ -8,7 +8,7 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execSync } from 'node:child_process';
-import { writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, chmodSync, mkdirSync } from 'node:fs';
 import { join, delimiter } from 'node:path';
 import { REPO, run, out, script, tempDir, cleanupAll, gitInit } from './helpers/fixture.mjs';
 
@@ -376,6 +376,110 @@ describe('merge from the main checkout, then clean up (P15 R2)', () => {
     assert.equal(git1(r.main, 'branch --list feat/p1-one'), '');
     assert.ok(!existsSync(lockFile(r.main)));
     assert.equal(land(r.main, 'report', 'feat/p1-one').code, 1);
+  });
+});
+
+// ── P33: an ad-hoc branch lands with a record instead of an entry ───────────
+
+/** A repo with one `adhoc/x` worktree holding a commit, and a P1 entry on main. */
+function adhocRepo() {
+  const r = repo([]);
+  mkdirSync(join(r.main, 'docs', 'backlog'), { recursive: true });
+  writeFileSync(join(r.main, 'docs', 'backlog', 'P1.md'), '---\nid: P1\n---\n');
+  r.commitAll('P1 entry');
+  const wt = join(r.main, '.claude', 'worktrees', 'adhoc-x');
+  r.sh(`git worktree add -q -b adhoc/x "${wt}" main`);
+  editLine(wt, 3, 'reworded');
+  return { ...r, wt };
+}
+/** Lock and rebase `adhoc/x` from its worktree, as the session does before /land. */
+const readied = (r) => {
+  assert.equal(land(r.wt, 'lock', 'take', 'adhoc/x').code, 0);
+  assert.equal(land(r.wt, 'rebase').code, 0);
+};
+
+describe('an adhoc/ branch lands through the lock, rebase, merge and suite (P33)', () => {
+  test('it lands: --no-ff merge with Ad-hoc and Relates trailers, suite run, worktree and branch removed', () => {
+    const r = adhocRepo();
+    readied(r);
+    const m = land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword line 3', '--relates', 'p1', '--suite', SUITE_OK);
+    assert.equal(m.code, 0, out(m));
+    assert.doesNotMatch(m.stdout, /\/ship/, 'an ad-hoc landing has no /ship flips to point at');
+    assert.equal(git1(r.main, 'log -1 "--format=%(trailers:key=Ad-hoc,valueonly)" main'), 'reword line 3');
+    assert.equal(git1(r.main, 'log -1 "--format=%(trailers:key=Relates,valueonly)" main'), 'P1');
+    assert.equal(git1(r.main, 'rev-list --count --merges main'), '1');
+    assert.equal(land(r.main, 'finish', 'adhoc/x').code, 0);
+    assert.doesNotMatch(git1(r.main, 'worktree list'), /adhoc-x/);
+    assert.equal(git1(r.main, 'branch --list adhoc/x'), '');
+    assert.ok(!existsSync(lockFile(r.main)));
+  });
+
+  test('Relates is optional', () => {
+    const r = adhocRepo();
+    readied(r);
+    assert.equal(land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword', '--suite', SUITE_OK).code, 0);
+    assert.equal(git1(r.main, 'log -1 "--format=%(trailers:key=Relates,valueonly)" main'), '');
+  });
+
+  test('without the Ad-hoc trailer the merge is refused, and main is untouched', () => {
+    const r = adhocRepo();
+    readied(r);
+    const before = git1(r.main, 'rev-parse main');
+    for (const extra of [[], ['--adhoc', '   '], ['--adhoc']]) {
+      const m = land(r.main, 'merge', 'adhoc/x', ...extra, '--suite', SUITE_OK);
+      assert.equal(m.code, 1, out(m));
+      assert.match(m.stderr, /--adhoc "<what changed>"/);
+    }
+    assert.equal(git1(r.main, 'rev-parse main'), before);
+  });
+
+  test('a Relates ID with no entry in any register is refused, naming it', () => {
+    const r = adhocRepo();
+    readied(r);
+    const before = git1(r.main, 'rev-parse main');
+    for (const ids of ['P1,P99', 'A-4', 'nonsense']) {
+      const m = land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword', '--relates', ids, '--suite', SUITE_OK);
+      assert.equal(m.code, 1, out(m));
+      assert.match(m.stderr, /no entry in any register/);
+    }
+    assert.match(land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword', '--relates', 'P1,P99').stderr, /P99/);
+    assert.equal(git1(r.main, 'rev-parse main'), before);
+  });
+
+  test('a red suite puts main back, as for any landing', () => {
+    const r = adhocRepo();
+    readied(r);
+    const before = git1(r.main, 'rev-parse main');
+    const m = land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword', '--suite', SUITE_RED);
+    assert.equal(m.code, 1, out(m));
+    assert.equal(git1(r.main, 'rev-parse main'), before);
+  });
+
+  test('the lock and the rebase are not skipped', () => {
+    const r = adhocRepo();
+    assert.match(land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword', '--suite', SUITE_OK).stderr, /lock/);
+    land(r.wt, 'lock', 'take', 'adhoc/x');
+    editLine(r.main, 9, 'main moved');
+    assert.match(land(r.main, 'merge', 'adhoc/x', '--adhoc', 'reword', '--suite', SUITE_OK).stderr, /rebase/);
+  });
+
+  test('an entry\'s branch cannot take the ad-hoc trailers', () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    land(r.wts['p1-one'], 'rebase');
+    const m = land(r.main, 'merge', 'feat/p1-one', '--adhoc', 'sneak it in', '--suite', SUITE_OK);
+    assert.equal(m.code, 1, out(m));
+    assert.match(m.stderr, /adhoc\/ branches.*close report/s);
+  });
+
+  test('/land skips the close report only for adhoc/, and keeps it for feat/ branches', () => {
+    const t = readFileSync(join(REPO, '.claude', 'skills', 'land', 'SKILL.md'), 'utf8');
+    assert.match(t, /The branch carries its \*\*per-criterion close report\*\*/);
+    assert.match(t, /No report →\s+stop/);
+    assert.match(t, /## An ad-hoc branch \(`adhoc\/<slug>`\)/);
+    assert.match(t, /land\.mjs merge <branch>\s+--adhoc "<what changed, one line>"/);
+    assert.match(t, /precondition holds as written for every `feat\/` branch/);
   });
 });
 

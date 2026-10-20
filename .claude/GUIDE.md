@@ -84,6 +84,14 @@ make the flip.
 land this branch
 ```
 
+**Ad-hoc work** (a prose rewrite, a doc fix, anything too small to be an entry) takes
+the same road without an entry: `node scripts/worktree.mjs start --adhoc <slug>` cuts
+`adhoc/<slug>` with no claim, you commit there, take the lock and rebase as
+/implement does, then `/land adhoc/<slug>`. It skips the close report, /ship's flips
+and your acceptance. In their place the merge commit carries an `Ad-hoc:` trailer
+saying what changed, and optionally `Relates:` for any entry it touched. land.mjs
+refuses the merge without `Ad-hoc:`, or with a `Relates:` ID that has no entry.
+
 ### /ship — "sync the docs"
 The pen for the tracked docs — nothing else writes the backlog (`docs/backlog/`),
 the decisions register (`docs/decisions/`), BUILD_ORDER.md, or ARCHITECTURE.md, and it
