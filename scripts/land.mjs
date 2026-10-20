@@ -384,12 +384,13 @@ function mergeCmd(branch) {
     die(1, `merge failed although ${branch} was rebased onto ${BASE} — something moved ${BASE} without the lock. ${lastError.split('\n')[0]}`);
   }
   const suite = opt('--suite') || 'npm test';
+  let suiteOut;
   try {
     // NODE_TEST_CONTEXT makes a nested `node --test` report to a parent runner and exit
     // 0 whatever happened. Inherited by accident, it would turn a red suite green.
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
-    execSync(suite, { cwd: top, env, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    suiteOut = execSync(suite, { cwd: top, env, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
   } catch (e) {
     git('reset', '--hard', before);
     // The node test runner marks each failing test with ✖ (and repeats them in its
@@ -401,7 +402,30 @@ function mergeCmd(branch) {
     die(1, `the suite is red on the merged result, so ${BASE} is back at ${before.slice(0, 7)}.\n${tail}`);
   }
   const next = trailers ? '' : '/ship\'s flips, then ';
-  die(0, `merged ${branch} into ${BASE} (${git('rev-parse', '--short', 'HEAD')}); suite green. Next: ${next}node scripts/land.mjs finish ${branch}`);
+  die(0, `merged ${branch} into ${BASE} (${git('rev-parse', '--short', 'HEAD')}); suite green (${suiteTotals(suiteOut)}). Next: ${next}node scripts/land.mjs finish ${branch}`);
+}
+
+/**
+ * The node test runner's totals from a green suite's output, for /land's report (B2).
+ * This run is the only one /land needs: a second `npm test` to read a count from can
+ * have its output filtered by whatever wraps the shell, and once did. Reads the spec
+ * reporter (`ℹ tests N`) and TAP (`# tests N`, the non-TTY default on older Node),
+ * through colour codes and CRLF. Several runner summaries (one per `node --test`) are
+ * summed; none at all is said plainly, never left as a silent gap.
+ */
+function suiteTotals(output) {
+  const text = String(output ?? '').replace(/\x1b\[[0-9;]*m/g, '');
+  const sum = { tests: 0, pass: 0, fail: 0, skipped: 0, todo: 0, cancelled: 0 };
+  let found = false;
+  for (const m of text.matchAll(/^(?:ℹ|#) (tests|pass|fail|skipped|todo|cancelled) (\d+)\r?$/gm)) {
+    sum[m[1]] += Number(m[2]);
+    if (m[1] === 'tests') found = true;
+  }
+  if (!found) return 'no test totals in its output';
+  // Skipped, todo and cancelled tests are the ones that make pass + fail fall short of
+  // tests; name them when there are any, so the shortfall is never unexplained.
+  const extra = ['skipped', 'todo', 'cancelled'].filter((k) => sum[k]).map((k) => `, ${sum[k]} ${k}`).join('');
+  return `${sum.tests} tests, ${sum.pass} pass, ${sum.fail} fail${extra}`;
 }
 
 function finishCmd(branch) {

@@ -71,6 +71,12 @@ landing, whatever the size of the change.
    merged result, and on red puts main back where it was — **main is never left
    broken**. A merge conflict here can't happen to a rebased branch under the lock.
    If it does, something moved main without the lock: say so.
+   Its green line carries the test runner's totals (`suite green (N tests, N pass,
+   0 fail)`, plus any skipped); those are the test totals your report gives. They
+   count the runner's tests only: the checks the suite runs after them have no count,
+   and the green line means they passed too. Don't run the suite again to get a
+   count: a wrapper around the shell can filter a second run's summary away (B2). If
+   the line says `no test totals in its output`, report exactly that.
 2. Red, or any refusal → `node scripts/land.mjs lock release <branch>` so the other
    sessions aren't held up, report exactly what failed and that main is untouched,
    and stop.
