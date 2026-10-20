@@ -30,15 +30,11 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
-import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
+import { trunkFromArgv } from './trunk.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
 const asJson = argv.includes('--json');
-// indexOf returns -1 when absent, and argv[-1 + 1] is argv[0] — which silently made
-// the next flag the branch name. Guard the lookup rather than the arithmetic.
-const baseIdx = argv.indexOf('--base');
-const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] : null;
 
 const findings = [];
 const add = (severity, what, action) => findings.push({ severity, what, action });
@@ -78,12 +74,11 @@ if (git('rev-parse', '--git-dir') === null) {
 // The integration branch. Guessing wrong would make every merge-state check lie, so
 // this resolves against branches that actually exist rather than assuming `main`.
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = baseArg || findTrunk(branches) || null;
-if (!BASE) {
-  console.error(
-    `session-audit: no integration branch found (looked for ${TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}).\n` +
-      `Pass --base <branch>.`,
-  );
+// A --base must name a real branch too: one that names nothing made every check below
+// pass vacuously, and the audit reported clean against a branch it never read (B1).
+const { trunk: BASE, error: baseError } = trunkFromArgv(argv, branches);
+if (baseError) {
+  console.error(`session-audit: ${baseError}`);
   process.exit(2);
 }
 

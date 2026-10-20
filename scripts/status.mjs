@@ -33,7 +33,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, loadRegister, dependencyMet } from './entries.mjs';
-import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
+import { trunkFromArgv } from './trunk.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -63,8 +63,8 @@ const stop = (msg) => { console.error(`status: ${msg}`); process.exit(2); };
 
 if (git('rev-parse', '--git-dir') === null) stop(`not a git repository, or git refused it.${lastError ? ` git: ${lastError.split('\n')[0]}` : ''}`);
 const branches = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/heads'));
-const BASE = flag('--base') || findTrunk(branches) || null;
-if (!BASE || !branches.includes(BASE)) stop(`no integration branch found (looked for ${flag('--base') || TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}). Pass --base <branch>.`);
+const { trunk: BASE, error: baseError } = trunkFromArgv(argv, branches);
+if (baseError) stop(baseError);
 
 const [baseSha, baseDate] = git('log', '-1', '--format=%H %cI', BASE).split(' ');
 const now = new Date();

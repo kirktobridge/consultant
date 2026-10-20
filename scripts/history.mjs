@@ -15,13 +15,12 @@
 // Usage: node scripts/history.mjs [P#|B#] [--base <branch>]
 
 import { execFileSync } from 'node:child_process';
-import { findTrunk, TRUNK_CANDIDATES } from './trunk.mjs';
+import { trunkFromArgv } from './trunk.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
 const baseIdx = argv.indexOf('--base');
-const baseArg = baseIdx >= 0 ? argv[baseIdx + 1] : null;
-// The same -1 trap as session-audit: with no --base, baseIdx + 1 is 0, which would
+// The -1 trap: with no --base, baseIdx + 1 is 0, which would
 // skip the first argument — the ID, in the common case.
 const idArg = argv.find((a, i) => /^[PB]\d+$/i.test(a) && !(baseIdx >= 0 && i === baseIdx + 1))?.toUpperCase() ?? null;
 
@@ -43,12 +42,9 @@ if (git('rev-parse', '--git-dir') === null) {
 }
 
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
-const BASE = baseArg || findTrunk(branches) || null;
-if (!BASE) {
-  console.error(
-    `history: no integration branch found (looked for ${TRUNK_CANDIDATES.join('/')} among: ${branches.join(', ') || 'none'}).\n` +
-      'Pass --base <branch>.',
-  );
+const { trunk: BASE, error: baseError } = trunkFromArgv(argv, branches);
+if (baseError) {
+  console.error(`history: ${baseError}`);
   process.exit(2);
 }
 
