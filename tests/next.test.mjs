@@ -355,3 +355,143 @@ describe('the landing check reads every branch, a rebuild, and GitHub merges (B5
     assert.match(reason(dir), LANDED);
   });
 });
+
+describe('the landing check sees squash and rebase merges, and a fast-forwarded branch (B6)', () => {
+  const reason = (dir) => (next(dir, '--count', '2').stdout.match(/skipped: P1 — (.*)$/m) || [])[1] ?? '';
+  const LANDED = /^landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance$/;
+  const BUILDING = /another session is building it/;
+
+  /** P1 claimed, built on feat/p1-thing in two commits, back on main with nothing landed. */
+  function built() {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    r.checkout('feat/p1-thing', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'built');
+    r.commitAll('feat: thing (P1)');
+    writeFileSync(join(r.dir, 'y.txt'), 'more');
+    r.commitAll('feat: more (P1)');
+    r.checkout('main');
+    return r;
+  }
+  const squash = ({ sh }) => {
+    sh('git merge -q --squash feat/p1-thing');
+    sh('git commit -q -m "Add the thing (#12)" -m "* feat: thing (P1)" -m "* feat: more (P1)"');
+  };
+
+  test('a GitHub squash merge is a landing, with its branch kept or deleted', () => {
+    const r = built();
+    assert.match(reason(r.dir), BUILDING);
+    squash(r);
+    assert.match(reason(r.dir), LANDED);
+    r.sh('git branch -D feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a rebase merge is a landing', () => {
+    const r = built();
+    writeFileSync(join(r.dir, 'other.txt'), 'main moved');
+    r.commitAll('feat: other (P2)');
+    r.sh('git cherry-pick main..feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a fast-forward landing is a landing', () => {
+    const r = built();
+    r.sh('git merge -q --ff-only feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a squashed branch that kept going is a build', () => {
+    const r = built();
+    squash(r);
+    r.checkout('feat/p1-thing');
+    writeFileSync(join(r.dir, 'x.txt'), 'reworked');
+    r.commitAll('feat: rework (P1)');
+    r.checkout('main');
+    assert.match(reason(r.dir), BUILDING);
+  });
+
+  test('a squash that does not name the entry is not its landing', () => {
+    const r = built();
+    r.sh('git merge -q --squash feat/p1-thing');
+    r.sh('git commit -q -m "Add the thing (#12)"');
+    assert.match(reason(r.dir), BUILDING);
+  });
+
+  test('a fresh branch cut at a squash landing to rebuild it is a build', () => {
+    const r = built();
+    squash(r);
+    r.sh('git branch -D feat/p1-thing');
+    r.sh('git branch feat/p1-redo');
+    assert.match(reason(r.dir), BUILDING);
+  });
+
+  test('a squash over a file other landed work also changed is a landing', () => {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    writeFileSync(join(r.dir, 'shared.txt'), 'a\nb\nc\nd\ne\nf\ng\n');
+    r.commitAll('feat: shared file (P2)');
+    r.checkout('feat/p1-thing', true);
+    writeFileSync(join(r.dir, 'shared.txt'), 'A\nb\nc\nd\ne\nf\ng\n');
+    r.commitAll('feat: thing (P1)');
+    r.checkout('main');
+    writeFileSync(join(r.dir, 'shared.txt'), 'a\nb\nc\nd\ne\nf\nG\n');
+    r.commitAll('feat: other (P2)');
+    squash(r);
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a reverted squash is not a landing', () => {
+    const r = built();
+    squash(r);
+    r.sh('git branch -D feat/p1-thing'); // with no branch to look at, only the landing decides
+    assert.match(reason(r.dir), LANDED);
+    r.sh('git revert --no-edit HEAD');
+    assert.match(reason(r.dir), BUILDING);
+  });
+
+  test('milestone and multi-ID tags name the entry; another ID that contains it does not', () => {
+    for (const [title, want] of [['feat: thing (P1 R1)', LANDED], ['feat: thing (P37, P1)', LANDED], ['feat: thing (P11)', BUILDING]]) {
+      const r = built();
+      r.sh('git merge -q --squash feat/p1-thing');
+      r.sh(`git commit -q -m "${title}"`);
+      r.sh('git branch -D feat/p1-thing');
+      assert.match(reason(r.dir), want, title);
+    }
+  });
+
+  test('/ship\'s bookkeeping is not a landing; a docs squash of real work is', () => {
+    const r = built();
+    writeFileSync(join(r.dir, 'docs/backlog/P1.md'), readFileSync(join(r.dir, 'docs/backlog/P1.md'), 'utf8') + '\nnote\n');
+    r.commitAll('feat: note on P1 (P1)');
+    r.sh('git branch -D feat/p1-thing');
+    assert.match(reason(r.dir), BUILDING);
+    writeFileSync(join(r.dir, 'GUIDE.md'), 'rewritten');
+    r.commitAll('docs: rewrite the guide (P1)');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a kept squashed branch stays landed after main edits the same lines', () => {
+    const r = built();
+    squash(r);
+    writeFileSync(join(r.dir, 'x.txt'), 'changed again on main');
+    r.commitAll('feat: later (P2)');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a merged branch whose reflog holds no commits of its own (fetched, not built here) is landed', () => {
+    const r = built();
+    r.sh('git merge -q --no-ff feat/p1-thing -m "Merge pull request #12 from kirk/feat/p1-thing"');
+    r.sh('git branch -D feat/p1-thing');
+    r.sh('git branch feat/p1-thing HEAD^2');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a landed branch fast-forwarded to main with no new work is still landed', () => {
+    const { dir, sh, checkout, commitAll } = landedP1();
+    writeFileSync(join(dir, 'later.txt'), 'other work');
+    commitAll('feat: other (P2)');
+    checkout('feat/p1-thing');
+    sh('git merge -q --ff-only main');
+    checkout('main');
+    assert.match(reason(dir), LANDED);
+  });
+});
