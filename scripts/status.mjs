@@ -189,7 +189,7 @@ const open = graph.entries.filter((e) => e.open);
 for (const e of open.filter((x) => isBuildable(x) && x.status === 'in-progress')) {
   const claim = claimedAt(e.id);
   const since = claim?.at ?? null;
-  const branch = branchOf(e.id);
+  const branch = branchOf(e.id, claim);
   const landed = landedAt(e.id, claim);
   const branchTip = branch ? git('rev-parse', branch) : null;
   if (landed) {

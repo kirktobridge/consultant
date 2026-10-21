@@ -261,3 +261,97 @@ describe('next.mjs --count picks a batch for parallel subagents (P17)', () => {
     for (const bad of ['x', '0', '1e1', '0x2', '3.0']) assert.equal(next(dir, '--count', bad).code, 2, bad);
   });
 });
+
+describe('the landing check reads every branch, a rebuild, and GitHub merges (B5)', () => {
+  const reason = (dir) => (next(dir, '--count', '2').stdout.match(/skipped: P1 — (.*)$/m) || [])[1] ?? '';
+  const LANDED = /^landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance$/;
+  const BUILDING = /another session is building it/;
+
+  test('an earlier milestone\'s leftover branch does not hide this claim\'s landing', () => {
+    const { dir, checkout, commitAll, merge } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P1', 'P2'] });
+    checkout('feat/p1-a', true); // sorts before feat/p1-thing
+    writeFileSync(join(dir, 'old.txt'), 'never merged');
+    commitAll('feat: R1 leftovers (P1)');
+    checkout('main');
+    const f = join(dir, 'docs/backlog/P1.md');
+    writeFileSync(f, readFileSync(f, 'utf8').replace(/^status: .*$/m, 'status: in-progress'));
+    commitAll('docs: claim P1 (P1)');
+    checkout('feat/p1-thing', true);
+    writeFileSync(join(dir, 'x.txt'), 'built');
+    commitAll('feat: thing (P1)');
+    checkout('main');
+    merge('feat/p1-thing');
+    assert.match(reason(dir), LANDED);
+  });
+
+  test('a fresh branch cut to rebuild a rejected landing is a build, not the landing', () => {
+    const { dir, sh } = landedP1();
+    sh('git branch -D feat/p1-thing');
+    assert.match(reason(dir), LANDED);
+    sh('git branch feat/p1-thing');
+    assert.match(reason(dir), BUILDING);
+  });
+
+  test('a GitHub pull-request merge is a landing', () => {
+    const { dir, sh, checkout, commitAll } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    checkout('feat/p1-thing', true);
+    writeFileSync(join(dir, 'x.txt'), 'built');
+    commitAll('feat: thing (P1)');
+    checkout('main');
+    sh('git merge -q --no-ff feat/p1-thing -m "Merge pull request #12 from kirk/feat/p1-thing"');
+    assert.match(reason(dir), LANDED);
+  });
+
+  test('a remote-tracking merge is a landing', () => {
+    const { dir, sh, checkout, commitAll } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    checkout('feat/p1-thing', true);
+    writeFileSync(join(dir, 'x.txt'), 'built');
+    commitAll('feat: thing (P1)');
+    checkout('main');
+    sh(`git merge -q --no-ff feat/p1-thing -m "Merge remote-tracking branch 'origin/feat/p1-thing'"`);
+    assert.match(reason(dir), LANDED);
+  });
+
+  test('a leftover branch resumed for this claim, landed, then built on again, is a build', () => {
+    const { dir, checkout, commitAll, merge } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P1', 'P2'] });
+    checkout('feat/p1-x', true);
+    writeFileSync(join(dir, 'old.txt'), 'R1 leftovers');
+    commitAll('feat: R1 leftovers (P1)');
+    checkout('main');
+    const f = join(dir, 'docs/backlog/P1.md');
+    writeFileSync(f, readFileSync(f, 'utf8').replace(/^status: .*$/m, 'status: in-progress'));
+    commitAll('docs: claim P1 (P1)');
+    checkout('feat/p1-x');
+    writeFileSync(join(dir, 'x.txt'), 'R2');
+    commitAll('feat: R2 (P1)');
+    checkout('main');
+    merge('feat/p1-x');
+    assert.match(reason(dir), LANDED);
+    checkout('feat/p1-x');
+    writeFileSync(join(dir, 'y.txt'), 'after rejection');
+    commitAll('feat: rework (P1)');
+    checkout('main');
+    assert.match(reason(dir), BUILDING);
+  });
+
+  test('two branches of one claim that both landed read as landed', () => {
+    const { dir, checkout, commitAll, merge } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    for (const b of ['feat/p1-api', 'feat/p1-ui']) {
+      checkout(b, true);
+      writeFileSync(join(dir, `${b.slice(8)}.txt`), b);
+      commitAll(`feat: ${b} (P1)`);
+      checkout('main');
+    }
+    merge('feat/p1-api');
+    merge('feat/p1-ui');
+    assert.match(reason(dir), LANDED);
+  });
+
+  test('a branch with no history in common with main does not hide a landing', () => {
+    const { dir, sh } = landedP1();
+    sh('git checkout -q --orphan feat/p1-notes');
+    sh('git commit -q --allow-empty -m notes');
+    sh('git checkout -q -f main');
+    assert.match(reason(dir), LANDED);
+  });
+});
