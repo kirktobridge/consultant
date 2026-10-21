@@ -17,7 +17,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, mkdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
 import { REPO, tempDir, gitInit, P, B, renderFiles, writeFiles } from './helpers/fixture.mjs';
@@ -31,12 +31,28 @@ const SKILLS = readdirSync(SKILL_DIR).filter((d) => statSync(join(SKILL_DIR, d))
 /** Skills provided by the harness or the user, not by this repo. */
 const EXTERNAL_SKILLS = new Set(['run']);
 
+/**
+ * Paths git ignores, relative to REPO; a directory ends in `/`. An ignored file is
+ * not this tree's — a leftover eval run under evals/runs/ turned the suite red and
+ * blocked a commit (B3) — so the corpus skips it. Git failing is a throw, not an
+ * empty set: an empty set would quietly read everything again.
+ */
+function ignoredPaths() {
+  const r = spawnSync('git', ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+    { cwd: REPO, encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`git ls-files failed (exit ${r.status}): ${r.stderr}`);
+  return new Set(r.stdout.split('\0').filter(Boolean));
+}
+
 function markdownFiles() {
   const out = [];
+  const ignored = ignoredPaths();
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
       if (['.git', 'node_modules', 'tests'].includes(name)) continue;
       const p = join(dir, name);
+      const r = relative(REPO, p).split(/[\\/]/).join('/');
+      if (ignored.has(r) || ignored.has(`${r}/`)) continue;
       // template/ holds files written elsewhere by the export (P28): their links are
       // relative to where they land, not where they're kept. The clean run (`npm run
       // test:clean`) reads them in place, where this corpus checks them.
@@ -155,6 +171,24 @@ describe('the corpus is what we think it is', () => {
 
   test('markdown was actually found — the corpus is not silently empty (L3)', () => {
     assert.ok(DOCS.length >= 10, `only found ${DOCS.length} docs; the walker is broken`);
+  });
+
+  test('a markdown file git ignores stays out of the corpus (B3)', () => {
+    // evals/runs/ is ignored; an eval run's prompts and answers are markdown whose
+    // links point wherever the run put them.
+    const runs = join(REPO, 'evals', 'runs');
+    const hadRuns = existsSync(runs);
+    const dir = join(runs, `b3-probe-${process.pid}`);
+    const probe = join(dir, 'answer.md');
+    mkdirSync(dir, { recursive: true });
+    try {
+      writeFileSync(probe, '[broken](./does-not-exist.md)\n');
+      const check = spawnSync('git', ['check-ignore', '-q', probe], { cwd: REPO });
+      assert.equal(check.status, 0, 'the probe is not git-ignored — the test proves nothing');
+      assert.ok(!markdownFiles().includes(probe), 'an ignored file was read into the corpus');
+    } finally {
+      rmSync(hadRuns ? dir : runs, { recursive: true, force: true });
+    }
   });
 
   test('no doc in the corpus lies inside another checkout (a session worktree, P15)', () => {
