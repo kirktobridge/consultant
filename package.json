@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A doc-driven working loop: five Claude Code skills plus the documents they read and write.",
+  "description": "A doc-driven working loop: Claude Code skills plus the documents they read and write.",
   "scripts": {
     "test": "node --test \"tests/**/*.test.mjs\" && npm run check:docs && npm run check:guards && npm run check:manifest",
     "test:clean": "node scripts/test-clean.mjs",

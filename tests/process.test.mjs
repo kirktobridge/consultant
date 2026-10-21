@@ -66,24 +66,55 @@ const LOOP_SKILLS = ['triage', 'implement', 'verify', 'land', 'ship'];
 /**
  * Skills that are not loop steps: /eval measures this repo's prose, and /research runs
  * the experiment track (P13 R1). Named, not inferred, so a new skill still has to be
- * placed on purpose. Moving the stated count is P13 R2's.
+ * placed on purpose.
  */
 const OFF_LOOP_SKILLS = ['eval', 'research'];
 
+/** The docs that introduce the skills to a reader. */
+const INTRO_DOCS = [
+  'README.md', '.claude/GUIDE.md', 'CLAUDE.md', 'template/CLAUDE.md', 'PORTING.md', 'package.json',
+];
+
 describe('the corpus is what we think it is', () => {
-  test('five loop skills, and the docs that describe them agree', () => {
+  test('every skill is placed: a loop step, or named as off the loop', () => {
     assert.deepEqual(SKILLS.filter((s) => !OFF_LOOP_SKILLS.includes(s)).sort(), [...LOOP_SKILLS].sort());
     for (const s of OFF_LOOP_SKILLS) assert.ok(SKILLS.includes(s), `the ${s} skill should exist`);
-    for (const doc of ['README.md', '.claude/GUIDE.md', 'CLAUDE.md']) {
-      const t = read(join(REPO, doc));
-      assert.match(t, /\b[Ff]ive (loop )?skills\b/, `${doc} must state the real skill count`);
-      assert.doesNotMatch(t, /\b[Ss]ix (loop )?skills\b/, `${doc} still states the old skill count`);
+  });
+
+  test('the intro docs state no skill count', () => {
+    // A count is an inventory in prose: it went stale with every skill added, and kept
+    // several docs in lockstep for nothing. The lists above are the inventory; the docs
+    // describe what the loop does instead.
+    //
+    // What counts: a number heading the suite's skills ("five loop skills", "five Claude
+    // Code skills", "a five-skill loop"), or an ordinal naming one ("the sixth", "a
+    // sixth, /eval"). A number about some skills ("the two skills that write the
+    // backlog") is not the suite's count, and passes; so do past counts ("four skills'
+    // instructions"), which are history.
+    const number = '(?:five|six|seven|eight|nine|ten|\\d+)';
+    const count = new RegExp(
+      `\\b${number}(?: loop| core| Claude Code)? skills\\b(?!')|\\b${number}-skill\\b` +
+        `|\\b(?:a|the) (?:sixth|seventh|eighth)\\b[^.\\n]{0,12}(?:\\/\\w|skill|off|loop)`,
+      'i',
+    );
+    // Controls first: a pattern that broke shows as a broken pattern, not as a doc.
+    for (const bad of ['the five loop skills', 'five Claude Code skills plus', 'a five-skill loop',
+      'There is a sixth, **/eval**', 'the **/eval** skill — the sixth, off-loop one']) {
+      assert.match(bad, count, `the control: the pattern must catch "${bad}"`);
+    }
+    for (const fine of ['a second, measurable track', 'the two skills that write the backlog',
+      "renamed script leaving four skills' instructions stale"]) {
+      assert.doesNotMatch(fine, count, `"${fine}" is not the suite's count`);
+    }
+    for (const doc of INTRO_DOCS) {
+      const m = read(join(REPO, doc)).match(count);
+      assert.equal(m, null, `${doc} states a skill count: "${m?.[0]}"`);
     }
   });
 
   test('/eval is outside the loop, and the loop docs do not route work through it', () => {
-    // The distinction is the point: the five carry a feature from idea to shipped, and a
-    // reader who meets /eval as a seventh step will look for where it fits and find
+    // The distinction is the point: the loop skills carry a feature from idea to shipped,
+    // and a reader who meets /eval as another step will look for where it fits and find
     // nothing. It measures this repo's prose; it never touches a backlog entry.
     assert.ok(SKILLS.includes('eval'), 'the eval skill should exist');
     const evalSkill = read(join(SKILL_DIR, 'eval', 'SKILL.md'));
