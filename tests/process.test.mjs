@@ -63,9 +63,17 @@ const unfenced = (t) => t.replace(/```[\s\S]*?```/g, '');
 /** The loop. /eval is maintenance for this repo's own prose and is deliberately not one. */
 const LOOP_SKILLS = ['triage', 'implement', 'verify', 'land', 'ship'];
 
+/**
+ * Skills that are not loop steps: /eval measures this repo's prose, and /research runs
+ * the experiment track (P13 R1). Named, not inferred, so a new skill still has to be
+ * placed on purpose. Moving the stated count is P13 R2's.
+ */
+const OFF_LOOP_SKILLS = ['eval', 'research'];
+
 describe('the corpus is what we think it is', () => {
   test('five loop skills, and the docs that describe them agree', () => {
-    assert.deepEqual(SKILLS.filter((s) => s !== 'eval').sort(), [...LOOP_SKILLS].sort());
+    assert.deepEqual(SKILLS.filter((s) => !OFF_LOOP_SKILLS.includes(s)).sort(), [...LOOP_SKILLS].sort());
+    for (const s of OFF_LOOP_SKILLS) assert.ok(SKILLS.includes(s), `the ${s} skill should exist`);
     for (const doc of ['README.md', '.claude/GUIDE.md', 'CLAUDE.md']) {
       const t = read(join(REPO, doc));
       assert.match(t, /\b[Ff]ive (loop )?skills\b/, `${doc} must state the real skill count`);
