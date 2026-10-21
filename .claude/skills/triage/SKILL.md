@@ -1,13 +1,14 @@
 ---
 name: triage
-description: Classify a raw idea (dev notes, conversation, any source) as a product feature, a bug, an assumption or a decision. Draft the entry, but write no file. /ship writes the draft. Also groom the backlog (`/triage groom`). Grooming re-checks blockers, sweeps resolved assumptions, flags assumptions that will soon block the queue, and acts on staleness flags. Use for "add this idea", "this is broken", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage.
+description: Classify a raw idea (dev notes, conversation, any source) as a product feature, a bug, an assumption, a decision or an experiment. Draft the entry, but write no file. /ship writes the draft. Also groom the backlog (`/triage groom`). Grooming re-checks blockers, sweeps resolved assumptions, flags assumptions that will soon block the queue, and acts on staleness flags. Use for "add this idea", "this is broken", "triage the dev notes", "where does this idea belong", "groom the backlog", "what's unblocked now", or /triage.
 ---
 
 # Triage — idea intake and classification
 
 This skill turns raw ideas into drafts with the correct class and the correct shape.
 This skill **writes no file**. The backlog ([docs/backlog/](../../../docs/backlog/README.md))
-has exactly one writer, /ship. Triage writes nothing, so that rule stays true.
+has exactly one writer, /ship. The research records have exactly one writer, /research.
+Triage writes nothing, so those rules stay true.
 
 The output of this skill has three parts:
 1. The classification.
@@ -53,13 +54,26 @@ Ask these questions in this order. Stop at the first "yes".
      on a fact, that fact is an assumption, and the assumption follows its own route.
 3. **Is it a question that data answers — a quantity, a rate, "how often does X
    happen"?**
+   - Class: **experiment** (`X#`, [docs/research/experiments/](../../../docs/research/experiments/README.md)).
    - This is a measurement. It is **not** an assumption, because no single observation
      settles a rate. It is not a decision, because nobody chooses it.
-   - Its home is the research track. **P13** builds the research track, and the
-     research track does not exist yet.
-   - Tell the user this. Do not file it as an assumption or a decision.
-   - If a decision waits on the number, draft the decision. Name the measurement in the
-     `## Context` section of the decision.
+   - **First, check that `docs/research/` exists.** If it does not, the project did not
+     adopt the research track. Tell the user this, and draft no experiment. Do not file
+     the question as an assumption or a decision. If a decision waits on the number,
+     draft the decision, and name the measurement in its `## Context` section.
+   - Give it a **kind**. The framework's
+     [three kinds](../../../docs/research/README.md#the-three-kinds) say what each kind
+     owes:
+     - `measure`: it estimates a quantity. "How often does X happen" is a measure.
+     - `test`: it compares arms to gate a change. "Is B better than A?" is a test.
+     - `probe`: it explores. "Can this signal be seen at all?" is a probe.
+   - Use the template in the experiments README.
+   - A `test`, or a measure that a decision waits on, needs a decision. That decision
+     must have its `## Decision rule` before the run. If the decision does not exist,
+     draft it too (question 2), with `waiting_on:` naming the `X#`. Put the decision in
+     the experiment's `feeds:`.
+   - Destination: **/research** (Phase P) writes the experiment. /ship writes the
+     decision.
 4. **Is it broken — something that works, or was meant to work, and someone saw it
    fail?**
    - Class: **bug** (`B#`, [docs/bugs/](../../../docs/bugs/README.md)).
@@ -131,7 +145,8 @@ to satisfy the checker.
 **The boundary that people frequently get wrong:**
 - "We should find out whether X" is usually an **assumption**, not a feature, if X is a
   yes/no fact about the world.
-- "How often does X happen" is a measurement (question 3).
+- "How often does X happen" is a measurement: an experiment of kind `measure`
+  (question 3).
 - "Should we do X" is a decision.
 - If you cannot name a concrete check that settles it (its `How to verify`), it is not
   an assumption either. It is a wish. Tell the user this. Do not file it.
@@ -151,7 +166,7 @@ to satisfy the checker.
 2. Search for an existing entry:
    ```
    node scripts/grep-checked.mjs -i --control '^status:' '<keyword>' \
-     docs/backlog docs/bugs docs/assumptions docs/decisions
+     docs/backlog docs/bugs docs/assumptions docs/decisions docs/research/experiments
    ```
    - If an entry exists, the output is "already tracked as `<ID>` — update it via its
      owner". Do not write a duplicate draft.
@@ -164,8 +179,9 @@ to satisfy the checker.
    - A feature: its epic.
    - A bug: its severity.
    - An assumption or a decision: nothing. Those registers have no order.
+   - An experiment: its kind.
 4. Show the draft and its destination to the user. If the user approves, give the draft
-   to **/ship** to write.
+   to **/ship** to write. An experiment draft goes to **/research**.
    - An assumption draft also goes to /ship as the writer. But the assumptions register
      has no single writer. It has only an enforced shape.
    - A decision has one writer: /ship.
@@ -266,7 +282,7 @@ output: "A-3 is expensive, but only P7 depends on it. P7 is not near the queue, 
 stays parked."
 
 ## Not this skill
-- To write the entry → **/ship** (Intake).
+- To write the entry → **/ship** (Intake). To write an experiment → **/research**.
 - To decide *when* to build it → /ship ranks the queue with the rule in
   [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue).
 - To settle an assumption → the person who meets the block. If the work needs a build,
