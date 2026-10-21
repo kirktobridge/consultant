@@ -6,7 +6,7 @@
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   P, B, A, decidedD, D, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles,
@@ -22,6 +22,17 @@ function repo(state) {
 }
 const next = (cwd, ...args) => run('next.mjs', args, { cwd });
 const pick = (r) => (r.stdout.match(/^next: (\S+)$/m) || [])[1];
+
+/** P1 claimed, its branch built and merged into main: landed, awaiting acceptance. */
+function landedP1() {
+  const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+  r.checkout('feat/p1-thing', true);
+  writeFileSync(join(r.dir, 'x.txt'), 'built');
+  r.commitAll('feat: thing (P1)');
+  r.checkout('main');
+  r.merge('feat/p1-thing');
+  return r;
+}
 
 describe('next.mjs takes every open bug before the queue (P5 R1)', () => {
   test('with no bugs, the queue head comes up', () => {
@@ -109,6 +120,14 @@ describe('next.mjs takes every open bug before the queue (P5 R1)', () => {
     assert.match(r.stdout, /skipping claimed P1/);
   });
 
+  test('a claimed head whose branch has landed is skipped as awaiting acceptance, not as a build (B4)', () => {
+    const { dir } = landedP1();
+    const r = next(dir);
+    assert.equal(pick(r), 'P2', out(r));
+    assert.match(r.stdout, /skipping P1 \(landed \d{4}-\d{2}-\d{2}, awaiting acceptance\)/);
+    assert.doesNotMatch(r.stdout, /claimed P1/);
+  });
+
   test('the registers are read from main, never the checked-out copy', () => {
     const { dir, sh } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
     sh('git checkout -qb elsewhere');
@@ -172,6 +191,38 @@ describe('next.mjs --count picks a batch for parallel subagents (P17)', () => {
     assert.deepEqual(picked(r), ['P3'], out(r));
     assert.match(r.stdout, /skipped: P1 — claimed/);
     assert.match(r.stdout, /skipped: P2 — waits on A-1 \(open\)/);
+  });
+
+  test('a landed claim is skipped as awaiting acceptance, not as another session\'s build (B4)', () => {
+    const { dir } = landedP1();
+    const r = next(dir, '--count', '2');
+    assert.deepEqual(picked(r), ['P2'], out(r));
+    assert.match(r.stdout, /skipped: P1 — landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance/);
+    assert.doesNotMatch(r.stdout, /another session is building it/);
+    const j = JSON.parse(next(dir, '--count', '2', '--json').stdout);
+    assert.match(j.skipped.find((s) => s.id === 'P1')?.landed ?? '', /^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  test('a merge from before the current claim is an earlier milestone, not this one landing', () => {
+    const { dir, commitAll } = landedP1();
+    const f = join(dir, 'docs/backlog/P1.md');
+    const flip = (s) => writeFileSync(f, readFileSync(f, 'utf8').replace(/^status: .*$/m, `status: ${s}`));
+    flip('partial');
+    commitAll('docs: P1 R1 landed (P1)');
+    flip('in-progress');
+    commitAll('docs: claim P1 R2 (P1)');
+    const r = next(dir);
+    assert.match(r.stdout, /skipping claimed P1/, out(r));
+    assert.match(next(dir, '--count', '2').stdout, /skipped: P1 — claimed \(in-progress\)/);
+  });
+
+  test('a landed branch that has kept going is a build again', () => {
+    const { dir, checkout, commitAll } = landedP1();
+    checkout('feat/p1-thing');
+    writeFileSync(join(dir, 'y.txt'), 'more');
+    commitAll('feat: more (P1)');
+    checkout('main');
+    assert.match(next(dir, '--count', '2').stdout, /skipped: P1 — claimed \(in-progress\): another session is building it/);
   });
 
   test('picks from the queue only, naming a ready bug rather than batching it', () => {
