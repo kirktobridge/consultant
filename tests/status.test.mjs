@@ -157,6 +157,22 @@ describe('status.mjs names what is in flight, and what has landed awaiting accep
     assert.equal(r.inFlight[0].branch, null);
   });
 
+  test('an in-flight entry names this claim\'s branch, not an earlier milestone\'s leftover (B5)', () => {
+    const { dir, checkout, commitAll } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
+    checkout('feat/p1-a', true);
+    writeFileSync(join(dir, 'old.txt'), 'leftover');
+    commitAll('feat: R1 leftovers (P1)');
+    checkout('main');
+    setStatus(dir, 'P1', 'in-progress');
+    commitAll('docs: claim P1 (P1)');
+    checkout('feat/p1-thing', true);
+    writeFileSync(join(dir, 'x.txt'), 'building');
+    commitAll('feat: thing (P1)');
+    checkout('main');
+    const r = report(dir);
+    assert.equal(r.inFlight[0]?.branch, 'feat/p1-thing', JSON.stringify(r));
+  });
+
   test('a branch with no commits of its own is in flight, not landed', () => {
     const { dir, sh, commitAll } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
     setStatus(dir, 'P1', 'in-progress');
