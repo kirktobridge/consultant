@@ -29,8 +29,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf } from './entries.mjs';
+import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf, parseQueue } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
+import { trunkGraph, graphIndex } from './trunk-graph.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -258,10 +259,78 @@ const waitingBlock = waitingOnUser.length
   ? `\nWaiting on the user — choices only they can make (docs/decisions/); raise them:\n${waitingLines.join('\n')}\n`
   : '';
 
+// ── 6. What's ahead (P19) ────────────────────────────────────────────────────
+// Not findings either: the forward view, so a session opens knowing what to pick up
+// and what is about to block, not only what was left dangling. Rendered from P11's
+// graph on the trunk, the one dependency source, walked with trunk-graph's graphIndex;
+// the queue file, which the graph does not carry, is the only other input. It lands in
+// every session's context, so it stays a few lines: IDs, not paragraphs. And it is
+// optional: a forward view that fails must never cost the findings above.
+
+const ahead = (() => {
+  try {
+    const { graph, failed, warning } = trunkGraph({ root: ROOT, base: BASE, git });
+    if (failed) return { failed };
+    const { meta, blockersOf, downstream } = graphIndex(graph);
+    const queueText = git('show', `${BASE}:${BACKLOG.queue}`);
+    const queued = queueText === null ? [] : parseQueue(queueText).ids;
+    const features = graph.entries.filter((e) => e.open && BACKLOG.idPattern.test(e.id));
+
+    // The queue's head as next.mjs reads it: the first queued entry nobody has claimed.
+    // next.mjs puts a ready bug before it; this names the queue only (P19's scope). The
+    // queue may hold an entry below its own unshipped dependency, so a held head says so.
+    const head = queued.find((id) => meta.get(id)?.status !== 'in-progress') ?? null;
+    const claimedAhead = head ? queued.slice(0, queued.indexOf(head)) : queued;
+    const readyUnqueued = features
+      .filter((e) => e.status !== 'in-progress' && !queued.includes(e.id) && !blockersOf(e.id).length)
+      .map((e) => e.id);
+
+    // Near the queue: queued, or held only by open assumptions and decisions — no
+    // feature to build first. An open assumption counts every such entry it holds,
+    // directly or through another; one held by two is counted under both.
+    const settleable = (id) => ASSUMPTIONS.idPattern.test(id) || DECISIONS.idPattern.test(id);
+    const near = new Set(features
+      .filter((e) => queued.includes(e.id) || (blockersOf(e.id).length && blockersOf(e.id).every(settleable)))
+      .map((e) => e.id));
+    const order = new Map(graph.entries.map((e, n) => [e.id, n]));
+    const byOrder = (a, b) => order.get(a) - order.get(b);
+    const assumptionsAhead = graph.entries
+      .filter((e) => e.open && ASSUMPTIONS.idPattern.test(e.id))
+      .map((e) => ({ id: e.id, title: e.title, holds: downstream(e.id).filter((i) => near.has(i)).sort(byOrder) }))
+      .filter((a) => a.holds.length)
+      .sort((a, b) => b.holds.length - a.holds.length || byOrder(a.id, b.id));
+
+    return {
+      nextUp: head ? { id: head, title: meta.get(head)?.title ?? '', waitsOn: blockersOf(head) } : null,
+      claimedAhead, readyUnqueued, assumptions: assumptionsAhead, ...(warning && { warning }),
+    };
+  } catch (e) {
+    return { failed: `could not read what is ahead: ${e.message}` };
+  }
+})();
+
+const SHOWN = 3; // assumption lines, at most: the section must stay short
+const aheadLines = (() => {
+  if (ahead.failed) return [`Ahead: unreadable — ${ahead.failed}`];
+  const out = [`Ahead (from the dependency graph on ${BASE}):`];
+  if (ahead.warning) out.push(`  (${ahead.warning})`);
+  const skip = ahead.claimedAhead.length ? ` (after claimed ${ahead.claimedAhead.join(', ')})` : '';
+  const held = ahead.nextUp?.waitsOn.length ? ` — waits on ${ahead.nextUp.waitsOn.join(', ')}` : '';
+  out.push(ahead.nextUp
+    ? `  next up: ${ahead.nextUp.id} — ${ahead.nextUp.title}${skip}${held}`
+    : `  next up: nothing unclaimed in ${BACKLOG.queue}${skip}`);
+  out.push(`  ready, not queued: ${ahead.readyUnqueued.join(', ') || 'none'}`);
+  if (!ahead.assumptions.length) out.push('  open assumptions holding near-queue work: none');
+  for (const a of ahead.assumptions.slice(0, SHOWN)) out.push(`  ${a.id} holds ${a.holds.join(', ')} — ${a.title}`);
+  if (ahead.assumptions.length > SHOWN) out.push(`  … and ${ahead.assumptions.length - SHOWN} more open assumption(s) holding near-queue work`);
+  return out;
+})();
+const aheadBlock = `\n${aheadLines.join('\n')}`;
+
 // ── Report ───────────────────────────────────────────────────────────────────
 
 if (asJson) {
-  console.log(JSON.stringify({ base: BASE, findings, waitingOnUser }, null, 2));
+  console.log(JSON.stringify({ base: BASE, findings, waitingOnUser, ahead }, null, 2));
   process.exit(findings.length ? 1 : 0);
 }
 
@@ -270,10 +339,11 @@ const LABEL = { alert: 'ALERT', warn: 'CHECK', info: 'note ' };
 findings.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 
 if (findings.length === 0) {
-  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.${waitingBlock}`);
+  console.log(`session-audit: clean (base ${BASE}) — statuses match reality, tree committed.${waitingBlock}${aheadBlock}`);
   process.exit(0);
 }
 console.log(`session-audit: ${findings.length} item(s) left dangling — resolve before starting new work (base ${BASE})\n`);
 for (const f of findings) console.log(`  [${LABEL[f.severity]}] ${f.what}\n           → ${f.action}\n`);
 if (waitingBlock) console.log(waitingBlock.trimStart());
+console.log(aheadLines.join('\n'));
 process.exit(1);

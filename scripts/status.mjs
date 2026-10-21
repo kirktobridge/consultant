@@ -28,13 +28,13 @@
 //        --html with no file writes .claude/status.html (gitignored)
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { REGISTERS, BACKLOG, BUGS, parseQueue, loadRegister, dependencyMet } from './entries.mjs';
+import { BACKLOG, BUGS, parseQueue, loadRegister } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { landings } from './landing.mjs';
+import { trunkGraph, graphIndex, catBlobs } from './trunk-graph.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -72,63 +72,18 @@ const now = new Date();
 
 // ── The graph, as it is on the integration branch ────────────────────────────
 
-/**
- * Many blobs in one git call: each spec (`<rev>:<path>`) comes back as its text, or null
- * when it does not exist. One process however large the registers or a history grows.
- */
-const blobs = (specs) => {
-  if (!specs.length) return [];
-  let buf;
-  try {
-    buf = execFileSync('git', ['-c', 'safe.directory=*', ...WIN, 'cat-file', '--batch'], {
-      cwd: ROOT, input: specs.join('\n') + '\n', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 256 << 20,
-    });
-  } catch { return specs.map(() => null); }
-  const out = [];
-  let at = 0;
-  for (let n = 0; n < specs.length; n++) {
-    const nl = buf.indexOf(10, at);
-    const head = buf.subarray(at, nl).toString('utf8');
-    const m = head.match(/ blob (\d+)$/);
-    if (!m) { out.push(null); at = nl + 1; continue; }
-    const size = Number(m[1]);
-    out.push(buf.subarray(nl + 1, nl + 1 + size).toString('utf8'));
-    at = nl + 1 + size + 1;
-  }
-  return out;
-};
-
-const tmp = mkdtempSync(join(tmpdir(), 'status-'));
-let graph = null;
-let failed = null;
+// trunk-graph.mjs copies the registers out of git and runs P11's graph there.
+const blobs = (specs) => catBlobs(ROOT, specs);
+// The graph carries no severity, and bugs are ranked by it (next.mjs's order).
 const headers = new Map();
-try {
-  // docs/research whole: the graph's experiments, and the framework that adopts the track.
-  const files = lines(git('ls-tree', '-r', '--name-only', BASE, '--', ...REGISTERS.map((r) => r.dir), 'docs/research'));
-  blobs(files.map((f) => `${BASE}:${f}`)).forEach((text, n) => {
-    mkdirSync(dirname(join(tmp, files[n])), { recursive: true });
-    writeFileSync(join(tmp, files[n]), text ?? '');
-  });
-  // The graph carries no severity, and bugs are ranked by it (next.mjs's order).
-  for (const e of loadRegister(tmp, BUGS).entries) if (e.id) headers.set(e.id, e.header);
-  const r = spawnSync(process.execPath, [join(HERE, 'backlog-schema-check.mjs'), '--graph', '--json'], {
-    cwd: tmp, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
-  });
-  try { graph = JSON.parse(r.stdout); } catch { failed = `the graph did not run on ${BASE}: ${(r.stderr || r.stdout).trim().split('\n')[0]}`; }
-  if (graph && graph.version !== 1) failed = `graph version ${graph.version} is not one this report reads (1)`;
-} finally {
-  rmSync(tmp, { recursive: true, force: true });
-}
+const { graph, failed } = trunkGraph({
+  root: ROOT, base: BASE, git,
+  onTree: (dir) => { for (const e of loadRegister(dir, BUGS).entries) if (e.id) headers.set(e.id, e.header); },
+});
 if (failed) stop(failed);
 
-const meta = new Map(graph.entries.map((e) => [e.id, e]));
-const live = (id) => meta.get(id)?.open === true;
-// What still holds an entry back is /implement's DEPENDS GATE (dependencyMet), not the
-// graph's `open` flag: an abandoned `P#` is closed, and it never ships, so whatever rests
-// on it stays blocked. `field` is a label, never matched on: each repo names its own headers.
-const holds = (from) => !dependencyMet(from, meta.get(from)?.status ?? null);
-const blockersOf = (id) => [...new Set(graph.edges.filter((x) => x.to === id && holds(x.from)).map((x) => x.from))];
-const unblocksOf = (id) => [...new Set(graph.edges.filter((x) => x.from === id && live(x.to)).map((x) => x.to))];
+// What still holds an entry back is /implement's DEPENDS GATE — see graphIndex.
+const { meta, live, blockersOf, downstream } = graphIndex(graph);
 const proseOf = (id) => graph.prose.filter((p) => p.id === id).map((p) => p.text);
 const isBuildable = (e) => BACKLOG.idPattern.test(e.id) || BUGS.idPattern.test(e.id);
 
@@ -151,12 +106,6 @@ const rootsOf = (id) => {
   };
   walk(id);
   return [...roots];
-};
-const downstream = (id) => {
-  const seen = new Set();
-  const todo = unblocksOf(id);
-  while (todo.length) { const j = todo.pop(); if (!seen.has(j) && j !== id) { seen.add(j); todo.push(...unblocksOf(j)); } }
-  return [...seen];
 };
 
 // ── Git: claims, branches, worktrees, landings ───────────────────────────────
