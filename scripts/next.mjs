@@ -14,13 +14,21 @@
 // Everything is read from the integration branch, never the checked-out copy, for the
 // claim gate's reason: a worktree's files are as old as its branch.
 //
-// Exit: 0 an ID was proposed (first stdout line: `next: <ID>`) | 1 nothing is ready to
-// build | 2 could not run (not a repo, no integration branch)
+// `--count N` is the batch an orchestrator hands to parallel subagents (P17): up to N
+// entries from the queue, in its order, each dependency-ready. An entry that depends on
+// one picked earlier in the same batch is skipped, since that one is not shipped yet —
+// P23's graph decides, the same walk the schema check makes. Overlap is no reason to
+// skip: a collision costs a rebase at landing, not a broken main. A batch picks from the
+// queue only; a ready bug is named, for /implement to take on its own.
 //
-// Usage: node scripts/next.mjs [--base <branch>] [--json]
+// Exit: 0 an ID was proposed (first stdout line: `next: <ID>`; with --count, one
+// `picked: <ID>` line each) | 1 nothing is ready to build | 2 could not run (not a
+// repo, no integration branch, a bad --count)
+//
+// Usage: node scripts/next.mjs [--base <branch>] [--count <N>] [--json]
 
 import { execFileSync } from 'node:child_process';
-import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf, dependencyMet } from './entries.mjs';
+import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf, dependencyMet, dependencyGraph } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
@@ -45,6 +53,9 @@ if (git('rev-parse', '--git-dir') === null) stop(`not a git repository, or git r
 const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
 const { trunk: BASE, error: baseError } = trunkFromArgv(argv, branches);
 if (baseError) stop(baseError);
+const countAt = argv.indexOf('--count');
+const COUNT = countAt < 0 ? null : (/^\d+$/.test(argv[countAt + 1] ?? '') ? Number(argv[countAt + 1]) : 0);
+if (countAt >= 0 && !(COUNT > 0)) stop(`--count needs a whole number above 0, not "${argv[countAt + 1] ?? ''}".`);
 
 // ── The registers, as they are on the integration branch ─────────────────────
 
@@ -79,6 +90,38 @@ const bug = open.find((b) => !held.some((h) => h.id === b.id));
 const queueText = git('show', `${BASE}:${BACKLOG.queue}`);
 const queued = queueText === null ? [] : parseQueue(queueText).ids;
 const head = queued.find((id) => byId.get(id)?.status !== 'in-progress') ?? null;
+
+// ── A batch (--count) ────────────────────────────────────────────────────────
+
+if (COUNT !== null) {
+  const graph = dependencyGraph(loaded.get(BACKLOG));
+  const picked = [];
+  const skipped = [];
+  for (const id of queued) {
+    if (picked.length >= COUNT) break;
+    const e = byId.get(id);
+    if (!e) { skipped.push({ id, why: 'queued but has no entry' }); continue; }
+    if (e.status === 'in-progress') { skipped.push({ id, why: 'claimed (in-progress): another session is building it' }); continue; }
+    // The graph walks feature dependencies through each other; every other direct one
+    // (a bug, an assumption, a decision, a feature with no entry) is a leaf.
+    const features = graph.unmet(id).map((u) => `${u.id} (${picked.includes(u.id) ? 'picked in this batch' : u.status})`
+      + (u.path.length > 2 ? ` via ${u.path.slice(1, -1).join(' → ')}` : ''));
+    const leaves = holding(e).filter((h) => !(BACKLOG.idPattern.test(h.split(' ')[0]) && byId.has(h.split(' ')[0])));
+    const on = [...features, ...leaves];
+    if (on.length) { skipped.push({ id, why: `waits on ${on.join(', ')}` }); continue; }
+    picked.push(id);
+  }
+  if (asJson) {
+    console.log(JSON.stringify({ base: BASE, asked: COUNT, picked, skipped, readyBug: bug?.id ?? null, held, queued }));
+  } else {
+    console.log(`batch: ${picked.length} of ${COUNT} asked, from ${BACKLOG.queue} on ${BASE}`);
+    for (const id of picked) console.log(`  picked: ${id}`);
+    for (const s of skipped) console.log(`  skipped: ${s.id} — ${s.why}`);
+    if (bug) console.log(`  note: ${bug.id} (${bug.header.severity} bug) is ready and goes before the queue; a batch picks from the queue only, so /implement ${bug.id} takes it on its own`);
+    for (const h of held) console.log(`  held: ${h.id} (${h.severity} bug) waits on ${h.on.join(', ')}`);
+  }
+  process.exit(picked.length ? 0 : 1);
+}
 
 let pick = null;
 if (bug) {

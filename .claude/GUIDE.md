@@ -93,6 +93,20 @@ and your acceptance. In their place the merge commit carries an `Ad-hoc:` traile
 saying what changed, and optionally `Relates:` for any entry it touched. land.mjs
 refuses the merge without `Ad-hoc:`, or with a `Relates:` ID that has no entry.
 
+### /orchestrate — "handle the next 3"
+Builds several entries at once. It picks the next N dependency-ready entries from the
+queue (`next.mjs --count N`, which also skips one that depends on another in the same
+batch) and says what it picked and skipped. Then it starts one background subagent per
+entry, each running /implement through to /land. When a subagent needs your word, the
+orchestrator asks you, naming the entry, and resumes that subagent with your answer;
+the others keep working. You get each landing report and one "ship it?" per entry. You
+type no git command, and nothing is flipped `shipped` without your word.
+
+```
+/orchestrate 3
+handle the next 2
+```
+
 ### /ship — "sync the docs"
 The pen for the tracked docs — nothing else writes the backlog (`docs/backlog/`),
 the decisions register (`docs/decisions/`), BUILD_ORDER.md, or ARCHITECTURE.md, and it
@@ -148,7 +162,7 @@ aren't — they run whether or not anyone remembers them.
 | `npm test` | every check proven to still bite, the loop walked end-to-end, the skills' own instructions held against rot | pre-commit hook, and CI |
 | `npm run check:docs` | the docs stay greppable — the schema every skill's grep depends on | in-session (PostToolUse hook) + `npm test` |
 | `node scripts/backlog-schema-check.mjs --graph` | what blocks what: open entries with no open blocker ranked by how much they unblock, the chain behind each blocked one, prose blockers ([below](#the-dependency-graph)) | /triage groom; any "what's next?" |
-| `node scripts/next.mjs` | what to build next, read from main: every open, dependency-ready bug before the queue, most severe first, then the queue's head | /implement with no ID |
+| `node scripts/next.mjs` | what to build next, read from main: every open, dependency-ready bug before the queue, most severe first, then the queue's head; `--count N` picks a batch of N from the queue, skipping any that waits on another in it | /implement with no ID; /orchestrate |
 | `node scripts/review.mjs` | whether the diff gets /code-review (anything but Markdown changed) and /security-review (a file that runs unasked or grants permissions) | /implement's review point |
 | `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
 | `npm run check:manifest` | every tracked file is marked *suite* or *instance* (`scripts/manifest.mjs`), so the export knows what ships | `npm test` |

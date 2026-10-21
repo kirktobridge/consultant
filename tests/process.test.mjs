@@ -81,10 +81,11 @@ const LOOP_SKILLS = ['triage', 'implement', 'verify', 'land', 'ship'];
 
 /**
  * Skills that are not loop steps: /eval measures this repo's prose, and /research runs
- * the experiment track (P13 R1). Named, not inferred, so a new skill still has to be
- * placed on purpose.
+ * the experiment track (P13 R1), and /orchestrate drives the loop in parallel rather than
+ * being a step of it (P17). Named, not inferred, so a new skill still has to be placed
+ * on purpose.
  */
-const OFF_LOOP_SKILLS = ['eval', 'research'];
+const OFF_LOOP_SKILLS = ['eval', 'research', 'orchestrate'];
 
 /** The docs that introduce the skills to a reader. */
 const INTRO_DOCS = [

@@ -134,3 +134,79 @@ describe('next.mjs takes every open bug before the queue (P5 R1)', () => {
     assert.equal(next(dir).code, 2);
   });
 });
+
+describe('next.mjs --count picks a batch for parallel subagents (P17)', () => {
+  const picked = (r) => [...r.stdout.matchAll(/^ {2}picked: (\S+)$/gm)].map((m) => m[1]);
+
+  test('takes up to N from the queue, in its order', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2'), P('P3'), P('P4')], nextUp: ['P1', 'P2', 'P3', 'P4'] });
+    const r = next(dir, '--count', '3');
+    assert.equal(r.code, 0, out(r));
+    assert.deepEqual(picked(r), ['P1', 'P2', 'P3']);
+    assert.match(r.stdout, /^batch: 3 of 3 asked/m);
+  });
+
+  test('skips an entry that depends on one picked in the same batch, and says why', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] }), P('P3')], nextUp: ['P1', 'P2', 'P3'] });
+    const r = next(dir, '--count', '3');
+    assert.deepEqual(picked(r), ['P1', 'P3'], out(r));
+    assert.match(r.stdout, /skipped: P2 — waits on P1 \(picked in this batch\)/);
+  });
+
+  test('skips what an unshipped feature holds, directly or through another entry', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { status: 'partial' }), P('P2', { dependsOn: ['P1'] }), P('P3', { dependsOn: ['P2'] }), P('P4')],
+      nextUp: ['P3', 'P4'],
+    });
+    const r = next(dir, '--count', '2');
+    assert.deepEqual(picked(r), ['P4'], out(r));
+    assert.match(r.stdout, /skipped: P3 — waits on P2 \(proposed\), P1 \(partial\) via P2/);
+  });
+
+  test('skips a claimed entry and one an open assumption holds', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['A-1'] }), P('P3')],
+      nextUp: ['P1', 'P2', 'P3'], assumptions: [A('A-1')],
+    });
+    const r = next(dir, '--count', '3');
+    assert.deepEqual(picked(r), ['P3'], out(r));
+    assert.match(r.stdout, /skipped: P1 — claimed/);
+    assert.match(r.stdout, /skipped: P2 — waits on A-1 \(open\)/);
+  });
+
+  test('picks from the queue only, naming a ready bug rather than batching it', () => {
+    const { dir } = repo({ backlog: [P('P1')], nextUp: ['P1'], bugs: [B('B1')] });
+    const r = next(dir, '--count', '2');
+    assert.deepEqual(picked(r), ['P1'], out(r));
+    assert.match(r.stdout, /note: B1 .* a batch picks from the queue only/);
+  });
+
+  test('--json carries the batch', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] })], nextUp: ['P1', 'P2'] });
+    const j = JSON.parse(next(dir, '--count', '2', '--json').stdout);
+    assert.deepEqual(j.picked, ['P1']);
+    assert.deepEqual(j.skipped, [{ id: 'P2', why: 'waits on P1 (picked in this batch)' }]);
+  });
+
+  test('a transitive dependency picked in this batch keeps its path; a dangling one holds', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['P1'] }), P('P3', { dependsOn: ['P2'] }), P('P4', { dependsOn: ['P9'] })],
+      nextUp: ['P1', 'P2', 'P3', 'P4'],
+    });
+    const r = next(dir, '--count', '4');
+    assert.deepEqual(picked(r), ['P1'], out(r));
+    assert.match(r.stdout, /skipped: P3 — waits on P2 \(proposed\), P1 \(picked in this batch\) via P2/);
+    assert.match(r.stdout, /skipped: P4 — waits on P9 \(no entry\)/);
+  });
+
+  test('a held bug is still reported', () => {
+    const { dir } = repo({ backlog: [P('P1')], nextUp: ['P1'], bugs: [B('B1', { dependsOn: ['A-1'] })], assumptions: [A('A-1')] });
+    assert.match(next(dir, '--count', '1').stdout, /held: B1 .* waits on A-1 \(open\)/);
+  });
+
+  test('nothing ready exits 1; a bad count exits 2', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })], nextUp: ['P1'] });
+    assert.equal(next(dir, '--count', '2').code, 1);
+    for (const bad of ['x', '0', '1e1', '0x2', '3.0']) assert.equal(next(dir, '--count', bad).code, 2, bad);
+  });
+});
