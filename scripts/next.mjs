@@ -9,7 +9,8 @@
 // "Ready" is /implement's DEPENDS GATE, applied before the proposal rather than after
 // it: a dependency that is an unshipped `P#`, an unfixed `B#`, or an `open` `A-n` /
 // `D-n` holds the bug back, and this prints it as held with what holds it. A claimed
-// entry (`in-progress`) is someone else's build, so it is skipped too.
+// entry (`in-progress`) is skipped too: someone else's build, or one that has landed and
+// waits on the owner's acceptance — the reason says which (landing.mjs).
 //
 // Everything is read from the integration branch, never the checked-out copy, for the
 // claim gate's reason: a worktree's files are as old as its branch.
@@ -30,6 +31,7 @@
 import { execFileSync } from 'node:child_process';
 import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf, dependencyMet, dependencyGraph } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
+import { landings } from './landing.mjs';
 
 const argv = process.argv.slice(2);
 const asJson = argv.includes('--json');
@@ -72,6 +74,15 @@ const entriesOf = (reg) => {
 };
 const loaded = new Map(REGISTERS.map((r) => [r, entriesOf(r)]));
 
+// A claimed entry is skipped either way; the reason says whether a session is still
+// building it or it has landed and waits on the owner's acceptance (B4).
+const { landedAt } = landings(git, BASE, { branches });
+const claimed = (id) => {
+  const at = landedAt(id);
+  return at ? { short: `${id} (landed ${at.slice(0, 10)}, awaiting acceptance)`, why: `landed ${at.slice(0, 10)}, awaiting the owner's acceptance`, landed: at }
+    : { short: `claimed ${id}`, why: 'claimed (in-progress): another session is building it' };
+};
+
 const holding = (e) => idsOf(e, 'depends_on').filter((id) => !dependencyMet(id, byId.get(id)?.status))
   .map((id) => `${id} (${byId.get(id)?.status ?? 'no entry'})`);
 
@@ -101,7 +112,12 @@ if (COUNT !== null) {
     if (picked.length >= COUNT) break;
     const e = byId.get(id);
     if (!e) { skipped.push({ id, why: 'queued but has no entry' }); continue; }
-    if (e.status === 'in-progress') { skipped.push({ id, why: 'claimed (in-progress): another session is building it' }); continue; }
+    if (e.status === 'in-progress') {
+      // `landed` lets a JSON reader tell "waits on the owner" from "being built" without the prose.
+      const { why, landed } = claimed(id);
+      skipped.push({ id, why, ...(landed && { landed }) });
+      continue;
+    }
     // The graph walks feature dependencies through each other; every other direct one
     // (a bug, an assumption, a decision, a feature with no entry) is a leaf.
     const features = graph.unmet(id).map((u) => `${u.id} (${picked.includes(u.id) ? 'picked in this batch' : u.status})`
@@ -127,7 +143,7 @@ let pick = null;
 if (bug) {
   pick = { id: bug.id, from: 'bugs', why: `${bug.header.severity} bug, reported ${bug.header.reported} — every open bug is picked up before the queue, most severe first` };
 } else if (head) {
-  pick = { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${head !== queued[0] ? ` (skipping claimed ${queued.slice(0, queued.indexOf(head)).join(', ')})` : ''}` };
+  pick = { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${head !== queued[0] ? ` (skipping ${queued.slice(0, queued.indexOf(head)).map((id) => claimed(id).short).join(', ')})` : ''}` };
 }
 
 if (asJson) {

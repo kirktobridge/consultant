@@ -32,8 +32,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, loadRegister, dependencyMet } from './entries.mjs';
+import { REGISTERS, BACKLOG, BUGS, parseQueue, loadRegister, dependencyMet } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
+import { landings } from './landing.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -160,24 +161,7 @@ const downstream = (id) => {
 
 // ── Git: claims, branches, worktrees, landings ───────────────────────────────
 
-const fileOf = (id) => `${(BACKLOG.idPattern.test(id) ? BACKLOG : BUGS).dir}/${id}.md`;
-// When the current claim began: the oldest commit of the unbroken run, newest first, in
-// which the entry's status is `in-progress`. An earlier milestone's claim is a different
-// run. First-parent only: a merged branch's own commits carry its older copy of the entry.
-const claimedAt = (id) => {
-  const file = fileOf(id);
-  const log = lines(git('log', '--first-parent', '--format=%H %cI', BASE, '--', file)).map((l) => l.split(' '));
-  const texts = blobs(log.map(([sha]) => `${sha}:${file}`));
-  let at = null;
-  for (let n = 0; n < log.length; n++) {
-    if (parseEntry(texts[n] ?? '', { status: 'word' }).header.status !== 'in-progress') break;
-    at = log[n][1];
-  }
-  return at;
-};
-
-// An entry's branch is worktree.mjs's `feat/<id>-<slug>`; `adhoc/…` work has no entry.
-const names = (id) => new RegExp(`^feat/${id}-`, 'i');
+const { branchOf, claimedAt, landedAt } = landings(git, BASE, { branches, blobs });
 const worktrees = new Map();
 let wt = null;
 for (const l of lines(git('worktree', 'list', '--porcelain'))) {
@@ -185,10 +169,6 @@ for (const l of lines(git('worktree', 'list', '--porcelain'))) {
   const m = l.match(/^branch refs\/heads\/(.+)$/);
   if (m) worktrees.set(m[1], wt);
 }
-// Landings are merges on main's first-parent line; the branch may be deleted by then, so
-// the merge commit's subject (`Merge branch 'feat/p7-…'`) is what names it.
-const landings = lines(git('log', '--first-parent', '--merges', '--format=%cI%x09%s', BASE)).map((l) => l.split('\t'));
-const mergedBranch = (subject) => (subject.match(/^Merge branch '([^']+)'/i) || subject.match(/^merge (\S+)/i) || [])[1] ?? '';
 const firstParent = new Set(lines(git('rev-list', '--first-parent', BASE)));
 
 const days = (iso) => {
@@ -207,14 +187,15 @@ const report = {
 const open = graph.entries.filter((e) => e.open);
 
 for (const e of open.filter((x) => isBuildable(x) && x.status === 'in-progress')) {
-  const since = claimedAt(e.id);
-  const branch = branches.find((b) => b !== BASE && names(e.id).test(b)) ?? null;
-  const landed = landings.find(([date, s]) => names(e.id).test(mergedBranch(s)) && (!since || new Date(date) >= new Date(since)));
+  const claim = claimedAt(e.id);
+  const since = claim?.at ?? null;
+  const branch = branchOf(e.id);
+  const landed = landedAt(e.id, claim);
   const branchTip = branch ? git('rev-parse', branch) : null;
-  if (landed && (!branch || git('merge-base', '--is-ancestor', branch, BASE) !== null)) {
+  if (landed) {
     report.waitingOnYou.push({
-      kind: 'acceptance', id: e.id, title: e.title, since: landed[0],
-      why: `landed ${short(landed[0])} (${days(landed[0])}); awaiting your acceptance against its Accept criteria`,
+      kind: 'acceptance', id: e.id, title: e.title, since: landed,
+      why: `landed ${short(landed)} (${days(landed)}); awaiting your acceptance against its Accept criteria`,
       see: `npm run history ${e.id}`,
     });
   } else {
