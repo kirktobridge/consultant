@@ -1,8 +1,9 @@
 # Consultant — a doc-driven working loop
 
-A portable system of **five loop skills** plus the **documents they read and write**,
-extracted from a project where it ran for months across dozens of features. (A sixth,
-`/eval`, is maintenance for the suite's own prose — off the loop by design.)
+A portable system of **loop skills** plus the **documents they read and write**,
+extracted from a project where it ran for months across dozens of features. (`/eval`
+is maintenance for the suite's own prose, and `/research` runs experiments; both are
+off the loop by design.)
 
 It solves one problem: **an agent's durable notes drift from reality, silently.** A
 backlog says a feature is unbuilt when it shipped; a claim written from a mistyped grep
@@ -97,7 +98,7 @@ keeps the register from becoming a generator of speculative work.
 
 ```
 .claude/
-  GUIDE.md              human-facing guide to the five loop skills, and the checks
+  GUIDE.md              human-facing guide to the loop skills, and the checks
   settings.json         hooks: session audit (Start), edit-guard (Pre), schema check (Post)
   edit-guard.mjs        blocks writes to human-owned files
   edit-blocklist        which files those are            ← edit for your project

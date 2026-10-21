@@ -207,7 +207,7 @@ export function parse(argv) {
     }
     if (tok.startsWith('--')) {
       const [flag, inline] = tok.slice(2).split(/=(.*)/s);
-      const spec = FLAGS[flag];
+      const spec = Object.hasOwn(FLAGS, flag) ? FLAGS[flag] : undefined;
       if (!spec) throw new UsageError(`unrecognized argument: ${tok}`);
       const raw = inline ?? argv[++i];
       if (raw === undefined) throw new UsageError(`--${flag} needs a value`);

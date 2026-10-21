@@ -1,6 +1,6 @@
 # Skill framework — quick guide
 
-Five skills, one loop. **triage** sorts an idea in: things we'd *build* become backlog
+One loop. **triage** sorts an idea in: things we'd *build* become backlog
 entries and go to **implement**, then **verify** in the running app; things we're
 merely *assuming* become open assumptions, and choices only you can make become open
 decisions; both block whatever depends on them. Things that are *broken* become bugs,
@@ -8,8 +8,9 @@ with your repro and a severity. Work
 ends the same way: **land** the branch on main → **ship** the docs. Each tracking file has exactly one skill that writes it, so nothing goes stale
 or gets double-edited.
 
-There is a sixth, **/eval**, that is deliberately *not* part of that loop: it measures
-whether these skills' own prose still works. See [The checks](#the-checks-behind-the-skills).
+**/eval** and **/research** are deliberately *not* part of that loop: /eval measures
+whether these skills' own prose still works (see [The checks](#the-checks-behind-the-skills)),
+and /research runs experiments, the questions a test can't answer ([docs/research/](../docs/research/README.md)).
 
 ## The skills
 
@@ -196,7 +197,7 @@ Graph fields: `depends_on` / `waiting_on`.
 runs **one subagent per file** and saves each reply verbatim, then
 `npm run eval -- --grade <dir>` scores them mechanically.
 
-That procedure is the **/eval** skill — the sixth, off-loop one. It exists because the
+That procedure is the **/eval** skill, one that is off the loop. It exists because the
 steps are executed by an agent rather than a shell, and instructions an agent has to be
 told about are instructions that get skipped.
 

@@ -153,6 +153,7 @@ describe('a share against a null', () => {
       ['8', '10', '--null', '0'], ['8', '10', '--null', '100'],
       ['--precision', '--expect', '150', '--n', '10'], ['--power', '--bar', '120', '--n', '40'],
       ['--pool', '30/25', '0/30'],
+      ['8', '10', '--constructor', '1'], ['8', '10', '--toString', '1'], // inherited names are not flags
     ]) {
       const r = cli(...args);
       assert.equal(r.code, 2, `${args.join(' ')} → exit ${r.code}`);

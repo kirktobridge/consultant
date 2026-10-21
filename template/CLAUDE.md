@@ -22,7 +22,7 @@ with **/eval**, never by improvising — opt-in, and never a commit gate.
 | [docs/assumptions/](docs/assumptions/README.md) | **Load-bearing assumptions** (`A-n`) nobody has verified. An `open` assumption blocks work that depends on it. |
 | [docs/decisions/](docs/decisions/README.md) | **Choices only the product owner makes** (`D-n`): open ones with options and what they wait on, decided ones with why. An `open` decision blocks like an open assumption. |
 | [docs/LESSONS.md](docs/LESSONS.md) | The expensive failures, each with the rule it bought. |
-| [.claude/GUIDE.md](.claude/GUIDE.md) | The five loop skills, how they hand off, and the checks behind them. |
+| [.claude/GUIDE.md](.claude/GUIDE.md) | The loop skills, how they hand off, and the checks behind them. |
 
 ## Doc discipline (avoid the re-align treadmill)
 
