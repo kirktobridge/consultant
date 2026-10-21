@@ -44,6 +44,11 @@ const TYPES = {
   text: (v) => (v.trim() ? null : 'empty value'),
   word: (v) => (/^[a-z-]+$/.test(v) ? null : `not a single lowercase word: "${v}"`),
   date: (v) => (DATE.test(v) ? null : `not a YYYY-MM-DD date: "${v}"`),
+  // One date per event, oldest first: `rejected:` grows by one with each rejection (B7).
+  dates: (v) => {
+    const bad = v.split(/,\s*/).filter((x) => !DATE.test(x));
+    return bad.length ? `not a comma-separated list of YYYY-MM-DD dates: "${v}"` : null;
+  },
   ids: (v) => {
     if (v === '—') return null;
     const bad = v.split(/,\s*/).filter((x) => !ID.test(x));
@@ -73,6 +78,7 @@ export const BACKLOG = {
     depends_on: 'ids',
     resolves: 'ids',
     shipped: 'date',
+    rejected: 'dates',
   },
 };
 
@@ -125,6 +131,7 @@ export const BUGS = {
     severity: 'word',
     reported: 'date',
     depends_on: 'ids',
+    rejected: 'dates',
   },
 };
 

@@ -56,6 +56,7 @@ anything else.
 | `severity` | a word from the severity vocab above; required while open |
 | `reported` | `YYYY-MM-DD` — when it was reported, or last re-confirmed; required while open |
 | `depends_on` | comma-separated `P#` / `B#` / `A-n` / `D-n`, or `—` |
+| `rejected` | comma-separated `YYYY-MM-DD`, one per landed fix the user rejected, oldest first; landings before the commit that last changed it no longer count (`scripts/landing.mjs`) |
 
 The header is strict, as in the backlog: an unknown key, a line that isn't
 `key: value`, or a value of the wrong type fails the check with the file and line.

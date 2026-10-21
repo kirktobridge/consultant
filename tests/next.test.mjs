@@ -449,7 +449,7 @@ describe('the landing check sees squash and rebase merges, and a fast-forwarded 
   });
 
   test('milestone and multi-ID tags name the entry; another ID that contains it does not', () => {
-    for (const [title, want] of [['feat: thing (P1 R1)', LANDED], ['feat: thing (P37, P1)', LANDED], ['feat: thing (P11)', BUILDING]]) {
+    for (const [title, want] of [['feat: thing (P1 R1) (#12)', LANDED], ['feat: thing (P37, P1) (#12)', LANDED], ['feat: thing (P11) (#12)', BUILDING]]) {
       const r = built();
       r.sh('git merge -q --squash feat/p1-thing');
       r.sh(`git commit -q -m "${title}"`);
@@ -465,7 +465,7 @@ describe('the landing check sees squash and rebase merges, and a fast-forwarded 
     r.sh('git branch -D feat/p1-thing');
     assert.match(reason(r.dir), BUILDING);
     writeFileSync(join(r.dir, 'GUIDE.md'), 'rewritten');
-    r.commitAll('docs: rewrite the guide (P1)');
+    r.commitAll('docs: rewrite the guide (P1) (#13)');
     assert.match(reason(r.dir), LANDED);
   });
 
@@ -493,5 +493,144 @@ describe('the landing check sees squash and rebase merges, and a fast-forwarded 
     sh('git merge -q --ff-only main');
     checkout('main');
     assert.match(reason(dir), LANDED);
+  });
+});
+
+describe('a rejection resets the landing; direct commits and remote builds read right (B7)', () => {
+  const reason = (dir) => (next(dir, '--count', '2').stdout.match(/skipped: P1 — (.*)$/m) || [])[1] ?? '';
+  const LANDED = /^landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance$/;
+  const BUILDING = /another session is building it/;
+  // What /ship does on a rejection: append today's date to `rejected:`.
+  const reject = ({ dir, commitAll }, date = '2026-10-21') => {
+    const f = join(dir, 'docs/backlog/P1.md');
+    let text = readFileSync(f, 'utf8');
+    text = /^rejected: /m.test(text) ? text.replace(/^rejected: (.*)$/m, `rejected: $1, ${date}`)
+      : text.replace(/^status: in-progress$/m, `status: in-progress\nrejected: ${date}`);
+    writeFileSync(f, `${text}\nRejected: not it.\n`);
+    commitAll('docs: P1 rejected (P1)');
+  };
+
+  test('a recorded rejection makes a landed entry a build, even on the reused landed branch', () => {
+    const r = landedP1();
+    assert.match(reason(r.dir), LANDED);
+    reject(r);
+    assert.match(reason(r.dir), BUILDING);
+    r.checkout('feat/p1-thing');
+    r.sh('git merge -q --ff-only main');
+    r.checkout('main');
+    assert.match(reason(r.dir), BUILDING);
+    r.checkout('feat/p1-thing');
+    writeFileSync(join(r.dir, 'x.txt'), 'rebuilt');
+    r.commitAll('feat: rebuild (P1)');
+    r.checkout('main');
+    r.merge('feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a second rejection resets from the newer one', () => {
+    const r = landedP1();
+    reject(r, '2026-10-20');
+    r.checkout('feat/p1-thing');
+    writeFileSync(join(r.dir, 'x.txt'), 'second try');
+    r.commitAll('feat: second try (P1)');
+    r.checkout('main');
+    r.merge('feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+    reject(r, '2026-10-21');
+    assert.match(reason(r.dir), BUILDING);
+  });
+
+  test('a second rejection on the same day still resets', () => {
+    const r = landedP1();
+    reject(r);
+    r.checkout('feat/p1-thing');
+    writeFileSync(join(r.dir, 'x.txt'), 'second try');
+    r.commitAll('feat: second try (P1)');
+    r.checkout('main');
+    r.merge('feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+    reject(r);
+    assert.match(reason(r.dir), BUILDING);
+  });
+
+  test('a rejected build\'s branch left behind does not hold up the rebuild\'s landing', () => {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    r.checkout('feat/p1-a', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'first try');
+    r.commitAll('feat: first try (P1)');
+    r.checkout('main');
+    r.sh('git merge -q --squash feat/p1-a');
+    r.sh('git commit -q -m "First try (#1)" -m "* feat: first try (P1)"');
+    r.sh('git update-ref refs/remotes/origin/feat/p1-a feat/p1-a');
+    r.sh('git branch -D feat/p1-a');
+    reject(r);
+    r.checkout('feat/p1-b', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'second try');
+    r.commitAll('feat: second try (P1)');
+    r.checkout('main');
+    r.sh('git merge -q --squash feat/p1-b');
+    r.sh('git commit -q -m "Second try (#2)" -m "* feat: second try (P1)"');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a hand squash with an ordinary tagged message is a landing while its branch shows it', () => {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    r.checkout('feat/p1-thing', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'built');
+    r.commitAll('feat: thing (P1)');
+    r.checkout('main');
+    writeFileSync(join(r.dir, 'other.txt'), 'main moved');
+    r.commitAll('feat: other (P2)');
+    r.sh('git merge -q --squash feat/p1-thing');
+    r.sh('git commit -q -m "feat: thing (P1)"');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a pushed branch that landed by fast-forward is landed', () => {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    r.checkout('feat/p1-thing', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'built');
+    r.commitAll('feat: thing (P1)');
+    r.sh('git update-ref refs/remotes/origin/feat/p1-thing HEAD');
+    r.checkout('main');
+    r.sh('git merge -q --ff-only feat/p1-thing');
+    r.sh('git branch -D feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a tagged commit made directly on main is not a landing; a hand squash is', () => {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    writeFileSync(join(r.dir, 'skill.md'), 'tweak');
+    r.commitAll('docs: tweak the skill (P1)');
+    assert.match(reason(r.dir), BUILDING);
+    r.checkout('feat/p1-thing', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'built');
+    r.commitAll('feat: thing (P1)');
+    r.checkout('main');
+    r.sh('git merge -q --squash feat/p1-thing');
+    r.sh('git commit -q --no-edit'); // git's own "Squashed commit of the following:"
+    r.sh('git branch -D feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+  });
+
+  test('a build branch that exists only on a remote counts', () => {
+    const r = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    r.checkout('feat/p1-thing', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'built');
+    r.commitAll('feat: thing (P1)');
+    r.checkout('main');
+    r.sh('git merge -q --squash feat/p1-thing');
+    r.sh('git commit -q -m "Add the thing (#12)" -m "* feat: thing (P1)"');
+    r.sh('git update-ref refs/remotes/origin/feat/p1-thing feat/p1-thing');
+    r.sh('git branch -D feat/p1-thing');
+    assert.match(reason(r.dir), LANDED);
+    r.checkout('more', true);
+    r.sh('git reset -q --hard refs/remotes/origin/feat/p1-thing');
+    writeFileSync(join(r.dir, 'y.txt'), 'pushed from elsewhere');
+    r.commitAll('feat: more (P1)');
+    r.sh('git update-ref refs/remotes/origin/feat/p1-thing HEAD');
+    r.checkout('main');
+    r.sh('git branch -D more');
+    assert.match(reason(r.dir), BUILDING);
   });
 });

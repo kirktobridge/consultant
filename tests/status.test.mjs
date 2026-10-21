@@ -173,6 +173,20 @@ describe('status.mjs names what is in flight, and what has landed awaiting accep
     assert.equal(r.inFlight[0]?.branch, 'feat/p1-thing', JSON.stringify(r));
   });
 
+  test('a build that only a remote holds is named by its remote branch (B7)', () => {
+    const { dir, sh, checkout, commitAll } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
+    setStatus(dir, 'P1', 'in-progress');
+    commitAll('docs: claim P1 (P1)');
+    checkout('feat/p1-thing', true);
+    writeFileSync(join(dir, 'x.txt'), 'building elsewhere');
+    commitAll('feat: thing (P1)');
+    sh('git update-ref refs/remotes/origin/feat/p1-thing HEAD');
+    checkout('main');
+    sh('git branch -D feat/p1-thing');
+    const r = report(dir);
+    assert.equal(r.inFlight[0]?.branch, 'origin/feat/p1-thing', JSON.stringify(r));
+  });
+
   test('a branch with no commits of its own is in flight, not landed', () => {
     const { dir, sh, commitAll } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
     setStatus(dir, 'P1', 'in-progress');
