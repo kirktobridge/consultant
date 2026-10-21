@@ -125,13 +125,13 @@ export const CASES = [
     expect: { classification: 'decision' },
   },
   {
-    id: 'triage-does-not-file-a-measurement-as-an-assumption',
+    id: 'triage-routes-a-measurement-to-the-research-track',
     skill: 'triage',
     request: 'we should find out how often people undo a placement right after making it',
-    bar: 'not filable here yet — a measurement, not an assumption or a decision',
-    why: 'a rate is not a yes/no fact, so filed as an assumption no single observation can ever close it; its home is the research track P13 builds',
-    repo: { backlog: [P('P1')], nextUp: ['P1'] },
-    expect: { classification: 'not-applicable' },
+    bar: 'an experiment of kind measure, for /research — not an assumption or a decision',
+    why: 'a rate is not a yes/no fact, so filed as an assumption no single observation can ever close it; its home is the research track (P13 R2)',
+    repo: { backlog: [P('P1')], nextUp: ['P1'], research: {} },
+    expect: { classification: 'experiment', citesAll: ['kind: measure'], citesNone: ['kind: test', 'kind: probe'] },
   },
   {
     id: 'triage-files-a-breakage-as-a-bug',

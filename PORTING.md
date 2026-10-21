@@ -12,26 +12,26 @@ grep -rn "PORTING" --include=*.md --include=*.mjs --include=*.py .
 
 ---
 
-## Step 0 — check you're on the right variant
+## Step 0 — decide whether you need the research track
 
-This suite is **build-only**: everything routes through one question — *would we
-build this, or are we assuming it?*
+The loop routes through one question — *would we build this, or are we assuming it?*
 
-A retired variant carried a second, **measurable** track: `/research`, an experiment
-framework, an append-only run log, and findings graded
-`replicated`/`significant`/`directional`. Its routing question was *can this state a
-pre-registered success criterion — a metric plus a bar?* It survives as the tag
-`measurement-track`, frozen before this suite's tests, eval, and `Accept:` field.
+A second, **measurable** track is optional: `/research`, an experiment framework
+([docs/research/](docs/research/README.md)), an append-only run log, and findings graded
+`replicated`/`significant`/`directional`. /triage routes a question there when data
+answers it — a quantity, a rate, "is B better than A?".
 
-**Consider porting from it** if your project makes claims that could be wrong in a way
-a test won't catch — performance work, model/prompt quality, ranking, pricing, anything
-tuned. The measurable track is what stops "it feels faster" from becoming a committed
-default. Expect to port by hand: the snapshot is unmaintained, and nothing here checks
-it.
+**Keep it** if your project makes claims that could be wrong in a way a test won't
+catch — performance work, model/prompt quality, ranking, pricing, anything tuned. The
+measurable track is what stops "it feels faster" from becoming a committed default.
+The export ships it adopted and empty, and an empty register is a legitimate state. A
+project without `docs/research/` has not adopted the track, and the schema check holds
+it to nothing.
 
-**Stay here** if you genuinely ship only features. Don't bolt a half-hearted research
-backlog onto this later: one nobody runs is worse than none, because the next session
-reads it as live.
+**If you ship only features,** leave the track empty and never file an experiment you
+won't run: a backlog nobody runs is worse than none, because the next session reads it
+as live. Deleting the track is not supported: the suite's own tests and skills name
+`/research` and `docs/research/`, so a copy without them fails its own suite.
 
 **Prerequisite: Node 18+ on `PATH`, and nothing else.** The hooks, the scripts, the
 tests and the eval harness are all dependency-free ESM with no build step, so

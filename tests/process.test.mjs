@@ -128,6 +128,31 @@ describe('the corpus is what we think it is', () => {
     }
   });
 
+  test('/triage routes a measurable question to /research, and no intro doc calls it retired', () => {
+    // P13 R2. The track was retired once (2026-10-15) and rebuilt; the intro docs kept
+    // calling it retired after it shipped, and /triage kept saying it did not exist.
+    assert.ok(SKILLS.includes('research'), 'the research skill should exist');
+    const triage = unfenced(read(join(SKILL_DIR, 'triage', 'SKILL.md')));
+    assert.match(triage, /docs\/research\/experiments\//, '/triage must name the experiment backlog');
+    assert.match(triage, /experiment draft goes to \*\*\/research\*\*/i, '/triage must hand experiments to /research');
+    assert.doesNotMatch(triage, /research track does not exist/i);
+    const retired = /retired variant|measurement-track|variant on .?master|this branch deleted it/i;
+    for (const bad of ['> **Retired variant:** an earlier version', 'use the `/research` variant on `master`',
+      'the measurable track carries, and this branch deleted it']) {
+      assert.match(bad, retired, `the control: the pattern must catch "${bad}"`);
+    }
+    // Every doc that describes the suite now. Under docs/ live the registers and the
+    // lessons, which record history and may quote the old wording.
+    const current = DOCS.filter((f) => !rel(f).startsWith('docs/'));
+    assert.ok(current.some((f) => rel(f) === 'README.md') && current.some((f) => rel(f) === 'PORTING.md'),
+      'the control: the intro docs must be in the scanned set');
+    const hits = current
+      .map((f) => [rel(f), unfenced(read(f)).match(retired)?.[0]])
+      .filter(([, m]) => m)
+      .map(([f, m]) => `${f} → "${m}"`);
+    assert.deepEqual(hits, [], 'a doc still calls the research track retired');
+  });
+
   test('markdown was actually found — the corpus is not silently empty (L3)', () => {
     assert.ok(DOCS.length >= 10, `only found ${DOCS.length} docs; the walker is broken`);
   });
@@ -182,10 +207,7 @@ describe('every command a doc tells you to run exists', () => {
     for (const f of DOCS) {
       const t = unfenced(read(f));
       for (const g of gone) {
-        // PORTING legitimately discusses the retired measurement-track variant, which has stats.py.
-        if (t.includes(g) && !/master|variant/i.test(t.split(g)[0].slice(-200))) {
-          hits.push(`${rel(f)} → ${g}`);
-        }
+        if (t.includes(g)) hits.push(`${rel(f)} → ${g}`);
       }
     }
     assert.deepEqual(hits, [], 'a deleted script is still referenced as if it exists');
@@ -451,8 +473,6 @@ describe('every skill handoff points at a skill that exists', () => {
       for (const m of t.matchAll(/(?<![\w.-])\/(triage|implement|verify|land|ship|checkpoint|eval|research)\b/g)) {
         const name = m[1];
         if (SKILLS.includes(name)) continue;
-        // /research is deliberately named as the thing the retired measurement-track variant has.
-        if (name === 'research' && /master|variant|measurable/i.test(t)) continue;
         bad.push(`${doc} → /${name}`);
       }
     }

@@ -100,10 +100,11 @@ made. That's dominated by harness and tooling, not by the words in a skill.
 
 **Also cannot: tell you a prompt edit helped.** Grading a rate rigorously — how many
 repetitions, what counts as a real difference, when a result is worth acting on — is
-exactly the discipline the measurable track carries, and this branch deleted it. What's
-here is deliberately modest: a bar registered in the source before any run, N
-repetitions, a flat pass rate. Read a drop as a reason to go look at the prompt. For
-anything stronger, use the `/research` variant on `master`.
+exactly the discipline the research track ([docs/research/](../docs/research/README.md))
+carries, and this harness does not apply it. What's here is deliberately modest: a bar
+registered in the source before any run, N repetitions, a flat pass rate. Read a drop as
+a reason to go look at the prompt. For anything stronger, run it as an experiment
+through `/research`.
 
 ## Two things the subagent transport gives up
 

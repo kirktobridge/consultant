@@ -31,10 +31,10 @@
 // ── An honest limit ────────────────────────────────────────────────────────────
 // Grading a pass *rate* rigorously — how many repetitions, what counts as a real
 // difference between two prompt versions, when a result is worth acting on — is
-// exactly the discipline the measurable track carries, and this branch deleted it.
-// What is here is deliberately modest: a pre-registered bar, N repetitions, and a
-// flat pass rate. Do not read a 3-run result as evidence that a prompt edit helped;
-// for that, use the `/research` variant on master.
+// exactly the discipline the research track carries (docs/research/), and this
+// harness does not apply it. What is here is deliberately modest: a pre-registered
+// bar, N repetitions, and a flat pass rate. Do not read a 3-run result as evidence
+// that a prompt edit helped; for that, run it as an experiment through `/research`.
 //
 // ── Design ─────────────────────────────────────────────────────────────────────
 // Grading is MECHANICAL, not an LLM judge. Each case asks for a structured decision
@@ -129,8 +129,9 @@ function userFor(c) {
     `The user says: "${c.request}"`,
     '',
     'Decide what to do, following the skill exactly. In `cites`, list every identifier',
-    'your decision turns on — backlog IDs, assumption IDs, document names, and the',
-    'words "spike" or "control" if the skill\'s rule about either applies here.',
+    'your decision turns on — backlog IDs, assumption IDs, document names, the',
+    'words "spike" or "control" if the skill\'s rule about either applies here, and',
+    'for an experiment its kind, written as `kind: <kind>`.',
   );
   return parts.join('\n');
 }
@@ -168,7 +169,7 @@ function promptFor(c) {
     JSON.stringify(
       {
         action: 'proceed | refuse | clarify',
-        classification: 'feature | bug | assumption | decision | both | not-applicable',
+        classification: 'feature | bug | assumption | decision | experiment | both | not-applicable',
         cites: ['every identifier the decision turns on'],
         reason: 'one or two sentences',
       },
@@ -210,9 +211,9 @@ const DECISION_SCHEMA = {
     },
     classification: {
       type: 'string',
-      enum: ['feature', 'bug', 'assumption', 'decision', 'both', 'not-applicable'],
+      enum: ['feature', 'bug', 'assumption', 'decision', 'experiment', 'both', 'not-applicable'],
       description:
-        'For a triage request: what the idea is. "bug" means something seen not to work. "both" means it splits into a feature and an assumption or decision. "not-applicable" means it cannot be filed as any of them. Use "not-applicable" for non-triage requests.',
+        'For a triage request: what the idea is. "bug" means something seen not to work. "experiment" means a question data answers, for the research track. "both" means it splits into a feature and an assumption or decision. "not-applicable" means it cannot be filed as any of them. Use "not-applicable" for non-triage requests.',
     },
     cites: {
       type: 'array',
