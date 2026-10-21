@@ -447,3 +447,93 @@ describe('an audit that could not run is NOT a clean audit (L3)', () => {
     assert.match(r.stderr, /Pass --base/);
   });
 });
+
+describe('what is ahead, read from the graph on the trunk (P19)', () => {
+  const ahead = (dir) => JSON.parse(audit(dir, ['--json']).stdout).ahead;
+
+  test('a session start names the first queued entry, unasked', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P2', 'P1'] });
+    const r = audit(dir);
+    assert.equal(r.code, CLEAN, out(r));
+    assert.match(r.stdout, /Ahead \(from the dependency graph on main\):\n  next up: P2 — P2 example\n/);
+  });
+
+  test('a claimed head is named as skipped, and the first unclaimed entry is next', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    g.checkout('feat/p1-thing', true);
+    g.commitAll('work');
+    g.checkout('main');
+    assert.match(audit(dir).stdout, /next up: P2 — P2 example \(after claimed P1\)\n/);
+  });
+
+  test('a head queued below its own unshipped dependency says what it waits on', () => {
+    // The schema check allows it (user decision, 2026-10-16), so the head can be held.
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] })], nextUp: ['P1', 'P2'] });
+    g.checkout('feat/p1-thing', true);
+    g.commitAll('work');
+    g.checkout('main');
+    assert.match(audit(dir).stdout, /next up: P2 — P2 example \(after claimed P1\) — waits on P1\n/);
+  });
+
+  test('a forward view that cannot run costs none of the findings', () => {
+    const { dir } = repo();
+    writeFileSync(join(dir, 'docs', 'backlog', 'QUEUE.md'), '# edited\n');
+    const r = run('session-audit.mjs', [], { cwd: dir, env: { TMPDIR: join(dir, 'no-such-dir') } });
+    assert.equal(r.code, FINDINGS, out(r));
+    assert.match(r.stdout, /uncommitted change/);
+    assert.match(r.stdout, /Ahead: unreadable — /);
+  });
+
+  test('an unqueued entry whose last blocker just shipped is named as ready', () => {
+    const before = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] }), P('P3')], nextUp: ['P1'] });
+    assert.deepEqual(ahead(before.dir).readyUnqueued, ['P3'], 'P2 is still held by P1');
+    const after = repo({
+      backlog: [P('P1', { status: 'shipped', shipped: '2026-08-02' }), P('P2', { dependsOn: ['P1'] }), P('P3')],
+      nextUp: ['P3'],
+    });
+    assert.deepEqual(ahead(after.dir).readyUnqueued, ['P2']);
+    assert.match(audit(after.dir).stdout, / {2}ready, not queued: P2\n/);
+  });
+
+  test('an open assumption is named with the near-queue entries it holds, most first', () => {
+    const { dir } = repo({
+      backlog: [
+        P('P1'),
+        P('P2', { dependsOn: ['A-1'] }),
+        P('P3', { dependsOn: ['A-1'] }),
+        P('P4', { dependsOn: ['A-2'] }),
+        // Two steps from ready (P5 is unshipped too): not near the queue.
+        P('P5', { dependsOn: ['A-3'] }),
+        P('P6', { dependsOn: ['A-3', 'P5'] }),
+      ],
+      assumptions: [A('A-1'), A('A-2'), A('A-3'), A('A-4')],
+      nextUp: ['P1'],
+    });
+    const a = ahead(dir).assumptions;
+    assert.deepEqual(a.map((x) => [x.id, x.holds]), [['A-1', ['P2', 'P3']], ['A-2', ['P4']], ['A-3', ['P5']]],
+      'ranked by how many they hold; A-4 holds nothing and is not named');
+    assert.match(audit(dir).stdout, / {2}A-1 holds P2, P3 — A-1 example\n {2}A-2 holds P4 — A-2 example\n/);
+  });
+
+  test('the section stays short: at most three assumption lines, then a count', () => {
+    const ids = [1, 2, 3, 4, 5];
+    const { dir } = repo({
+      backlog: [P('P1'), ...ids.map((n) => P(`P${n + 1}`, { dependsOn: [`A-${n}`] }))],
+      assumptions: ids.map((n) => A(`A-${n}`)),
+      nextUp: ['P1'],
+    });
+    const text = audit(dir).stdout;
+    assert.equal((text.match(/^ {2}A-\d+ holds /gm) ?? []).length, 3);
+    assert.match(text, /… and 2 more open assumption\(s\)/);
+    assert.ok(text.trim().split('\n').length <= 15, text);
+  });
+
+  test('it reads the trunk, not the checked-out branch', () => {
+    // A worktree's registers are as old as its branch; the queue it opens on is main's.
+    const { dir, g } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P1'] });
+    g.checkout('feat/p9-elsewhere', true);
+    writeFileSync(join(dir, 'docs', 'backlog', 'QUEUE.md'), '# Next up\n\n1. **P2** — queued.\n');
+    g.commitAll('requeue on a branch');
+    assert.match(audit(dir).stdout, /next up: P1 — /);
+  });
+});
