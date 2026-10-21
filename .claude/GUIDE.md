@@ -270,7 +270,7 @@ the audit has already run — read it, then: npm run history P#   (or just: "wha
 | `docs/backlog/` (entries, `docs/backlog/QUEUE.md`), `docs/bugs/`, `docs/decisions/`, `BUILD_ORDER.md`, `ARCHITECTURE.md` | /ship (you decide; it records) | **main only** |
 | `docs/assumptions/` | *no single pen* — shape enforced by the schema check | anywhere |
 | `docs/LESSONS.md` | *no single pen* — whoever pays for a lesson writes it | anywhere |
-| `docs/research/` (experiments, runs, findings) | the research skill, from P13 R1; until then, shape enforced by the schema check | anywhere |
+| `docs/research/` (experiments, runs, findings) | /research; shape enforced by the schema check | anywhere |
 | `src/`, `tests/` | /implement | branch |
 | *(nothing tracked — scratchpad scripts, gitignored eval runs)* | /verify, /triage, /eval | — |
 | `docs/SPEC.md`, `docs/dev_notes/` | **you** (human-only, hook-enforced) | — |
