@@ -75,6 +75,7 @@ write a branch name into a git command.
 |---|---|---|
 | Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
 | A bug fix landed | `docs/bugs/B#.md` | it stays `in-progress` (a bug has no milestones); `status: fixed` — **only on the user's word**, the same rule as `shipped` (below). A bug never enters `QUEUE.md`: every open bug is picked up before it (`scripts/next.mjs`). |
+| The user rejected a landing | `docs/backlog/P#.md` / `docs/bugs/B#.md` | stays `in-progress`; append today's date to `rejected:` (add the key if absent) and a one-line note on what failed (below). |
 | A spike landed (`resolves: A-n`) | `docs/assumptions/A-n.md` | write the assumption's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | An assumption was misfiled (a choice, our own code's behavior, a quantity) | `docs/assumptions/A-n.md` | `status: moved`, add `resolved:` and `moved_to:` (its new home, filed first), and a one-line `## Resolution` saying why it moved. Repoint the `depends_on:` of every open entry that named it. |
 | The user took a decision | `docs/decisions/D-n.md` | `status: decided`, add `decided: YYYY-MM-DD` and `leads_to:` (the `P#` that carries it, or `—`) to the header, and add `## Decided` (the choice), `## Why` and `## Reopen if`; drop `waiting_on:`. **Only on the user's word**, as with `shipped`: recording a choice they didn't make is the one edit here that invents product direction. |
@@ -117,6 +118,14 @@ When they do say so, name any criterion that was **not observed** or **not exerc
 before writing the flip — they may be accepting a gap knowingly, and that's theirs to
 do, but not unknowingly. The flip's one-line note records which criteria were accepted
 on what.
+
+When they **reject** it instead ("no, that's not it"), the entry stays `in-progress`
+and you record the rejection: append today's date to `rejected:` in its header
+(`rejected: 2026-10-20, 2026-10-21`; add the key if absent) and add a one-line note on
+what failed, in one commit on main. Append, never replace: a second rejection the same
+day must still change the value. That commit is what tells
+`scripts/landing.mjs` the earlier landing no longer counts, so `next.mjs` and
+`status.mjs` read the entry as being built again rather than awaiting acceptance.
 
 ## When the schema check goes red
 

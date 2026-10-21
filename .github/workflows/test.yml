@@ -21,7 +21,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # Full history: check:commits reads every landed branch's commits, and a depth-1
+      # clone holds none of them, so it would pass on nothing (B7).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

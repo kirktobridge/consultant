@@ -16,6 +16,7 @@ after(cleanupAll);
 // The arguments each script needs to reach its trunk resolution.
 const ARGS = {
   'claims.mjs': [],
+  'commit-ids.mjs': ['--history'],
   'history.mjs': ['P1'],
   'land.mjs': ['lock', 'status'],
   'next.mjs': [],

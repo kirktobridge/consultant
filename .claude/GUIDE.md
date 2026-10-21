@@ -165,6 +165,7 @@ aren't — they run whether or not anyone remembers them.
 | `node scripts/next.mjs` | what to build next, read from main: every open, dependency-ready bug before the queue, most severe first, then the queue's head; `--count N` picks a batch of N from the queue, skipping any that waits on another in it | /implement with no ID; /orchestrate |
 | `node scripts/review.mjs` | whether the diff gets /code-review (anything but Markdown changed) and /security-review (a file that runs unasked or grants permissions) | /implement's review point |
 | `npm run check:guards` | the edit-guard is still armed and still covers every write tool | in-session (PostToolUse hook) + `npm test` |
+| `npm run check:commits` | every commit on an entry's `feat/<id>-…` branch names `<id>` (`scripts/commit-ids.mjs`) — how `npm run history` and the landing check find an entry's commits, a squash included | commit-msg hook (that commit) + `npm test` (all that landed) |
 | `npm run check:manifest` | every tracked file is marked *suite* or *instance* (`scripts/manifest.mjs`), so the export knows what ships | `npm test` |
 | `npm run test:clean` | the suite passes in a clean export of itself, with none of this repo's entries | CI only (it doubles the suite's time) |
 | `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |

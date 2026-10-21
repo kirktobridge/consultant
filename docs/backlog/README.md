@@ -67,6 +67,7 @@ and only these keys exist:
 | `depends_on` | comma-separated `P#` / `A-n` / `D-n`, or `—` |
 | `resolves` | the `A-n` a spike answers (see [../assumptions/](../assumptions/README.md)) |
 | `shipped` | `YYYY-MM-DD` the user accepted it |
+| `rejected` | comma-separated `YYYY-MM-DD`, one per landing the user rejected, oldest first; landings before the commit that last changed it no longer count (`scripts/landing.mjs`) |
 
 An unknown key, a line that isn't `key: value`, or a value of the wrong type fails the
 check with the file and line. ID lists hold IDs only — *why* something depends on

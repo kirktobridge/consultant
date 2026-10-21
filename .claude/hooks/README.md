@@ -29,8 +29,9 @@ Stubs exist for the client-side hooks a working clone actually fires:
 `pre-rebase` · `post-checkout` · `post-merge` · `pre-push` · `post-rewrite` ·
 `pre-auto-gc` · `sendemail-validate`
 
-Only `pre-commit` carries suite logic (it runs `npm test`). The rest are pure
-pass-throughs.
+Two carry suite logic: `pre-commit` runs `npm test`, and `commit-msg` refuses a commit
+on a `feat/<id>-…` branch whose subject doesn't name `<id>` (`scripts/commit-ids.mjs`).
+The rest are pure pass-throughs.
 
 ## What is deliberately *not* covered, and why
 

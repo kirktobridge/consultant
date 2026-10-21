@@ -1,9 +1,21 @@
 #!/bin/sh
-# commit-msg — this suite ships no commit-msg logic of its own.
+# commit-msg — a commit on an entry's branch names the entry (B7).
 #
-# It exists so that YOUR hook still runs. core.hooksPath redirects git's entire hook
-# lookup to this directory, so without this file a personal .git/hooks/commit-msg is
-# skipped in silence — no error, no output, nothing to grep for.
+# On a branch named feat/<id>-…, the subject must carry the ID: `fix: … (B7)`. npm run
+# history and the landing check (scripts/landing.mjs) find an entry's commits by that tag.
+# The rule lives in scripts/commit-ids.mjs; `npm test` checks the same rule over what
+# has landed, which is the copy that holds when this hook is skipped (--no-verify) or
+# not armed in a clone.
 #
-# Put yours at .git/hooks/commit-msg.local and make it executable. See _chain.
+# Only its verdict blocks (exit 1). No node, a checkout without the script (an older
+# branch), or a check that could not run (exit 2, which it explains): nothing was
+# checked, so pass rather than block the commit.
+#
+# YOUR OWN commit-msg hook still runs: put it at .git/hooks/commit-msg.local and make it
+# executable. See _chain.
+root="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -n "$root" ] && [ -f "$root/scripts/commit-ids.mjs" ] && command -v node >/dev/null 2>&1; then
+  node "$root/scripts/commit-ids.mjs" --msg "$1"
+  [ $? -eq 1 ] && exit 1
+fi
 exec "$(dirname "$0")/_chain" commit-msg "$@"
