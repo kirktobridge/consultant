@@ -1,7 +1,7 @@
 # Next up
 
-1. **P17** — an orchestrator for parallel subagents. Unblocks nothing; ready, by
-   existing order.
+1. **P17** — an orchestrator for parallel subagents; landed on main, awaiting
+   acceptance. Unblocks nothing; ready, by existing order.
 2. **P34** — flag open entries an ad-hoc change relates to. Unblocks nothing; ready,
    by existing order.
 3. **P19** — session start says what's next, read from the graph. Unblocks nothing;
