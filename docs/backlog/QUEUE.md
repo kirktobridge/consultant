@@ -3,7 +3,7 @@
 1. **P34** — flag open entries an ad-hoc change relates to. Unblocks nothing; claimed,
    and ahead of the recorded order by existing order.
 2. **P21** — triage decides whether an entry needs a plan; /implement honours it.
-   First in the owner's recorded order (D-3), so every program entry is built under it.
+   Landed 2026-10-22 (b5cf824), awaiting the owner's acceptance. First in D-3's order.
 3. **P40** — triage searches a title index before it classifies. Recorded order (D-3).
 4. **P36** — the trunk graph refuses to drop an entry it can't read. Recorded order
    (D-3); unblocks P41 and P42, which read the trunk through it.
