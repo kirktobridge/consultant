@@ -54,6 +54,7 @@ export function P(id, over = {}) {
     title: `${id} example`,
     status: 'proposed',
     drafted: '2026-08-01',
+    plan: 'no',
     value: 'a user can do the thing.',
     scope: 'in: the thing. out: everything else.',
     // An array, not a string: the checker counts criteria, so a test that wants a
@@ -212,6 +213,7 @@ const renderP = (e) =>
       key('title', e.title),
       key('status', e.status),
       key('drafted', e.drafted),
+      key('plan', e.plan),
       key('depends_on', e.dependsOn.length ? e.dependsOn.join(', ') : '—'),
       key('resolves', e.resolves),
       key('shipped', e.shipped),
@@ -356,7 +358,7 @@ const RESEARCH_DOCS = {
 export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false, assumptions = [], decisions = [], research = null, nextUp = ['P1'] } = {}) {
   const files = {
     'docs/backlog/README.md':
-      '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n',
+      '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n\nPlan vocab: `yes` / `no`.\n',
     'docs/backlog/QUEUE.md':
       '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
   };

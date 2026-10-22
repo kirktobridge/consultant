@@ -75,6 +75,7 @@ export const BACKLOG = {
     status: 'word',
     epic: 'text',
     drafted: 'date',
+    plan: 'word',
     depends_on: 'ids',
     resolves: 'ids',
     shipped: 'date',

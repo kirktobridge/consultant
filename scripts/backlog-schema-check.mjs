@@ -74,6 +74,11 @@ const REGISTERS = [
     // checks; a lower bound of 1 would accept "it works" and a high ceiling would
     // accept a spec dump nobody drives.
     criteria: { section: 'Accept', min: 2, max: 4 },
+    // Whether the build stops for an approved plan before any code (P21). Decided when
+    // the entry is filed, not by the building session in the moment, so an open entry
+    // always carries it; a closed one will never be built again.
+    whileOpenKeys: ['plan'],
+    vocabKeys: { plan: 'Plan vocab' },
     // Header keys: when the entry's claims were established, and when it closed.
     dated: 'drafted',
     closed: 'shipped',

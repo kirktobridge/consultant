@@ -97,8 +97,14 @@ Ask these questions in this order. Stop at the first "yes".
    - Class: **product feature**.
    - Use the product shape that [docs/backlog/README.md](../../../docs/backlog/README.md)
      documents:
-     - A header: title, `status: proposed`, epic, drafted, depends_on.
-     - A body: Value, Scope, **Accept**.
+     - A header: title, `status: proposed`, epic, drafted, **plan**, depends_on.
+     - A body: Value, Scope, **Accept**, and `## Notes` with the line
+       `Plan: yes|no — reason`.
+   - Decide **plan** now, not at build time. `yes` means /implement stops for the
+     user's approval of a written plan before any code. Say `yes` when the build
+     changes a schema or a register's format, touches a file several skills depend on,
+     spans several skills, or has milestones. Otherwise `no`. A wrong `no` costs
+     little: /implement still plans a build that turns out bigger.
    - Destination: a new `docs/backlog/P#.md` in the correct epic. **/ship** (Intake)
      writes it.
 
@@ -181,7 +187,7 @@ to satisfy the checker.
    - **Exit 2 means that you learned nothing.** Run the search again before you decide
      that the idea is new.
 3. Draft the entry in the template of its destination. Include where it goes:
-   - A feature: its epic.
+   - A feature: its epic, and its plan (`yes` or `no`, with the reason).
    - A bug: its severity.
    - An assumption or a decision: nothing. Those registers have no order.
    - An experiment: its kind.
@@ -271,7 +277,8 @@ The middle branch is the only route to a spike. This limit is intentional. It st
 assumptions register from becoming a source of speculative work. An assumption is worth
 the cost to settle exactly when it will soon stop you.
 
-**Shape of a spike draft:** an ordinary product entry, with two specific parts.
+**Shape of a spike draft:** an ordinary product entry (a `plan:` line included), with
+two specific parts.
 - `## Value` names the entries that the spike unblocks.
   - This is an honest way to fill the required Value field. To unblock queued work *is*
     value to the user, one step removed.

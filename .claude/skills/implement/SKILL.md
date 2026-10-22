@@ -115,8 +115,17 @@ run all of them.
   form above is unaffected, since nothing isolates it. An installation whose hooks
   rewrite git through a wrapper needs its own workaround; that belongs in the
   installation's config, not here.
-- For anything nontrivial, plan first (plan mode / a short written plan naming the
-  files to touch) before editing.
+- **PLAN GATE:** read the header's `plan:`. **`plan: yes`** → before the first code
+  edit, write the plan: the files to touch, the order, the risks, and any value the
+  entry leaves for you to choose. On an entry with milestones it covers the milestone
+  you confirmed. Then **stop and wait for the user to approve it**. The claim stays
+  in place while you wait, so no other session picks the entry up. If you are a
+  subagent, hand the plan back as `QUESTION <ID>:` and end your turn. **`plan: no`** is
+  a floor, not a ceiling: if the work, as Scope reads now or as the build finds it,
+  changes a schema or a register's format, touches a file several skills depend on,
+  or spans several skills (/triage's own reasons for `yes`), stop the same way with a
+  plan. A bug carries no `plan:`: plan it the same way if the fix turns out to be one
+  of those.
 
 ### 3. Build
 - The entry's **Scope and Accept are the contract** — Scope is what to build, Accept
