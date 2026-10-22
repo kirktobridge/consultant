@@ -95,7 +95,10 @@ write a branch name into a git command.
    scope-listed follow-ups whose premise the build voided get dropped with a one-line
    why, not copied forward.
 5. **Refresh the queue:** on any product status flip or intake, update
-   `docs/backlog/QUEUE.md` — drop a now-terminal ID, promote the next
+   `docs/backlog/QUEUE.md`. When a flip makes a queued entry terminal, edit the queue
+   **before** the entry. The schema check runs after every edit, and the queue may
+   leave out an open entry but may not list a terminal one, so the other order goes
+   red between the two edits. Drop a now-terminal ID, promote the next
    dependency-ready entry, ≤5, `N. **P#** — one-line why`. **Rank it yourself**, by the
    rule in [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue): most
    open entries unblocked through the `depends_on` graph first, ties in existing order.
