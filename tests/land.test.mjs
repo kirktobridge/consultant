@@ -414,6 +414,47 @@ describe('merge from the main checkout, then clean up (P15 R2)', () => {
     assert.ok(!existsSync(lockFile(r.main)));
     assert.equal(land(r.main, 'report', 'feat/p1-one').code, 1);
   });
+
+  // `git worktree remove` deletes gitignored files without a word, and evals/runs/ is
+  // gitignored. One landing deleted a session's whole eval baseline that way.
+  /** Ignore evals/runs/ the way the real repo does, and write one run into `dir`. */
+  const evalRun = (r, dir, name, reply) => {
+    writeFileSync(join(git1(r.main, 'rev-parse --path-format=absolute --git-common-dir'), 'info', 'exclude'), 'evals/runs/\n');
+    mkdirSync(join(dir, 'evals', 'runs', name, 'replies'), { recursive: true });
+    writeFileSync(join(dir, 'evals', 'runs', name, 'replies', 'case.0.txt'), reply);
+  };
+
+  test("finish keeps the worktree's eval runs: they move to the main checkout's evals/runs/", () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    evalRun(r, r.wts['p1-one'], 'run-a', 'the reply');
+    assert.equal(git1(r.wts['p1-one'], 'status --porcelain'), '', 'the run is ignored, so the tree reads clean');
+    landed(r.main, r.wts['p1-one'], 'feat/p1-one');
+    assert.doesNotMatch(git1(r.main, 'worktree list'), /p1-one/);
+    assert.equal(readFileSync(join(r.main, 'evals', 'runs', 'run-a', 'replies', 'case.0.txt'), 'utf8'), 'the reply');
+  });
+
+  test('a kept run never overwrites one of the same name: it lands beside it, named for its branch', () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    evalRun(r, r.main, 'run-a', 'main reply');
+    evalRun(r, r.wts['p1-one'], 'run-a', 'worktree reply');
+    landed(r.main, r.wts['p1-one'], 'feat/p1-one');
+    assert.equal(readFileSync(join(r.main, 'evals', 'runs', 'run-a', 'replies', 'case.0.txt'), 'utf8'), 'main reply');
+    assert.equal(readFileSync(join(r.main, 'evals', 'runs', 'run-a-feat-p1-one', 'replies', 'case.0.txt'), 'utf8'), 'worktree reply');
+  });
+
+  test('finish says what it kept', () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 9, 'mine');
+    evalRun(r, r.wts['p1-one'], 'run-a', 'x');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    land(r.wts['p1-one'], 'rebase');
+    assert.equal(land(r.main, 'merge', 'feat/p1-one', '--suite', SUITE_OK).code, 0);
+    const f = land(r.main, 'finish', 'feat/p1-one');
+    assert.equal(f.code, 0, out(f));
+    assert.match(f.stdout, /Kept 1 eval run in evals\/runs\/: run-a\./);
+  });
 });
 
 // ── P33: an ad-hoc branch lands with a record instead of an entry ───────────
