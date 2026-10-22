@@ -141,7 +141,7 @@ if (COUNT !== null) {
 
 let pick = null;
 if (bug) {
-  pick = { id: bug.id, from: 'bugs', why: `${bug.header.severity} bug, reported ${bug.header.reported} — every open bug is picked up before the queue, most severe first` };
+  pick = { id: bug.id, from: 'bugs', severity: bug.header.severity ?? null, why: `${bug.header.severity} bug, reported ${bug.header.reported} — every open bug is picked up before the queue, most severe first` };
 } else if (head) {
   pick = { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${head !== queued[0] ? ` (skipping ${queued.slice(0, queued.indexOf(head)).map((id) => claimed(id).short).join(', ')})` : ''}` };
 }

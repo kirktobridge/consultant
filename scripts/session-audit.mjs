@@ -25,7 +25,7 @@
 //
 // Usage: node scripts/session-audit.mjs [--base <branch>] [--json]
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -276,9 +276,20 @@ const ahead = (() => {
     const queued = queueText === null ? [] : parseQueue(queueText).ids;
     const features = graph.entries.filter((e) => e.open && BACKLOG.idPattern.test(e.id));
 
+    // A ready bug goes before the queue. Which one is next.mjs's answer, asked rather
+    // than re-derived, so this line can never disagree with what /implement picks.
+    // Optional like the rest: if next.mjs can't answer, the queue lines still stand.
+    let bugFirst = null;
+    const nr = spawnSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'next.mjs'), '--json', '--base', BASE], {
+      cwd: ROOT, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT },
+    });
+    try {
+      const pick = JSON.parse(nr.stdout).next;
+      if (pick?.from === 'bugs') bugFirst = { id: pick.id, title: meta.get(pick.id)?.title ?? '', severity: pick.severity ?? null };
+    } catch { /* no answer: name the queue only */ }
+
     // The queue's head as next.mjs reads it: the first queued entry nobody has claimed.
-    // next.mjs puts a ready bug before it; this names the queue only (P19's scope). The
-    // queue may hold an entry below its own unshipped dependency, so a held head says so.
+    // The queue may hold an entry below its own unshipped dependency, so a held head says so.
     const head = queued.find((id) => meta.get(id)?.status !== 'in-progress') ?? null;
     const claimedAhead = head ? queued.slice(0, queued.indexOf(head)) : queued;
     const readyUnqueued = features
@@ -301,6 +312,7 @@ const ahead = (() => {
       .sort((a, b) => b.holds.length - a.holds.length || byOrder(a.id, b.id));
 
     return {
+      bugFirst,
       nextUp: head ? { id: head, title: meta.get(head)?.title ?? '', waitsOn: blockersOf(head) } : null,
       claimedAhead, readyUnqueued, assumptions: assumptionsAhead, ...(warning && { warning }),
     };
@@ -315,10 +327,15 @@ const aheadLines = (() => {
   const out = [`Ahead (from the dependency graph on ${BASE}):`];
   if (ahead.warning) out.push(`  (${ahead.warning})`);
   const skip = ahead.claimedAhead.length ? ` (after claimed ${ahead.claimedAhead.join(', ')})` : '';
+  // A ready bug is what comes next, so it takes the "next up" label and the queue head
+  // follows it: a session skimming for "next up" must land on the bug.
+  const bug = ahead.bugFirst;
+  if (bug) out.push(`  next up: ${bug.id} — ${bug.title} (${bug.severity ?? 'unrated'} bug; every ready bug goes before the queue)`);
+  const label = bug ? 'then the queue' : 'next up';
   const held = ahead.nextUp?.waitsOn.length ? ` — waits on ${ahead.nextUp.waitsOn.join(', ')}` : '';
   out.push(ahead.nextUp
-    ? `  next up: ${ahead.nextUp.id} — ${ahead.nextUp.title}${skip}${held}`
-    : `  next up: nothing unclaimed in ${BACKLOG.queue}${skip}`);
+    ? `  ${label}: ${ahead.nextUp.id} — ${ahead.nextUp.title}${skip}${held}`
+    : `  ${label}: nothing unclaimed in ${BACKLOG.queue}${skip}`);
   out.push(`  ready, not queued: ${ahead.readyUnqueued.join(', ') || 'none'}`);
   if (!ahead.assumptions.length) out.push('  open assumptions holding near-queue work: none');
   for (const a of ahead.assumptions.slice(0, SHOWN)) out.push(`  ${a.id} holds ${a.holds.join(', ')} — ${a.title}`);

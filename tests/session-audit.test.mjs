@@ -475,6 +475,29 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     assert.match(audit(dir).stdout, /next up: P2 — P2 example \(after claimed P1\) — waits on P1\n/);
   });
 
+  test('a ready bug takes "next up", and it is the bug next.mjs picks', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2')],
+      bugs: [
+        B('B1', { severity: 'minor' }),
+        B('B2', { severity: 'critical', dependsOn: ['P2'] }),
+        B('B3', { severity: 'major' }),
+      ],
+      nextUp: ['P1'],
+    });
+    const text = audit(dir).stdout;
+    assert.match(text, /\n {2}next up: B3 — B3 example \(major bug; every ready bug goes before the queue\)\n {2}then the queue: P1 — /);
+    const picked = JSON.parse(run('next.mjs', ['--json'], { cwd: dir }).stdout).next.id;
+    assert.equal(picked, 'B3', 'B2 is held by P2; B3 outranks B1');
+  });
+
+  test('no ready bug: the queue head keeps "next up"', () => {
+    const { dir } = repo({ backlog: [P('P1')], bugs: [B('B1', { dependsOn: ['P1'] })], nextUp: ['P1'] });
+    const text = audit(dir).stdout;
+    assert.match(text, /\n {2}next up: P1 — /);
+    assert.doesNotMatch(text, /then the queue:/);
+  });
+
   test('a forward view that cannot run costs none of the findings', () => {
     const { dir } = repo();
     writeFileSync(join(dir, 'docs', 'backlog', 'QUEUE.md'), '# edited\n');
