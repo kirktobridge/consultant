@@ -268,8 +268,10 @@ honest limits are in [evals/README.md](../evals/README.md).
   (`node scripts/claims.mjs`; the trunk is whatever `node scripts/trunk.mjs` names).
 - **End-to-end runs are serialized — one session at a time.** Browser automation
   reuses whatever server holds the port, so a parallel run silently tests the *other*
-  worktree's code and passes anyway. Branch sessions run targeted tests only; the full
-  suite runs once, at /land (forked, so its output stays out of your context).
+  worktree's code and passes anyway. So a branch session's end-to-end run waits its
+  turn. Everything else runs in full every time: at every commit, at /implement's
+  close, and again at /land on the merged result (forked, so its output stays out of
+  your context).
 - **Start narrow, end early** (token budget): open with "continue P38" rather than
   "what's next?" — `npm run history P38` is the cheap re-entry — and close as soon as
   the milestone is done; an idle open session just accretes context.
