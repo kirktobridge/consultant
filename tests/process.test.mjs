@@ -667,6 +667,24 @@ describe('the evals stay evals', () => {
       assert.match(r.stdout, /0\/1/, 'an unparseable rep must count against the rate, not vanish from it');
     });
 
+    test("a case can grade the reply's draft, not only its decision", () => {
+      // drafts-acceptance-criteria asserts the draft carries an Accept section. The
+      // decision alone can't show that, and a pass on the JSON block must not hide a
+      // draft without one.
+      const dir = tempDir();
+      assert.equal(eval_('--case', 'drafts-acceptance', '--reps', '1', '--out', dir).status, 0);
+      const KEY = 'triage-drafts-acceptance-criteria.0';
+      const decision = json({ action: 'clarify', classification: 'feature', cites: ['P2'], reason: 'x' });
+
+      reply(dir, KEY, `Draft P2.\n\n## Scope\n\nin: a sound.\n\n${decision}`);
+      const without = eval_('--grade', dir);
+      assert.equal(without.status, 1);
+      assert.match(without.stdout, /draft has no "Accept" section/);
+
+      reply(dir, KEY, `Draft P2.\n\n## Accept\n\n- placing an item plays the sound once.\n\n${decision}`);
+      assert.equal(eval_('--grade', dir).status, 0);
+    });
+
     test('a missing or stray reply refuses to report a rate at all', () => {
       // Both directions of the same failure: a denominator that silently disagrees with
       // the run. Dropping unanswered reps would raise the pass rate — LESSONS L3.

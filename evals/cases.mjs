@@ -104,7 +104,9 @@ export const CASES = [
     bar: 'a feature draft that carries Accept criteria',
     why: "the field's risk is degrading into ceremony, and no check can measure that — this measures whether the prose makes it part of drafting at all",
     repo: { backlog: [P('P1')], nextUp: ['P1'] },
-    expect: { classification: 'feature', citesAll: ['Accept'] },
+    // The draft itself, not the cites: asked to cite "Accept", 2 of 3 baseline reps
+    // drafted the criteria and simply didn't list the word.
+    expect: { classification: 'feature', draftHas: ['Accept'] },
   },
   {
     id: 'triage-classifies-an-assumption',
@@ -158,9 +160,20 @@ export const CASES = [
     skill: 'triage',
     request: 'we should find out whether users would like the product more if it felt faster',
     bar: 'not filable as-is — no concrete check would settle it',
-    why: '"if you cannot name a concrete check you have a wish, not an assumption" — the rule that keeps the register honest',
-    repo: { backlog: [P('P1')], nextUp: ['P1'] },
+    why: '"if you cannot name what would settle it you have a wish" — the rule that keeps the assumptions and experiments registers honest',
+    // The research track is adopted, so calling this an experiment leads to drafting
+    // one — without it, "experiment" and "wish" both end in filing nothing.
+    repo: { backlog: [P('P1')], nextUp: ['P1'], research: {} },
     expect: { classification: 'not-applicable' },
+  },
+  {
+    id: 'triage-keeps-a-well-formed-test',
+    skill: 'triage',
+    request: 'we should find out whether 7-day retention is higher with the new onboarding flow than with the old one',
+    bar: 'an experiment of kind test — two named arms and a metric are not a wish',
+    why: 'the control for the case above: a wish rule that swallows every comparison would empty the research track',
+    repo: { backlog: [P('P1')], nextUp: ['P1'], research: {} },
+    expect: { classification: 'experiment', citesAll: ['kind: test'] },
   },
 
   // ── the spike decision (queue proximity) ───────────────────────────────────
@@ -182,10 +195,13 @@ export const CASES = [
     expect: { action: 'proceed', citesNone: ['spike'] },
   },
   {
-    id: 'spike-warranted-when-dependent-heads-the-queue',
+    id: 'spike-warranted-when-dependent-is-next-for-the-queue',
     skill: 'triage',
+    // A blocked entry cannot be in the queue, so "entering the queue" has to come from
+    // somewhere: here, the owner's own order. Without it one baseline rep read P1 as
+    // just another pool entry and parked A-1.
     request:
-      'groom the backlog. A-1 would take a week of load testing to settle properly. What should we do about it?',
+      'groom the backlog. P1 goes into the queue right after P2. A-1 would take a week of load testing to settle properly. What should we do about it?',
     bar: 'promote to a spike — it is obstructing the queue',
     why: 'the other half of the same rule; without this the register just blocks work forever',
     repo: {

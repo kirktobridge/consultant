@@ -130,8 +130,8 @@ function userFor(c) {
     '',
     'Decide what to do, following the skill exactly. In `cites`, list every identifier',
     'your decision turns on — backlog IDs, assumption IDs, document names, the',
-    'words "spike" or "control" if the skill\'s rule about either applies here, and',
-    'for an experiment its kind, written as `kind: <kind>`.',
+    'word "spike" only if you draft one, the word "control" if the skill\'s rule',
+    'about it applies here, and for an experiment its kind, written as `kind: <kind>`.',
   );
   return parts.join('\n');
 }
@@ -231,7 +231,15 @@ const DECISION_SCHEMA = {
 const norm = (s) => String(s).toLowerCase();
 const citesHas = (cites, needle) => cites.some((c) => norm(c).includes(norm(needle)));
 
-export function grade(c, decision) {
+// A draft's section, as the reply's prose carries it: a heading (`## Accept`) or a bold
+// field label (`- **Accept:**`) at the start of a line. Some behaviour lives in the draft
+// rather than in the decision — whether a feature draft carries Accept criteria at all
+// is not a field of the JSON block, and asking the model to *cite* the section measured
+// its citing habits instead. Still mechanical: a pattern, never a judge.
+const sectionIn = (text, name) =>
+  new RegExp(String.raw`^[ \t>]*(?:[-*][ \t]+)?(?:#{1,6}[ \t]+|\*\*)${name}\b`, 'm').test(text);
+
+export function grade(c, decision, text = '') {
   const fails = [];
   const e = c.expect;
   const cites = Array.isArray(decision.cites) ? decision.cites : [];
@@ -247,6 +255,9 @@ export function grade(c, decision) {
   }
   for (const id of e.citesNone ?? []) {
     if (citesHas(cites, id)) fails.push(`cited "${id}" but should not have`);
+  }
+  for (const name of e.draftHas ?? []) {
+    if (!sectionIn(text, name)) fails.push(`the reply's draft has no "${name}" section`);
   }
   return { pass: fails.length === 0, fails };
 }
@@ -291,8 +302,9 @@ function dryRun(cases) {
       reason: 'synthetic',
     };
 
-    const g = grade(c, good);
-    const b = grade(c, bogus);
+    const draft = (c.expect.draftHas ?? []).map((name) => `## ${name}\n\n- synthetic`).join('\n\n');
+    const g = grade(c, good, draft);
+    const b = grade(c, bogus, '');
     const ok = g.pass && !b.pass;
     if (!ok) {
       console.error(
@@ -410,7 +422,7 @@ function gradeRun(dir) {
     const decision = parseDecision(text);
     byCase.get(c.id).outcomes.push(
       decision
-        ? grade(c, decision)
+        ? grade(c, decision, text)
         : { pass: false, fails: [`no parseable JSON block in the reply (${text.trim().slice(0, 80)}…)`] },
     );
   }
