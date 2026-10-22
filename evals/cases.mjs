@@ -192,7 +192,9 @@ export const CASES = [
       assumptions: [openA('A-1', 'what is the real throughput ceiling?')],
       nextUp: ['P1'],
     },
-    expect: { action: 'proceed', citesNone: ['spike'] },
+    // No `action`: a groom that parks A-1 can honestly say proceed (report it) or
+    // refuse (decline the spike). One baseline rep parked it and answered refuse.
+    expect: { citesNone: ['spike'] },
   },
   {
     id: 'spike-warranted-when-dependent-is-next-for-the-queue',
