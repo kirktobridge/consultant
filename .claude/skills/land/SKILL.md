@@ -93,8 +93,10 @@ landing, whatever the size of the change.
    Name the resolution in your final report, and say if it was a **refutation**: that
    may void other entries rather than unblock them, and the main session needs to know
    before it picks the next thing up.
-4. `node scripts/land.mjs finish <branch>`: removes the worktree and the branch,
-   drops the landing record, and releases the lock. That's the last step, because
+4. `node scripts/land.mjs finish <branch>`: moves the worktree's eval runs into this
+   checkout's `evals/runs/` (they are gitignored, so removing the worktree would delete
+   them), removes the worktree and the branch, drops the landing record, and releases
+   the lock. Pass on the runs it says it kept. That's the last step, because
    /ship's flips in step 3 are commits on main and need the lock too. Your report
    includes the conflicts from `land.mjs report` (taken before finish): file, both
    sides, the resolution.

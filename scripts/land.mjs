@@ -14,7 +14,8 @@
 //         [--adhoc <what>]             main put back if the suite is red. An `adhoc/`
 //         [--relates <ID,…>]           branch (P33) must say what it is: the merge
 //                                      carries `Ad-hoc:` and `Relates:` trailers
-//   finish <branch>                    remove worktree, branch, record and lock
+//   finish <branch>                    remove worktree, branch, record and lock, after
+//                                      moving the worktree's eval runs to this checkout
 //   report <branch> [--json]           the conflicts resolved, for /land's report
 //
 // An ad-hoc branch has no entry, so nothing in the registers records that it happened.
@@ -34,8 +35,8 @@
 //       3 conflicts for the session to resolve | 4 stop for the user
 
 import { execFileSync, execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync, readdirSync, renameSync, cpSync } from 'node:fs';
+import { join, resolve, basename } from 'node:path';
 import { buildableRegister, registerOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 
@@ -428,22 +429,65 @@ function suiteTotals(output) {
   return `${sum.tests} tests, ${sum.pass} pass, ${sum.fail} fail${extra}`;
 }
 
+/**
+ * Gitignored paths whose contents outlive the worktree they were made in.
+ * `git worktree remove` refuses over untracked files but deletes ignored ones without
+ * a word, and an eval run (evals/runs/, ignored on purpose) can't be recreated: its
+ * replies came from subagents. One landing deleted a session's whole eval baseline.
+ */
+const KEPT_ON_FINISH = ['evals/runs'];
+
+/**
+ * Move each kept path's entries from worktree `wt` into this checkout. Never
+ * overwrites: a name already here gets the branch appended. Returns the names kept.
+ */
+function keepIgnored(wt, branch) {
+  const kept = [];
+  for (const rel of KEPT_ON_FINISH) {
+    const from = join(wt, rel);
+    if (!existsSync(from)) continue;
+    const to = join(top, rel);
+    mkdirSync(to, { recursive: true });
+    for (const name of readdirSync(from)) {
+      let dest = join(to, name);
+      for (let n = 1; existsSync(dest); n++) dest = join(to, `${name}-${branch.replace(/[^A-Za-z0-9._-]/g, '-')}${n > 1 ? `-${n}` : ''}`);
+      try {
+        renameSync(join(from, name), dest);
+      } catch (e) {
+        if (e.code !== 'EXDEV') throw e;
+        cpSync(join(from, name), dest, { recursive: true });
+        rmSync(join(from, name), { recursive: true, force: true });
+      }
+      kept.push(basename(dest));
+    }
+  }
+  return kept;
+}
+
 function finishCmd(branch) {
   if (inLinkedWorktree) die(1, 'finish runs in the main checkout.');
   requireLock(branch);
   if (!ok('merge-base', '--is-ancestor', branch, BASE)) die(1, `${branch} is not merged into ${BASE}; refusing to delete it.`);
+  // Before the lock goes: a failure here leaves the lock, worktree and branch as they
+  // were, so finish can simply run again.
+  const wt = worktreeOf(branch);
+  let kept = [];
+  if (wt) {
+    try { kept = keepIgnored(wt, branch); }
+    catch (e) { die(1, `could not move ${wt}'s eval runs into this checkout (${e.message}); nothing removed, lock still held.`); }
+  }
+  const keptNote = kept.length ? ` Kept ${kept.length} eval run${kept.length === 1 ? '' : 's'} in evals/runs/: ${kept.join(', ')}.` : '';
   // Release FIRST, while the worktree still exists. Merged with its worktree gone is
   // what `judge` calls stale, so a lock still held during the teardown below could be
   // cleared and retaken by a waiting landing, and the unlink here would then delete
   // *that* landing's lock: its merge died with "does not hold the land lock". The
   // teardown touches only this branch and its worktree, never BASE, so it needs no lock.
   unlinkSync(LOCK);
-  const wt = worktreeOf(branch);
   const left = `The lock is already released; finish the cleanup by hand.`;
   if (wt && !ok('worktree', 'remove', wt)) die(1, `could not remove ${wt}: ${lastError.split('\n')[0]}. ${left}`);
   if (!ok('branch', '-d', branch)) die(1, `could not delete ${branch}: ${lastError.split('\n')[0]}. ${left}`);
   rmSync(recordPath(branch), { force: true });
-  die(0, `${branch} landed: lock released, worktree${wt ? '' : ' (none)'} and branch removed.`);
+  die(0, `${branch} landed: lock released, worktree${wt ? '' : ' (none)'} and branch removed.${keptNote}`);
 }
 
 function reportCmd(branch) {
