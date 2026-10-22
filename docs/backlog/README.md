@@ -17,6 +17,8 @@ structure → [../ARCHITECTURE.md](../ARCHITECTURE.md).
 Status vocab: `proposed` / `in-progress` (being built this session/branch) / `partial`
 (some milestones shipped) / `shipped` / `deferred` / `abandoned`.
 
+Plan vocab: `yes` (the build stops for an approved plan before any code) / `no`.
+
 **Written only by /ship**, on main only. See `.claude/GUIDE.md`.
 
 ---
@@ -33,6 +35,7 @@ title: A status view for the product owner
 status: proposed
 epic: Product-owner interface
 drafted: YYYY-MM-DD
+plan: no
 depends_on: P4, A-3
 ---
 
@@ -51,6 +54,8 @@ what gets built; what's out.
 
 ## Notes
 
+Plan: no — one script and its tests.
+
 anything else.
 ```
 
@@ -64,6 +69,7 @@ and only these keys exist:
 | `status` | a word from the vocab above |
 | `epic` | the group it belongs to (below) |
 | `drafted` | `YYYY-MM-DD` — when its claims were last established; required while open |
+| `plan` | `yes` or `no` — whether the build stops for an approved plan; required while open |
 | `depends_on` | comma-separated `P#` / `A-n` / `D-n`, or `—` |
 | `resolves` | the `A-n` a spike answers (see [../assumptions/](../assumptions/README.md)) |
 | `shipped` | `YYYY-MM-DD` the user accepted it |
@@ -83,6 +89,13 @@ could watch pass or fail. `Scope` is what gets built; `Accept` is how the produc
 would know it was built right, in their words. The schema check enforces the *count*
 (so the field can't degrade into one unfalsifiable sentence), never the wording — /ship
 copies it verbatim, and a criterion that looks wrong is the user's to rewrite.
+
+Every open entry also carries **`plan:`**, set by /triage when it drafts the entry and
+changed only by rescoping through /ship. `yes` means /implement writes a plan (files to
+touch, order, risks) and waits for the product owner's approval before any code. Its
+reason goes under `## Notes` as a line `Plan: yes|no — reason`; entries filed before
+the field carry it inside a sentence there instead. `no` is a floor, not a ceiling: a build that turns out bigger
+than drafted still stops for a plan.
 
 An entry may sit here `proposed` while it depends on an **open** `A-n` or `D-n` — that's how a
 blocked idea gets filed rather than lost. It may **not** appear in the queue or go

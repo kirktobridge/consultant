@@ -690,6 +690,37 @@ describe('only the header is read: prose about a field is never the field', () =
   });
 });
 
+// P21. Whether a build waits for an approved plan is decided when the entry is filed,
+// so it is a header field, and every open entry carries it.
+describe('plan: decided when an entry is filed (P21)', () => {
+  test('an open entry marked either way passes', () => {
+    passes(project({ backlog: [P('P1', { plan: 'yes' }), P('P2', { plan: 'no' })] }));
+  });
+
+  test('an open entry with no plan fails, naming the field', () => {
+    fails(project({ backlog: [P('P1', { plan: null })] }), /open P1 has no `plan:` in the header/);
+  });
+
+  test('so does a claimed one, mid-build', () => {
+    fails(project({ backlog: [P('P1', { status: 'in-progress', plan: null })] }), /open P1 has no `plan:` in the header/);
+  });
+
+  test('a value outside yes/no fails', () => {
+    fails(project({ backlog: [P('P1', { plan: 'maybe' })] }), /plan "maybe" for P1 not in vocab \{yes, no\}/);
+  });
+
+  test('a closed entry needs none: it will never be built again', () => {
+    const shipped = P('P2', { status: 'shipped', shipped: '2026-08-02', plan: null, scope: null, accept: null });
+    passes(project({ backlog: [P('P1'), shipped] }));
+  });
+
+  test('the values are read from the README: one that documents none fails', () => {
+    const dir = project();
+    patch(dir, 'docs/backlog/README.md', 'Plan vocab', 'Plans');
+    fails(dir, /docs\/backlog\/README\.md: no documented Plan vocab resolved/);
+  });
+});
+
 // P5 R0. A bug is reported, not pitched: its shape is a repro and a severity, and the
 // register holds it to that shape without asking it for a `Value` nobody has.
 describe('bugs', () => {
@@ -727,6 +758,12 @@ describe('bugs', () => {
     const dir = project({ bugs: [B('B1')] });
     patch(dir, 'docs/bugs/README.md', 'Severity vocab', 'Severities');
     fails(dir, /docs\/bugs\/README\.md: no documented Severity vocab resolved/);
+  });
+
+  test('a bug carries no plan: its Repro is its contract (P21)', () => {
+    const dir = project({ bugs: [B('B1')] });
+    patch(dir, 'docs/bugs/B1.md', 'severity: major', 'severity: major\nplan: yes');
+    fails(dir, /B1\.md:\d+: unknown header key `plan`/);
   });
 
   test('a backlog status is not a bug status', () => {
@@ -806,7 +843,7 @@ describe('the header is strict — every line is a known `key: value`', () => {
   test('prose in depends_on is rejected — an explanation belongs in the body', () => {
     fails(
       project({ backlog: [P('P1', { dependsOn: ['P3 — once it lands'] })] }),
-      /P1\.md:6: depends_on: not a comma-separated ID list/,
+      /P1\.md:7: depends_on: not a comma-separated ID list/,
     );
   });
 

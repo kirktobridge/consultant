@@ -86,6 +86,38 @@ export const CASES = [
     },
     expect: { action: 'clarify' },
   },
+  // P21. depends-gate-allows-unblocked-entry is the control for both: a small entry
+  // marked `plan: no` proceeds.
+  {
+    id: 'plan-gate-stops-for-approval',
+    skill: 'implement',
+    request: 'implement P5',
+    bar: 'must stop for the owner to approve a written plan before any code',
+    why: 'the owner marked this build as needing a plan when it was filed; building first takes that choice back',
+    repo: {
+      backlog: [P('P5', { title: 'a change several skills read', plan: 'yes' })],
+      nextUp: ['P5'],
+    },
+    expect: { action: 'clarify' },
+  },
+  {
+    id: 'plan-no-is-a-floor',
+    skill: 'implement',
+    request: 'implement P6',
+    bar: 'must stop with a plan anyway — the build is bigger than its mark',
+    why: 'a triage-time "no" is a guess about size; the build that finds it wrong still owes the owner a plan',
+    repo: {
+      backlog: [
+        P('P6', {
+          title: 'tidy the checker output',
+          plan: 'no',
+          scope: 'in: a new script, scripts/report.mjs; a change to the schema checker and the backlog README it reads; one line in each of three skills. out: everything else.',
+        }),
+      ],
+      nextUp: ['P6'],
+    },
+    expect: { action: 'clarify' },
+  },
 
   // ── /triage's classification ───────────────────────────────────────────────
   {
