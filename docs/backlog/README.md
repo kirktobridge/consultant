@@ -114,8 +114,11 @@ answer to "what next" with bugs included; a `B#` line in QUEUE.md fails the chec
 ranks on every refresh by one rule: the dependency-ready entry that unblocks the most
 open entries goes first, counted transitively through the `depends_on` graph. Ties keep
 their existing order, so an entry already in the queue stays ahead of a newcomer. Each
-item's *why* names what it unblocks. The user can still overrule any ranking. Until
-P24 lands, this ranking is *asserted*, not checked; P24 generates it from the graph.
+item's *why* names what it unblocks. The user can still overrule any ranking, and an
+overrule is recorded, not re-asserted (D-3): ready entries in the owner's recorded
+order go first, in that order, and the rule above orders the rest. Until P24 lands,
+the recorded order is the list in D-3's `## Decided`, and this ranking is *asserted*,
+not checked; P24 generates it from the graph.
 
 ## Epics
 
