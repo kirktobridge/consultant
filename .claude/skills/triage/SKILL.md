@@ -67,6 +67,9 @@ Ask these questions in this order. Stop at the first "yes".
      - `measure`: it estimates a quantity. "How often does X happen" is a measure.
      - `test`: it compares arms to gate a change. "Is B better than A?" is a test.
      - `probe`: it explores. "Can this signal be seen at all?" is a probe.
+   - **Name what you would count.** A `measure` names the quantity and how it is
+     observed. A `test` also names the two arms and the metric that decides between
+     them. If you cannot name these, it is not an experiment. It is a wish (see below).
    - Use the template in the experiments README.
    - A `test`, or a measure that a decision waits on, needs a decision. That decision
      must have its `## Decision rule` before the run. If the decision does not exist,
@@ -148,8 +151,10 @@ to satisfy the checker.
 - "How often does X happen" is a measurement: an experiment of kind `measure`
   (question 3).
 - "Should we do X" is a decision.
-- If you cannot name a concrete check that settles it (its `How to verify`), it is not
-  an assumption either. It is a wish. Tell the user this. Do not file it.
+- If you cannot name what would settle it, it is a wish, not an assumption or an
+  experiment. For an assumption, that is an observation (its `How to verify`). For an
+  experiment, it is a quantity, or for a `test`, two arms and a metric. Tell the user
+  this. Do not file it. Ask what they would actually count.
 
 **Blocked, not rejected:**
 - If an idea is a good feature but it rests on an open assumption or an open decision,
