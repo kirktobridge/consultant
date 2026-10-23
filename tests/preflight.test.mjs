@@ -58,6 +58,18 @@ describe('a gate that fails names itself and its blocker, and exits non-zero', (
     assert.match(r.stdout, /depends {3}FAIL — waits on P2 \(proposed\), which rest on A-1 \(open\)/);
   });
 
+  test('a moved assumption or a superseded decision still fails it (B10)', () => {
+    const dir = repo({
+      backlog: [P('P1', { dependsOn: ['A-1', 'D-1'] }), P('P3')],
+      assumptions: [A('A-1', { status: 'moved', resolved: '2026-08-02', movedTo: 'P3', resolution: 'a choice, not a fact.' })],
+      decisions: [D('D-1', { status: 'superseded', waitingOn: null, supersededBy: 'D-2' }), D('D-2')],
+    });
+    const r = preflight(dir, 'P1');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /depends {3}FAIL — waits on .*A-1 \(moved\)/);
+    assert.match(r.stdout, /depends {3}FAIL — waits on .*D-1 \(superseded\)/);
+  });
+
   test('a dependency with no entry fails it too', () => {
     const dir = repo({ backlog: [P('P1', { dependsOn: ['P99'] })] });
     assert.match(preflight(dir, 'P1').stdout, /depends {3}FAIL — waits on P99 \(no entry\)/);

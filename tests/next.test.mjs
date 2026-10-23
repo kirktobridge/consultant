@@ -250,6 +250,17 @@ describe('next.mjs --count picks a batch for parallel subagents (P17)', () => {
     assert.match(r.stdout, /skipped: P4 — waits on P9 \(no entry\)/);
   });
 
+  test('a queued entry resting on a moved assumption is skipped, naming it (B10)', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { dependsOn: ['A-1'] }), P('P2'), P('P3')],
+      assumptions: [A('A-1', { status: 'moved', resolved: '2026-08-02', movedTo: 'P3', resolution: 'a choice, not a fact.' })],
+      nextUp: ['P1', 'P2'],
+    });
+    const r = next(dir, '--count', '2');
+    assert.deepEqual(picked(r), ['P2'], out(r));
+    assert.match(r.stdout, /skipped: P1 — waits on A-1 \(moved\)/);
+  });
+
   test('a held bug is still reported', () => {
     const { dir } = repo({ backlog: [P('P1')], nextUp: ['P1'], bugs: [B('B1', { dependsOn: ['A-1'] })], assumptions: [A('A-1')] });
     assert.match(next(dir, '--count', '1').stdout, /held: B1 .* waits on A-1 \(open\)/);

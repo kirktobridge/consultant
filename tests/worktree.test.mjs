@@ -304,6 +304,18 @@ describe('worktree.mjs refuses a claimed entry whose dependencies are unmet (P32
     assert.deepEqual(JSON.parse(r.stdout).unmet, [{ id: 'P1', status: 'partial' }, { id: 'B9', status: null }]);
   });
 
+  test('a claim resting on a moved assumption or a superseded decision is refused (B10)', () => {
+    const { main } = blockedRepo({
+      backlog: [P('P3', { status: 'in-progress', title: 'Make the widget spin', dependsOn: ['A-1', 'D-1'] }), P('P4')],
+      assumptions: [A('A-1', { status: 'moved', resolved: '2026-08-02', movedTo: 'P4', resolution: 'a choice, not a fact.' })],
+      decisions: [D('D-1', { status: 'superseded', waitingOn: null, supersededBy: 'D-2' }), D('D-2')],
+    });
+    const r = start(main, 'P3', '--json');
+    assert.equal(r.code, 1, out(r));
+    assert.deepEqual(JSON.parse(r.stdout).unmet, [{ id: 'A-1', status: 'moved' }, { id: 'D-1', status: 'superseded' }]);
+    noBranches(main);
+  });
+
   test('a claimed bug resting on an open assumption is refused', () => {
     const { main } = blockedRepo({ bugs: [B('B2', { status: 'in-progress', dependsOn: ['A-1'] })], assumptions: [A('A-1')] });
     const r = start(main, 'B2');
