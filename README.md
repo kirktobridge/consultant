@@ -120,6 +120,7 @@ scripts/
   entries.mjs                 the one strict reader for entry headers
   verify-guards.mjs           asserts the enforcement layer is still armed
   grep-checked.mjs            a search whose negative results are worth something
+  titles.mjs                  every entry's ID, status and title — read before triage
   session-audit.mjs           what the last session left dangling (runs at session start)
   history.mjs                 each entry's commits and close reports, from git
 tests/                        every check proven to still bite, the loop

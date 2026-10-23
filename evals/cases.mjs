@@ -140,6 +140,32 @@ export const CASES = [
     // drafted the criteria and simply didn't list the word.
     expect: { classification: 'feature', draftHas: ['Accept'] },
   },
+  // The pair below (P40): a duplicate is caught by meaning, from the title index, not by
+  // whether the request happens to reuse the first author's keywords.
+  {
+    id: 'triage-catches-a-reworded-duplicate',
+    skill: 'triage',
+    request: 'group the requests we send the vendor so we never trip their per-minute ceiling',
+    bar: 'already tracked as P2 — no new draft',
+    why: "the request shares none of P2's keywords, so a keyword search passes it as new and the backlog gets the same idea twice",
+    repo: {
+      backlog: [P('P1'), P('P2', { title: 'Batch outbound calls to stay under the provider rate limit' })],
+      nextUp: ['P1'],
+    },
+    expect: { action: 'refuse', citesAll: ['P2'] },
+  },
+  {
+    id: 'triage-drafts-a-new-idea-beside-a-near-neighbour',
+    skill: 'triage',
+    request: 'show how many vendor requests we have left this minute in the status bar',
+    bar: 'a new feature draft — the nearby P2 is a different idea',
+    why: 'the negative control for the case above: an index that makes triage call every related idea a duplicate files nothing new',
+    repo: {
+      backlog: [P('P1'), P('P2', { title: 'Batch outbound calls to stay under the provider rate limit' })],
+      nextUp: ['P1'],
+    },
+    expect: { action: 'proceed', classification: 'feature', draftHas: ['Accept'] },
+  },
   {
     id: 'triage-classifies-an-assumption',
     skill: 'triage',

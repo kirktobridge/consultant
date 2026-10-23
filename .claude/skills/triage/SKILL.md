@@ -23,8 +23,8 @@ In this skill, "the user" is the product owner.
   - This file is **read-only**. The edit-guard enforces this.
   - This file is not a source of truth. An idea in it may already be shipped, deferred,
     or dead.
-  - Before you draft, always search the backlog and the bugs, assumptions and decisions
-    registers (step 2). Do not propose again an entry that exists.
+  - Before you draft, always read the index of every register and search them (steps 1
+    and 3). Do not propose again an entry that exists.
 - Ideas from a conversation, a code review, or the results of a build.
 
 ## The classification test
@@ -172,26 +172,41 @@ to satisfy the checker.
   stay.
 
 ## Steps
-1. Write the idea again in one sentence. Do the classification test where the user can
+1. **Read the index first, before you classify:** `node scripts/titles.mjs`. It prints
+   every entry in every register: ID, status and title. Read all of it.
+   - Compare the idea with each title **by meaning, not by keyword**. A reworded idea
+     shares none of the first author's words, and a keyword search passes it as new.
+   - Name the entries closest to the idea, or say that none is close.
+   - If one of them is the same idea, the output is "already tracked as `<ID>` —
+     update it via its owner". Stop. Do not classify it again, and do not write a
+     duplicate draft.
+   - Say the match's status with it. A `shipped` or `fixed` match is already done. An
+     `abandoned`, `deferred`, `wontfix` or `superseded` one was dropped on purpose:
+     tell the user, and let them say whether the idea deserves a fresh entry now.
+   - **Exit 2 means that you learned nothing.** The script prints no list when it
+     cannot read a register, because a shorter list would look complete. Fix what it
+     names and run it again.
+2. Write the idea again in one sentence. Do the classification test where the user can
    see it.
-2. Search for an existing entry:
+3. Search for an existing entry a second way, by keyword:
    ```
    node scripts/grep-checked.mjs -i --control '^status:' '<keyword>' \
      docs/backlog docs/bugs docs/assumptions docs/decisions docs/research/experiments
    ```
-   - If an entry exists, the output is "already tracked as `<ID>` — update it via its
-     owner". Do not write a duplicate draft.
+   - This finds an entry whose body mentions the idea when its title does not. If an
+     entry exists, the output is the same: "already tracked as `<ID>`". Do not write a
+     duplicate draft.
    - Use this checked search, not a bare grep. A false negative here makes a duplicate
      entry. A proxied search or a search of the wrong path gives an empty result that
      looks exactly like a true negative (LESSONS [L1](../../../docs/LESSONS.md)).
    - **Exit 2 means that you learned nothing.** Run the search again before you decide
      that the idea is new.
-3. Draft the entry in the template of its destination. Include where it goes:
+4. Draft the entry in the template of its destination. Include where it goes:
    - A feature: its epic, and its plan (`yes` or `no`, with the reason).
    - A bug: its severity.
    - An assumption or a decision: nothing. Those registers have no order.
    - An experiment: its kind.
-4. Show the draft and its destination to the user. If the user approves, give the draft
+5. Show the draft and its destination to the user. If the user approves, give the draft
    to **/ship** to write. An experiment draft goes to **/research**.
    - An assumption draft also goes to /ship as the writer. But the assumptions register
      has no single writer. It has only an enforced shape.
