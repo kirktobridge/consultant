@@ -51,6 +51,11 @@ anything touching an open assumption would make filing a blocked idea impossible
 The lower two fail the schema check, and /implement's DEPENDS GATE refuses to pick up
 any of the three — by the time you're building, parked is no longer where you are.
 
+The grading applies to an `open` assumption only. A `moved` assumption (or a
+`superseded` decision) will never settle, so an open entry that still depends on it
+fails the schema check at any tier, parked included: re-point it to `moved_to:` /
+`superseded_by:`.
+
 The counterpart obligation: **when an assumption resolves, sweep the blocked work.** A resolved
 assumption usually unblocks several entries, and nothing else will notice. /ship does the
 immediate sweep at resolution time; /triage's groom mode and the session-start audit catch the rest.

@@ -99,7 +99,10 @@ than drafted still stops for a plan.
 
 An entry may sit here `proposed` while it depends on an **open** `A-n` or `D-n` — that's how a
 blocked idea gets filed rather than lost. It may **not** appear in the queue or go
-`in-progress` in that state; the schema check enforces the line.
+`in-progress` in that state; the schema check enforces the line. A `moved` assumption or
+a `superseded` decision is not something to wait on: an open entry naming one fails at
+any status, `proposed` included, until its `depends_on:` is re-pointed to the `moved_to:`
+/ `superseded_by:` home.
 
 A `P#` dependency blocks too, read through the whole graph: an entry may go
 `in-progress` or `partial` only once every `P#` it depends on, directly or through

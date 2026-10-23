@@ -25,7 +25,10 @@ records). The *shape* is enforced by the schema check.
 Blocking is graded exactly as for assumptions
 ([../assumptions/](../assumptions/README.md#the-rule-that-makes-it-worth-maintaining)):
 an entry whose `depends_on:` names an `open` decision may sit `proposed` in the pool,
-but may not be in the queue or claimed. To unblock it, decide. There is deliberately
+but may not be in the queue or claimed. To unblock it, decide. A `superseded` decision
+is not graded: nothing will ever settle it, so an open entry that still names it fails
+at any tier, parked or not — re-point its `depends_on:` to the `superseded_by:` decision
+(*mechanically enforced* by the schema check). There is deliberately
 no "blocks" field: it would be an inventory nobody maintains; `/triage groom` derives
 it from the `depends_on:` headers.
 
