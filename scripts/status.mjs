@@ -22,6 +22,10 @@
 // page goes to an ignored path and is stamped with the commit it was built from, so a
 // stale page says how stale it is.
 //
+// A graph built over a malformed tree may be missing an edge. The report still prints,
+// leading with the schema check's warning (`graphWarning` in --json), never as sound; and
+// a dependency on an ID with no entry, the edge the graph leaves out, still blocks (B8).
+//
 // Exit: 0 report printed | 2 could not run (not a repo, no integration branch, graph failed)
 //
 // Usage: node scripts/status.mjs [--base <branch>] [--json] [--html [<file>]]
@@ -31,7 +35,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BACKLOG, BUGS, parseQueue, loadRegister } from './entries.mjs';
+import { BACKLOG, BUGS, parseQueue, loadRegister, idsOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { landings } from './landing.mjs';
 import { trunkGraph, graphIndex, catBlobs } from './trunk-graph.mjs';
@@ -76,14 +80,29 @@ const now = new Date();
 const blobs = (specs) => catBlobs(ROOT, specs);
 // The graph carries no severity, and bugs are ranked by it (next.mjs's order).
 const headers = new Map();
-const { graph, failed } = trunkGraph({
+// Nor a dependency on an ID with no entry: it leaves that edge out (B8).
+const dependsOn = new Map();
+// `warning` is the schema check saying a malformed tree may have dropped an edge (B8):
+// the report still renders, but says so, as the session audit does.
+const { graph, failed, warning } = trunkGraph({
   root: ROOT, base: BASE, git,
-  onTree: (dir) => { for (const e of loadRegister(dir, BUGS).entries) if (e.id) headers.set(e.id, e.header); },
+  onTree: (dir) => {
+    for (const reg of [BACKLOG, BUGS]) {
+      for (const e of loadRegister(dir, reg).entries) {
+        if (!e.id) continue;
+        if (reg === BUGS) headers.set(e.id, e.header);
+        dependsOn.set(e.id, idsOf(e, 'depends_on'));
+      }
+    }
+  },
 });
 if (failed) stop(failed);
 
 // What still holds an entry back is /implement's DEPENDS GATE — see graphIndex.
-const { meta, live, blockersOf, downstream } = graphIndex(graph);
+const { meta, live, blockersOf: graphBlockers, downstream } = graphIndex(graph);
+// A dependency with no entry is never met, so the DEPENDS GATE refuses it; it holds the
+// entry here too, rather than leaving it ready behind the graph's warning (B8).
+const blockersOf = (id) => [...graphBlockers(id), ...(dependsOn.get(id) ?? []).filter((d) => !meta.has(d))];
 const proseOf = (id) => graph.prose.filter((p) => p.id === id).map((p) => p.text);
 const isBuildable = (e) => BACKLOG.idPattern.test(e.id) || BUGS.idPattern.test(e.id);
 
@@ -130,7 +149,7 @@ const rel = (p) => (p ? relative(ROOT, p) || '.' : null);
 // ── The report ───────────────────────────────────────────────────────────────
 
 const report = {
-  base: BASE, commit: baseSha, committed: baseDate, generated: now.toISOString(),
+  base: BASE, commit: baseSha, committed: baseDate, generated: now.toISOString(), graphWarning: warning ?? null,
   waitingOnYou: [], inFlight: [], ready: [], blocked: [], looseEnds: [],
 };
 const open = graph.entries.filter((e) => e.open);
@@ -188,6 +207,7 @@ for (const e of ready.sort(order)) {
 
 const describe = (id) => {
   const m = meta.get(id);
+  if (!m) return { id, title: `no entry the graph reads on ${BASE}`, register: 'missing', status: 'not in the graph', waitingOnYou: false };
   const prose = proseOf(id);
   return { id, title: m.title, register: m.register, status: m.status, waitingOnYou: prose.includes('user') };
 };
@@ -206,7 +226,7 @@ try { report.looseEnds = JSON.parse(audit.stdout).findings; } catch { report.loo
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
-const KIND = { product: 'feature', bugs: 'bug', assumptions: 'assumption', decisions: 'decision', experiments: 'experiment' };
+const KIND = { product: 'feature', bugs: 'bug', assumptions: 'assumption', decisions: 'decision', experiments: 'experiment', missing: 'unknown' };
 const why = (b) => `${b.id} (${KIND[b.register] ?? b.register}, ${b.status}${b.waitingOnYou ? ', waiting on you' : ''}): ${b.title}`;
 const readyTags = (x) => [
   x.bug ? `${x.severity ?? 'unrated'} bug — picked up before the queue` : x.queued ? `queued #${x.queued}` : 'not queued',
@@ -216,6 +236,7 @@ const readyTags = (x) => [
 
 function text(r) {
   const out = [`status — ${r.base} @ ${r.commit.slice(0, 7)} (${short(r.committed)}), generated ${r.generated.slice(0, 16).replace('T', ' ')}Z`];
+  if (r.graphWarning) out.push(`  warning: ${r.graphWarning}`);
   const head = (title, n) => out.push('', `${title} (${n})${n ? '' : ': none'}`);
   head('Waiting on you', r.waitingOnYou.length);
   for (const w of r.waitingOnYou) out.push(`  ${w.id}  ${w.title}`, `        ${w.why} — ${w.see}`);
@@ -274,7 +295,7 @@ function html(r) {
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
 main{max-width:760px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;margin:0 0 4px}
 .stamp{color:var(--muted);font-size:13px;margin:0 0 24px}h2{font-size:16px;margin:28px 0 8px}
-.n{color:var(--muted);font-weight:400}ul{list-style:none;margin:0;padding:0}
+.n{color:var(--muted);font-weight:400}.warn{border-left:4px solid var(--block);padding:6px 12px;background:var(--card)}ul{list-style:none;margin:0;padding:0}
 .card{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0 0 8px}
 .card.you{border-left:4px solid var(--you)}.card.blocked{border-left:4px solid var(--block)}
 .id{font-weight:600;min-width:48px;font-variant-numeric:tabular-nums}.title{font-weight:500}
@@ -283,7 +304,7 @@ code{font:12px ui-monospace,monospace;overflow-wrap:anywhere}.chip{background:va
 </style></head><body><main>
 <h1>Project status</h1>
 <p class="stamp">Built from <code>${esc(r.base)}</code> @ <code>${esc(r.commit.slice(0, 7))}</code> (committed ${esc(short(r.committed))}), generated ${esc(r.generated.slice(0, 16).replace('T', ' '))} UTC. Generated by <code>npm run status</code>; never edit by hand.</p>
-${section('Waiting on you', waiting, 'Nothing is waiting on you.')}
+${r.graphWarning ? `<p class="warn">${esc(r.graphWarning)}</p>\n` : ''}${section('Waiting on you', waiting, 'Nothing is waiting on you.')}
 ${section('In flight', flight, 'Nothing is being built right now.')}
 ${section('Ready to start', readyItems, 'Nothing is ready to start.')}
 ${section('Blocked', blockedItems, 'Nothing is blocked.')}

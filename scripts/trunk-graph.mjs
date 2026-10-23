@@ -111,7 +111,9 @@ export function trunkGraph({ root, base, git, onTree = null }) {
         failed = `the graph on ${base} has no entry, or no status, under the ID of ${some(dropped)}: check each file's header`;
         graph = null;
       } else if ((r.stderr || '').trim()) {
-        warning = r.stderr.trim().split('\n')[0];
+        // The check's own line, not whatever node printed first (an inherited NODE_OPTIONS).
+        const lines = r.stderr.trim().split('\n');
+        warning = lines.find((l) => l.startsWith('backlog-schema:')) ?? lines[0];
       }
     }
   } catch (e) {

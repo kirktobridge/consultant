@@ -231,6 +231,50 @@ describe('status.mjs reads main and stores nothing', () => {
   });
 });
 
+describe('status.mjs says when the graph may have dropped an edge (B8)', () => {
+  test('a dangling dependency on main is named in the text, the JSON and the page', () => {
+    const { dir } = repo({ backlog: [P('P1', { dependsOn: ['P99'] })], nextUp: ['P1'] });
+    const r = report(dir);
+    assert.match(r.graphWarning ?? '', /the graph may be wrong/);
+    assert.deepEqual(r.ready.map((x) => x.id), [], 'a dependency with no entry is never met');
+    const p1 = r.blocked.find((b) => b.id === 'P1');
+    assert.deepEqual(p1?.waitsOn.map((w) => [w.id, w.status]), [['P99', 'not in the graph']]);
+    assert.deepEqual(p1.roots.map((w) => w.id), ['P99']);
+    const t = status(dir);
+    assert.equal(t.code, 0, out(t));
+    assert.match(t.stdout, /^status — .*\n {2}warning: .*the graph may be wrong/);
+    assert.match(t.stdout, /Blocked \(1\)\n {2}P1 .*\n\s+waits on P99 \(unknown, not in the graph\): no entry the graph reads on main/);
+    assert.equal(status(dir, '--html').code, 0);
+    assert.match(readFileSync(join(dir, '.claude/status.html'), 'utf8'), /<p class="warn">[^<]*the graph may be wrong/);
+  });
+
+  test('a missing ID held behind a real edge is the root of the chain', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { dependsOn: ['P99'] }), P('P2', { dependsOn: ['P1', 'P98'] })],
+      nextUp: ['P1'],
+    });
+    const p2 = report(dir).blocked.find((b) => b.id === 'P2');
+    assert.deepEqual(p2?.waitsOn.map((w) => w.id), ['P1', 'P98']);
+    assert.deepEqual(p2.roots.map((w) => w.id).sort(), ['P98', 'P99']);
+  });
+
+  test('the warning is the check\'s own line, not stderr node printed before it', () => {
+    const { dir } = repo({ backlog: [P('P1', { dependsOn: ['P99'] })], nextUp: ['P1'] });
+    writeFileSync(join(dir, 'noise.cjs'), "console.error('(node:1) ExperimentalWarning: noise');\n");
+    const r = run('status.mjs', ['--json'], { cwd: dir, env: { NODE_OPTIONS: `--require ${join(dir, 'noise.cjs')}` } });
+    assert.equal(r.code, 0, out(r));
+    assert.match(JSON.parse(r.stdout).graphWarning ?? '', /^backlog-schema: .*the graph may be wrong/);
+  });
+
+  test('a sound graph carries no warning', () => {
+    const { dir } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
+    assert.equal(report(dir).graphWarning, null);
+    assert.doesNotMatch(status(dir).stdout, /warning:/);
+    assert.equal(status(dir, '--html').code, 0);
+    assert.doesNotMatch(readFileSync(join(dir, '.claude/status.html'), 'utf8'), /class="warn"/);
+  });
+});
+
 describe('status.mjs refuses a trunk it can only read in part (P36)', () => {
   test('an entry whose first line is not --- stops the report, naming the file', () => {
     const { dir, commitAll } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P1'] });
