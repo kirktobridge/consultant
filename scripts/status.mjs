@@ -35,7 +35,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BACKLOG, BUGS, parseQueue, loadRegister, idsOf } from './entries.mjs';
+import { BACKLOG, BUGS, parseQueue, loadRegister } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { landings } from './landing.mjs';
 import { trunkGraph, graphIndex, catBlobs } from './trunk-graph.mjs';
@@ -80,29 +80,17 @@ const now = new Date();
 const blobs = (specs) => catBlobs(ROOT, specs);
 // The graph carries no severity, and bugs are ranked by it (next.mjs's order).
 const headers = new Map();
-// Nor a dependency on an ID with no entry: it leaves that edge out (B8).
-const dependsOn = new Map();
 // `warning` is the schema check saying a malformed tree may have dropped an edge (B8):
 // the report still renders, but says so, as the session audit does.
 const { graph, failed, warning } = trunkGraph({
   root: ROOT, base: BASE, git,
-  onTree: (dir) => {
-    for (const reg of [BACKLOG, BUGS]) {
-      for (const e of loadRegister(dir, reg).entries) {
-        if (!e.id) continue;
-        if (reg === BUGS) headers.set(e.id, e.header);
-        dependsOn.set(e.id, idsOf(e, 'depends_on'));
-      }
-    }
-  },
+  onTree: (dir) => { for (const e of loadRegister(dir, BUGS).entries) if (e.id) headers.set(e.id, e.header); },
 });
 if (failed) stop(failed);
 
 // What still holds an entry back is /implement's DEPENDS GATE — see graphIndex.
-const { meta, live, blockersOf: graphBlockers, downstream } = graphIndex(graph);
-// A dependency with no entry is never met, so the DEPENDS GATE refuses it; it holds the
-// entry here too, rather than leaving it ready behind the graph's warning (B8).
-const blockersOf = (id) => [...graphBlockers(id), ...(dependsOn.get(id) ?? []).filter((d) => !meta.has(d))];
+// A dependency with no entry blocks too: graphIndex counts trunkGraph's `missing` (B8, B9).
+const { meta, live, blockersOf, downstream } = graphIndex(graph);
 const proseOf = (id) => graph.prose.filter((p) => p.id === id).map((p) => p.text);
 const isBuildable = (e) => BACKLOG.idPattern.test(e.id) || BUGS.idPattern.test(e.id);
 

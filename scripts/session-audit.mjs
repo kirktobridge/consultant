@@ -299,7 +299,8 @@ const ahead = (() => {
     // Near the queue: queued, or held only by open assumptions and decisions — no
     // feature to build first. An open assumption counts every such entry it holds,
     // directly or through another; one held by two is counted under both.
-    const settleable = (id) => ASSUMPTIONS.idPattern.test(id) || DECISIONS.idPattern.test(id);
+    // An A-n or D-n with no entry (B9) is nothing the owner can settle: it is a bad reference.
+    const settleable = (id) => meta.has(id) && (ASSUMPTIONS.idPattern.test(id) || DECISIONS.idPattern.test(id));
     const near = new Set(features
       .filter((e) => queued.includes(e.id) || (blockersOf(e.id).length && blockersOf(e.id).every(settleable)))
       .map((e) => e.id));
@@ -313,7 +314,10 @@ const ahead = (() => {
 
     return {
       bugFirst,
-      nextUp: head ? { id: head, title: meta.get(head)?.title ?? '', waitsOn: blockersOf(head) } : null,
+      nextUp: head ? {
+        id: head, title: meta.get(head)?.title ?? '', waitsOn: blockersOf(head),
+        noEntry: blockersOf(head).filter((id) => !meta.has(id)),
+      } : null,
       claimedAhead, readyUnqueued, assumptions: assumptionsAhead, ...(warning && { warning }),
     };
   } catch (e) {
@@ -332,7 +336,9 @@ const aheadLines = (() => {
   const bug = ahead.bugFirst;
   if (bug) out.push(`  next up: ${bug.id} — ${bug.title} (${bug.severity ?? 'unrated'} bug; every ready bug goes before the queue)`);
   const label = bug ? 'then the queue' : 'next up';
-  const held = ahead.nextUp?.waitsOn.length ? ` — waits on ${ahead.nextUp.waitsOn.join(', ')}` : '';
+  // A blocker with no entry is a header to fix, not something to build first: say so.
+  const named = (id) => (ahead.nextUp.noEntry.includes(id) ? `${id} (no entry)` : id);
+  const held = ahead.nextUp?.waitsOn.length ? ` — waits on ${ahead.nextUp.waitsOn.map(named).join(', ')}` : '';
   out.push(ahead.nextUp
     ? `  ${label}: ${ahead.nextUp.id} — ${ahead.nextUp.title}${skip}${held}`
     : `  ${label}: nothing unclaimed in ${BACKLOG.queue}${skip}`);

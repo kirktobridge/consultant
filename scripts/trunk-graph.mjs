@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REGISTERS, EXPERIMENTS, dependencyMet } from './entries.mjs';
+import { REGISTERS, EXPERIMENTS, BUILDABLE, dependencyMet, loadRegister, idsOf } from './entries.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
@@ -37,6 +37,24 @@ function droppedFiles(files, graph) {
     const id = basename(f, '.md');
     return reg && f.endsWith('.md') && reg.idPattern.test(id) && !status.get(id);
   });
+}
+
+/**
+ * Each buildable entry's `depends_on:` IDs that name no entry in the graph. The graph
+ * drops such an edge ("dangling IDs are the checks' to report"), but a dependency that
+ * doesn't exist is never met, so the DEPENDS GATE refuses the entry; a reader must not
+ * call it ready (B8, B9). Read from the copied tree, the headers the graph was built from.
+ */
+function missingDeps(dir, graph) {
+  const ids = new Set(graph.entries.map((e) => e.id));
+  const missing = {};
+  for (const reg of BUILDABLE) {
+    for (const e of loadRegister(dir, reg).entries) {
+      const gone = e.id ? idsOf(e, 'depends_on').filter((d) => !ids.has(d)) : [];
+      if (gone.length) missing[e.id] = gone;
+    }
+  }
+  return missing;
 }
 
 /** A list of paths short enough for the session audit's few lines. */
@@ -71,10 +89,12 @@ export function catBlobs(root, specs) {
 /**
  * The graph on `base`: `{ graph, failed, warning }`, exactly one of graph and failed
  * set. An entry file the graph left out is `failed`, never a shorter graph. `warning`
- * is the schema check's own note that a malformed tree may have dropped an edge. `git`
- * is the caller's wrapper (null on failure). `onTree(dir)` sees the copied registers
- * before the directory goes, for a reader that needs a header the graph does not carry. Never throws: a reader whose graph is optional must not lose
- * the rest of its report to it.
+ * is the schema check's own note that a malformed tree may have dropped an edge.
+ * `graph.missing` names, per entry, each `depends_on:` ID with no entry: the edge the
+ * graph leaves out, which graphIndex counts as a blocker (B9). `git` is the caller's
+ * wrapper (null on failure). `onTree(dir)` sees the copied registers before the
+ * directory goes, for a reader that needs a header the graph does not carry. Never
+ * throws: a reader whose graph is optional must not lose the rest of its report to it.
  */
 export function trunkGraph({ root, base, git, onTree = null }) {
   let tmp = null;
@@ -110,7 +130,10 @@ export function trunkGraph({ root, base, git, onTree = null }) {
       if (dropped.length) {
         failed = `the graph on ${base} has no entry, or no status, under the ID of ${some(dropped)}: check each file's header`;
         graph = null;
-      } else if ((r.stderr || '').trim()) {
+      } else {
+        graph.missing = missingDeps(tmp, graph);
+      }
+      if (graph && (r.stderr || '').trim()) {
         // The check's own line, not whatever node printed first (an inherited NODE_OPTIONS).
         const lines = r.stderr.trim().split('\n');
         warning = lines.find((l) => l.startsWith('backlog-schema:')) ?? lines[0];
@@ -130,6 +153,7 @@ export function trunkGraph({ root, base, git, onTree = null }) {
  * the graph's `open` flag — an abandoned `P#` is closed, and it never ships, so
  * whatever rests on it stays blocked. `blockersOf` is what still holds an entry back,
  * `unblocksOf` the open entries it holds, `downstream` everything beyond those too.
+ * A `depends_on:` ID with no entry (`graph.missing`) is a blocker too, never met.
  * `field` is a label, never matched on: each repo names its own headers.
  */
 export function graphIndex(graph) {
@@ -143,6 +167,7 @@ export function graphIndex(graph) {
     if (holds(x.from)) add(blockers, x.to, x.from);
     if (live(x.to)) add(unblocks, x.from, x.to);
   }
+  for (const [id, gone] of Object.entries(graph.missing ?? {})) for (const d of gone) add(blockers, id, d);
   const blockersOf = (id) => blockers.get(id) ?? [];
   const unblocksOf = (id) => unblocks.get(id) ?? [];
   const downstream = (id) => {
