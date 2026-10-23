@@ -530,6 +530,22 @@ describe('staleness from ad-hoc merges (P34)', () => {
     flags(dir, /\(Relates: P9, P2\)/);
   });
 
+  test('a token in Relates: that is no ID is dropped, not quoted as one', () => {
+    const { dir } = adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P2 (R0 scope)' }]);
+    const o = flags(dir, /\(Relates: P2\)/);
+    assert.doesNotMatch(o, /R0/);
+  });
+
+  // An unread trunk is exit 2, but only after the register checks: a typo'd --base
+  // must not hide the violations it would have been shown alongside.
+  test('a trunk that cannot be read stops the run without hiding a violation', () => {
+    const { dir } = adhocRepo(state(daysAgo(10), { accept: null }), [{ days: 3, relates: 'P2' }]);
+    const r = run('backlog-schema-check.mjs', ['--all', '--base', 'nosuch'], { cwd: dir });
+    assert.equal(r.code, 2);
+    assert.match(out(r), /open P2 missing \*\*Accept\*\*/);
+    assert.match(out(r), /nosuch/);
+  });
+
   // A CI checkout of a feature push holds no local main, only the remote's.
   test('with no local trunk, the remote trunk is read', () => {
     const { dir } = adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P2' }]);

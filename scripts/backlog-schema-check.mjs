@@ -50,7 +50,7 @@ import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
-  loadRegister, parseQueue, idsOf, dependencyGraph,
+  loadRegister, parseQueue, idsOf, isId, dependencyGraph,
 } from './entries.mjs';
 import { trunkFromArgv, TRUNK_CANDIDATES } from './trunk.mjs';
 
@@ -336,10 +336,11 @@ function adhocMerges() {
     } catch { return null; }
   };
   const lines = (s) => s.split('\n').filter(Boolean);
-  // A repo whose history can't be read stops an explicit run, as every script taking
-  // --base does (B1). A hook can't pass --base, so there it is reported, not fatal.
+  // A repo whose history can't be read stops the run, as every script taking --base
+  // does (B1) — at the report, after the register checks, so it never hides a
+  // violation. The graph has no violations to hide, so it stops here.
   const unread = (why) => {
-    if (hookMode) return { unread: why };
+    if (!graphMode) return { unread: why, fatal: true };
     console.error(`backlog-schema: ${why}`);
     process.exit(2);
   };
@@ -364,8 +365,8 @@ function adhocMerges() {
     .map(([sha, date, , relates = '']) => ({
       sha,
       date,
-      // IDs, not tokens: a hand-written `Relates: P2.` still names P2.
-      relates: relates.toUpperCase().match(/\b[A-Z]-?\d+\b/g) ?? [],
+      // IDs, not tokens: a hand-written `Relates: P2.` still names P2, and `R0` names nothing.
+      relates: (relates.toUpperCase().match(/\b[A-Z]-?\d+\b/g) ?? []).filter(isId),
     }));
   return { merges, trunk };
 }
@@ -429,7 +430,9 @@ if (queueReg) {
 }
 
 const today = new Date().toISOString().slice(0, 10);
-const adhoc = adhocMerges();
+// The hook speaks only through violations and never prints a notice, so it skips the
+// git read rather than walk the trunk's history on every edit.
+const adhoc = hookMode ? { unread: 'hook mode' } : adhocMerges();
 
 for (const { reg: b, entries } of loaded) {
   if (entries.length === 0 && !b.mayBeEmpty) fail(`${b.dir}: no entry files parsed`);
@@ -1000,8 +1003,13 @@ if (notices.length && !hookMode) {
 }
 if (problems.length) {
   console.error(`backlog-schema: ${problems.length} violation(s):\n- ${problems.join('\n- ')}`);
-  process.exit(hookMode ? 2 : 1);
 }
+// An unread trunk means part of the check never ran: exit 2, even over violations.
+if (adhoc.fatal) {
+  console.error(`backlog-schema: ${adhoc.unread}`);
+  process.exit(2);
+}
+if (problems.length) process.exit(hookMode ? 2 : 1);
 // The count is a positive control, printed every run: a checker that quietly stops
 // parsing reports success exactly like a clean tree (LESSONS L3). A number that
 // drops without files being deleted means the parser broke, not that drift left.
