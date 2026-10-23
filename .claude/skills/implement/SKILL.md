@@ -31,6 +31,12 @@ run all of them.
   count: entries run long, and a truncated read drops `Accept`, the half of the
   contract that comes last. No such file → it's an untriaged idea; bounce to
   **/triage**, don't invent an entry.
+- **PREFLIGHT:** before the claim, run `node scripts/preflight.mjs <ID> [R#]` and keep
+  what it prints. It runs the claim, depends, status, milestone and spike gates from the
+  trunk, and it prints a premise table for the paths and symbols the entry names. It
+  only reports. Run every gate below by hand anyway, then compare your verdicts with its
+  verdicts; the close report says whether they agreed (step 4). A premise row reading
+  `found` never clears a claim: it says the name exists, not that the claim holds.
 - **CLAIM GATE:** `node scripts/claims.mjs`
   first. It reads the **trunk's** version, never the checked-out copy: in a worktree
   the local files reflect when you branched, so they can miss a claim another session
@@ -184,6 +190,10 @@ run all of them.
   the verdict in its handshake.
   A bug closes the same way against its two sections: the `Repro`, re-run, as
   observed / not observed to still break, and the `Expected` as observed or not.
+  The close report also carries one line, at the start of a line, for preflight:
+  `preflight: agreed`, or `preflight: disagreed — <gate>: <what each side said>`.
+  Write it from the step-1 comparison. Those lines are what decide whether preflight
+  becomes the gate (`git log --grep '^preflight:'`), so a disagreement is the useful case.
 - Commit on the feature branch, **with that per-criterion report and the REVIEW
   line in the commit message** and the entry's ID in the subject (`feat: … (P#)`; a bug: `fix: … (B#)`). `npm run history`
   finds an entry's commits by that ID, so a commit without it drops out of the
