@@ -180,7 +180,11 @@ run all of them.
   not a flow guessed from the diff. A docs-only change has no app to drive: check
   each criterion directly (read the file, run the command it names) and say in the
   report that this is how it was checked.
-- **Close by criterion, not by diff.** Report each `Accept:` criterion, verbatim, as
+- **Close by criterion, not by diff.** Start from `node scripts/close-report.mjs <ID>`:
+  it prints the report's skeleton from the trunk's entry, with each criterion (a bug:
+  its `Repro` and `Expected`) quoted word for word. Fill its `<…>` slots; never retype
+  or reword what it quotes. Exit 2 means it printed no skeleton, and it says why.
+  Report each `Accept:` criterion, verbatim, as
   **observed** (with the evidence), **not observed** (with what was seen instead), or
   **not exercised** (a later milestone owns it — say which). A diff summary is not a
   close report: it says what changed, and the criteria say whether it was right. A

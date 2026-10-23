@@ -50,7 +50,7 @@ import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
-  loadRegister, parseQueue, idsOf, newHomeOf, dependencyGraph,
+  loadRegister, parseQueue, idsOf, newHomeOf, dependencyGraph, criteriaOf,
 } from './entries.mjs';
 import { trunkOrRemote } from './trunk.mjs';
 import { staleFlags, readAdhocMerges } from './sweep.mjs';
@@ -329,10 +329,6 @@ function adhocMerges() {
   return { merges, trunk };
 }
 
-// Top-level bullets only: an indented sub-bullet is detail under a criterion, not
-// another criterion, and a paragraph is not a criterion at all.
-const bullets = (lines) => (lines ?? []).filter((l) => /^[-*]\s+\S/.test(l));
-
 // ── Checks ───────────────────────────────────────────────────────────────────
 
 const problems = [];
@@ -469,7 +465,8 @@ for (const { reg: b, entries } of loaded) {
     const { section, min, max } = b.criteria;
     for (const e of entries) {
       if (!b.open.has(e.status ?? '') || !e.sections.has(section)) continue;
-      const n = bullets(e.sections.get(section)).length;
+      // Top-level bullets only, by the reader the close report quotes them with.
+      const n = criteriaOf(e.sections.get(section)).length;
       if (n < min || n > max) {
         fail(
           `${e.file}: open ${e.id} has ${n} **${section}** criteri${n === 1 ? 'on' : 'a'}, ` +
