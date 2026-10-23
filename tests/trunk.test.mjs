@@ -19,6 +19,7 @@ const ARGS = {
   // --json is refused before it anywhere but under --graph.
   'backlog-schema-check.mjs': ['--graph'],
   'claims.mjs': [],
+  'close-report.mjs': ['P1'],
   'commit-ids.mjs': ['--history'],
   'groom.mjs': [],
   'history.mjs': ['P1'],

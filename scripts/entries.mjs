@@ -310,6 +310,29 @@ export function parseEntry(text, keys) {
 }
 
 /**
+ * A section's criteria: its top-level bullets, each joined with the lines that continue
+ * it, so the schema check counts what the close report quotes (P43). An indented
+ * sub-bullet is detail under a criterion, not another one, and is joined to it. A line
+ * continues the bullet when it is indented, or unindented straight after it (a lazy
+ * wrap); a blank line followed by an unindented one ends it, so a paragraph after the
+ * list is not a criterion. Joining changes only whitespace.
+ */
+export function criteriaOf(lines) {
+  const out = [];
+  let cur = null;
+  let blank = false;
+  for (const l of lines ?? []) {
+    const m = l.match(/^[-*]\s+(\S.*?)\s*$/);
+    if (m) { cur = [m[1]]; out.push(cur); blank = false; continue; }
+    if (!l.trim()) { blank = true; continue; }
+    if (cur && (/^\s/.test(l) || !blank)) cur.push(l.trim());
+    else cur = null;
+    blank = false;
+  }
+  return out.map((c) => c.join(' '));
+}
+
+/**
  * A moved assumption's or superseded decision's new home: the IDs its dependents must
  * re-point to, since it settled nothing (B10). Empty for any other entry.
  */
