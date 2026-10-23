@@ -1,7 +1,7 @@
 # Next up
 
-1. **P45** — the research start gate's numbers are checked by code. Recorded order
-   (D-3); unblocks nothing.
+1. **P45** — the research start gate's numbers are checked by code. Landed 2026-10-23
+   (127a7fe), awaiting the owner's acceptance. Recorded order (D-3); unblocks nothing.
 2. **P46** — each eval prompt carries a nonce its reply must echo. Recorded order
    (D-3); unblocks nothing.
 3. **P47** — the eval checks each rep's transcript: the prompt arrived whole, and no
