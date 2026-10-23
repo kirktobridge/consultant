@@ -52,7 +52,7 @@ import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
   loadRegister, parseQueue, idsOf, isId, newHomeOf, dependencyGraph,
 } from './entries.mjs';
-import { trunkFromArgv, TRUNK_CANDIDATES } from './trunk.mjs';
+import { trunkOrRemote } from './trunk.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -346,14 +346,7 @@ function adhocMerges() {
   };
   if (git('rev-parse', '--git-dir') === null) return { unread: 'not a git repository' };
   const branches = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/heads') ?? '');
-  let { trunk, error } = trunkFromArgv(argv, branches);
-  // A CI checkout holds no local trunk, but a full fetch holds the remote's — the same
-  // fallback commit-ids.mjs takes. Unasked only: a --base naming nothing still stops.
-  if (error && !argv.includes('--base')) {
-    const remote = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/remotes') ?? '')
-      .find((r) => TRUNK_CANDIDATES.includes(r.replace(/^[^/]+\//, '')));
-    if (remote) { trunk = remote; error = null; }
-  }
+  const { trunk, error } = trunkOrRemote(argv, branches, () => lines(git('for-each-ref', '--format=%(refname:short)', 'refs/remotes') ?? ''));
   if (error) return unread(error);
   const fmt = '%h%x1f%cs%x1f%(trailers:key=Ad-hoc,valueonly,separator=%x20)%x1f%(trailers:key=Relates,valueonly,separator=%x2C)%x1e';
   const log = git('log', '--first-parent', '--merges', '--grep=^Ad-hoc:', `--format=${fmt}`, trunk, '--');

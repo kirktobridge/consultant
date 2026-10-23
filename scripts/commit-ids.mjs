@@ -28,7 +28,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { namesId, entryOfBranch, mergedBranch } from './landing.mjs';
-import { trunkFromArgv, TRUNK_CANDIDATES } from './trunk.mjs';
+import { trunkOrRemote } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
 const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
@@ -61,15 +61,7 @@ if (argv[0] === '--msg') {
 if (argv[0] === '--history') {
   if (git('rev-parse', '--git-dir') === null) { console.log('commit-ids: not a git repository — nothing to check.'); process.exit(0); }
   const branches = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/heads'));
-  let { trunk, error } = trunkFromArgv(argv, branches);
-  // A CI checkout holds no local trunk (a feature push makes only that branch; a pull
-  // request, none), but a full fetch holds the remote's. Unasked only: a --base that
-  // names nothing still stops, as everywhere else (B1).
-  if (error && !argv.includes('--base')) {
-    const remote = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/remotes'))
-      .find((r) => TRUNK_CANDIDATES.includes(r.replace(/^[^/]+\//, '')));
-    if (remote) { trunk = remote; error = null; }
-  }
+  const { trunk, error } = trunkOrRemote(argv, branches, () => lines(git('for-each-ref', '--format=%(refname:short)', 'refs/remotes')));
   if (error) stop(error);
   const bad = [];
   let checked = 0;
