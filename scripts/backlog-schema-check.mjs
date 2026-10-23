@@ -50,21 +50,22 @@ import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
-  loadRegister, parseQueue, idsOf, isId, newHomeOf, dependencyGraph,
+  loadRegister, parseQueue, idsOf, newHomeOf, dependencyGraph,
 } from './entries.mjs';
 import { trunkOrRemote } from './trunk.mjs';
+import { staleFlags, readAdhocMerges } from './sweep.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
 // ── Configuration ────────────────────────────────────────────────────────────
-// PORTING: adjust the register paths in entries.mjs; keep the shapes here.
+// PORTING: adjust the register paths in entries.mjs; keep the shapes here. Each
+// register's lifecycle (`open`, `terminal`, `dated`, `closed`) lives in entries.mjs
+// too, because groom reads it as well (P42).
 
 const REGISTERS = [
   {
     ...BACKLOG,
     kind: 'product',
-    open: new Set(['proposed', 'in-progress', 'partial']),
-    terminal: new Set(['shipped', 'deferred', 'abandoned']),
     // Body sections every entry carries, and those only *open* entries carry.
     // NB: product `Scope` means "what's in, what's out" — the unit /implement
     // builds against. Don't confuse it with a measurement's context.
@@ -82,9 +83,6 @@ const REGISTERS = [
     // always carries it; a closed one will never be built again.
     whileOpenKeys: ['plan'],
     vocabKeys: { plan: 'Plan vocab' },
-    // Header keys: when the entry's claims were established, and when it closed.
-    dated: 'drafted',
-    closed: 'shipped',
     // The only statuses that may carry the `closed` date. A `shipped:` date on any other
     // status is the claim "the user accepted this" contradicting the status line.
     closedBy: new Set(['shipped']),
@@ -94,8 +92,6 @@ const REGISTERS = [
   {
     ...BUGS,
     kind: 'bugs',
-    open: new Set(['open', 'in-progress']),
-    terminal: new Set(['fixed', 'wontfix']),
     always: [],
     whileOpen: ['Repro'],
     // Sections an entry may never carry. A bug's `Value` can only be invented — "it
@@ -108,7 +104,6 @@ const REGISTERS = [
     // No bugs is the healthy state, so an empty register is not a parser gone quiet.
     // The entry count in the success line is still the positive control.
     mayBeEmpty: true,
-    dated: 'reported',
   },
   // Assumptions: load-bearing assumptions. Not a backlog (no queue, no payoff
   // order) but the same shape rules apply, and backlog entries may depend on them —
@@ -116,23 +111,17 @@ const REGISTERS = [
   {
     ...ASSUMPTIONS,
     kind: 'assumptions',
-    open: new Set(['open']),
-    terminal: new Set(['verified', 'refuted', 'moot', 'moved']),
     always: ['Assumption'],
     whileOpen: ['Why it matters', 'How to verify'],
     // `moved`: not an assumption after all (a choice, a feature's acceptance, a
     // quantity). It stays as a stub so the ID still resolves, pointing at its new home.
     onStatus: { moved: { keys: ['moved_to'], sections: [] } },
-    dated: 'raised',
-    closed: 'resolved',
   },
   // Decisions: choices only the product owner makes. Blocks exactly like an
   // assumption, but is settled by deciding rather than by observing.
   {
     ...DECISIONS,
     kind: 'decisions',
-    open: new Set(['open']),
-    terminal: new Set(['decided', 'superseded']),
     always: ['Options'],
     whileOpen: [],
     // Header keys an open entry carries, and what each terminal status owes.
@@ -141,8 +130,6 @@ const REGISTERS = [
       decided: { keys: ['decided', 'leads_to'], sections: ['Decided', 'Why', 'Reopen if'] },
       superseded: { keys: ['superseded_by'], sections: [] },
     },
-    dated: 'raised',
-    closed: 'decided',
   },
   // ── The research track (P13) ──
   // Ported from photocull's FRAMEWORK.md; docs/research/README.md is the framework.
@@ -154,8 +141,6 @@ const REGISTERS = [
     ...EXPERIMENTS,
     kind: 'experiments',
     research: true,
-    open: new Set(['proposed', 'active']),
-    terminal: new Set(['answered', 'abandoned', 'deferred', 'played-out']),
     always: ['Objective'],
     whileOpen: ['Method', 'Cost / risk'],
     whileOpenKeys: ['kind'],
@@ -177,17 +162,12 @@ const REGISTERS = [
     // rest on an open assumption or decision.
     claimed: ['active'],
     mayBeEmpty: true,
-    dated: 'drafted',
-    closed: 'closed',
     closedBy: new Set(['answered', 'abandoned', 'played-out']),
   },
   {
     ...RUNS,
     kind: 'runs',
     research: true,
-    // A run is a record, not work: nothing about it is open. Its status is its outcome.
-    open: new Set(),
-    terminal: new Set(['answered', 'inconclusive', 'abandoned', 'retracted']),
     always: ['Measured under', 'Results', 'Read'],
     whileOpen: [],
     alwaysKeys: ['experiment', 'ran'],
@@ -195,14 +175,11 @@ const REGISTERS = [
     refs: { experiment: EXPERIMENTS },
     mayBeEmpty: true,
     graph: false,
-    dated: 'ran',
   },
   {
     ...FINDINGS,
     kind: 'findings',
     research: true,
-    open: new Set(['current']),
-    terminal: new Set(['retracted']),
     always: ['Claim', 'So what'],
     whileOpen: [],
     // Every finding — a retracted one too — says how strongly it is held and which
@@ -213,7 +190,6 @@ const REGISTERS = [
     refs: { runs: RUNS },
     mayBeEmpty: true,
     graph: false,
-    dated: 'recorded',
   },
 ];
 
@@ -348,19 +324,8 @@ function adhocMerges() {
   const branches = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/heads') ?? '');
   const { trunk, error } = trunkOrRemote(argv, branches, () => lines(git('for-each-ref', '--format=%(refname:short)', 'refs/remotes') ?? ''));
   if (error) return unread(error);
-  const fmt = '%h%x1f%cs%x1f%(trailers:key=Ad-hoc,valueonly,separator=%x20)%x1f%(trailers:key=Relates,valueonly,separator=%x2C)%x1e';
-  const log = git('log', '--first-parent', '--merges', '--grep=^Ad-hoc:', `--format=${fmt}`, trunk, '--');
-  if (log === null) return unread(`could not read ${trunk}'s history for ad-hoc merges`);
-  const merges = log
-    .split('\x1e')
-    .map((r) => r.trim().split('\x1f'))
-    .filter(([sha, , adhoc]) => sha && adhoc?.trim())
-    .map(([sha, date, , relates = '']) => ({
-      sha,
-      date,
-      // IDs, not tokens: a hand-written `Relates: P2.` still names P2, and `R0` names nothing.
-      relates: (relates.toUpperCase().match(/\b[A-Z]-?\d+\b/g) ?? []).filter(isId),
-    }));
+  const merges = readAdhocMerges(git, trunk);
+  if (merges === null) return unread(`could not read ${trunk}'s history for ad-hoc merges`);
   return { merges, trunk };
 }
 
@@ -537,43 +502,27 @@ for (const { reg: b, entries } of loaded) {
   // — an open entry older than a dependency that has since landed —
   // Presumptively stale: the dependency usually moved the very code the entry
   // describes. This does not mean the entry is wrong — it means nobody may build
-  // it without re-checking against the code and re-dating it. Conservative by
-  // construction: fires only when *both* dates parse, so a missing date never
-  // invents an alarm.
-  for (const e of entries) {
-    if (!b.open.has(e.status ?? '')) continue;
-    const drafted = e.header[b.dated];
-    if (!drafted) continue; // the check above owns that failure
-    for (const depId of idsOf(e, 'depends_on')) {
-      const dep = byId.get(depId);
-      if (!dep || !isTerminal(dep)) continue;
-      const landed = dep.header[regOf(dep).closed];
-      if (!landed || landed <= drafted) continue;
-      fail(
-        `${e.file}: ${e.id} (${b.dated} ${drafted}) depends on ${depId}, which landed ${landed} — ` +
-          `presumptively stale. Re-verify its claims against the code and bump \`${b.dated}:\`, ` +
-          `or rescope it, before building.`,
-      );
-    }
-  }
-
+  // it without re-checking against the code and re-dating it. The rule itself lives in
+  // sweep.mjs, because groom lists the same entries (P42).
+  //
   // — an open entry older than an ad-hoc change that relates to it (P34) —
   // Same presumption, from the other way code moves: an ad-hoc branch has no entry to
   // depend on, but its merge names the entries whose area it touched in `Relates:`.
-  // Same date rule too: a merge on or before `drafted:` is one the entry was written
-  // knowing about, so re-dating after a re-read clears it.
   // A notice, not a violation (the user's call, P34): land.mjs runs the suite on the
   // merged result, so a failing flag would be raised by the very merge it names and
   // reset main — no ad-hoc change relating to an older open entry could ever land.
-  for (const e of entries) {
-    if (!b.open.has(e.status ?? '')) continue;
-    const drafted = e.header[b.dated];
-    if (!drafted) continue;
-    for (const m of adhoc.merges ?? []) {
-      if (!m.relates.includes(e.id) || m.date <= drafted) continue;
+  for (const f of staleFlags(entries, b, byId, adhoc.merges ?? [])) {
+    const { entry: e, drafted, landed } = f;
+    if (f.depId) {
+      fail(
+        `${e.file}: ${e.id} (${b.dated} ${drafted}) depends on ${f.depId}, which landed ${landed} — ` +
+          `presumptively stale. Re-verify its claims against the code and bump \`${b.dated}:\`, ` +
+          `or rescope it, before building.`,
+      );
+    } else {
       notice(
-        `${e.file}: ${e.id} (${b.dated} ${drafted}) is named by ad-hoc merge ${m.sha} ` +
-          `(Relates: ${m.relates.join(', ')}), which landed ${m.date} — presumptively stale. Re-verify its ` +
+        `${e.file}: ${e.id} (${b.dated} ${drafted}) is named by ad-hoc merge ${f.merge.sha} ` +
+          `(Relates: ${f.merge.relates.join(', ')}), which landed ${landed} — presumptively stale. Re-verify its ` +
           `claims against the code and bump \`${b.dated}:\`, or rescope it, before building.`,
       );
     }

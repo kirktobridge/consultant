@@ -20,6 +20,7 @@ const ARGS = {
   'backlog-schema-check.mjs': ['--graph'],
   'claims.mjs': [],
   'commit-ids.mjs': ['--history'],
+  'groom.mjs': [],
   'history.mjs': ['P1'],
   'land.mjs': ['lock', 'status'],
   'next.mjs': [],

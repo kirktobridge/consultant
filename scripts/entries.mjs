@@ -69,6 +69,13 @@ export const BACKLOG = {
   // The statuses a build may start or resume from: a feature mid-milestone sits
   // `partial` between claims.
   claimed: ['in-progress', 'partial'],
+  // Every register's lifecycle: the statuses still open, the ones done for good, the
+  // header key dating when an entry's claims were established, and the one dating when
+  // it closed. The schema check and groom both close an entry by these (P42).
+  open: new Set(['proposed', 'in-progress', 'partial']),
+  terminal: new Set(['shipped', 'deferred', 'abandoned']),
+  dated: 'drafted',
+  closed: 'shipped',
   keys: {
     id: 'id',
     title: 'text',
@@ -87,6 +94,10 @@ export const ASSUMPTIONS = {
   dir: 'docs/assumptions',
   readme: 'docs/assumptions/README.md',
   idPattern: /^A-\d+$/,
+  open: new Set(['open']),
+  terminal: new Set(['verified', 'refuted', 'moot', 'moved']),
+  dated: 'raised',
+  closed: 'resolved',
   keys: {
     id: 'id',
     title: 'text',
@@ -102,6 +113,10 @@ export const DECISIONS = {
   dir: 'docs/decisions',
   readme: 'docs/decisions/README.md',
   idPattern: /^D-\d+$/,
+  open: new Set(['open']),
+  terminal: new Set(['decided', 'superseded']),
+  dated: 'raised',
+  closed: 'decided',
   keys: {
     id: 'id',
     title: 'text',
@@ -125,6 +140,9 @@ export const BUGS = {
   // Most urgent first. Every open bug is picked up before the queue, in this order,
   // rather than being ranked into it (P5 R1) — so it lives in code, not in QUEUE.md.
   severity: ['critical', 'major', 'minor'],
+  open: new Set(['open', 'in-progress']),
+  terminal: new Set(['fixed', 'wontfix']),
+  dated: 'reported',
   keys: {
     id: 'id',
     title: 'text',
@@ -145,6 +163,10 @@ export const EXPERIMENTS = {
   dir: 'docs/research/experiments',
   readme: 'docs/research/experiments/README.md',
   idPattern: /^X\d+$/,
+  open: new Set(['proposed', 'active']),
+  terminal: new Set(['answered', 'abandoned', 'deferred', 'played-out']),
+  dated: 'drafted',
+  closed: 'closed',
   keys: {
     id: 'id',
     title: 'text',
@@ -163,6 +185,10 @@ export const RUNS = {
   dir: 'docs/research/runs',
   readme: 'docs/research/runs/README.md',
   idPattern: /^N\d+$/,
+  // A run is a record, not work: nothing about it is open. Its status is its outcome.
+  open: new Set(),
+  terminal: new Set(['answered', 'inconclusive', 'abandoned', 'retracted']),
+  dated: 'ran',
   keys: {
     id: 'id',
     title: 'text',
@@ -176,6 +202,9 @@ export const FINDINGS = {
   dir: 'docs/research/findings',
   readme: 'docs/research/findings/README.md',
   idPattern: /^F\d+$/,
+  open: new Set(['current']),
+  terminal: new Set(['retracted']),
+  dated: 'recorded',
   keys: {
     id: 'id',
     title: 'text',
