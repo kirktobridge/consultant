@@ -58,6 +58,19 @@ export function trunkFromArgv(argv, branches) {
   return resolveTrunk(branches, base);
 }
 
+/**
+ * trunkFromArgv, or else a remote's trunk. A CI checkout holds no local trunk (a
+ * feature push makes only that branch; a pull request, none), but a full fetch holds
+ * the remote's. Unasked only: a --base that names nothing still stops (B1).
+ * `remotes()` returns `refs/remotes` short names; it is called only when needed.
+ */
+export function trunkOrRemote(argv, branches, remotes) {
+  const r = trunkFromArgv(argv, branches);
+  if (!r.error || argv.includes('--base')) return r;
+  const remote = remotes().find((x) => TRUNK_CANDIDATES.includes(x.replace(/^[^/]+\//, '')));
+  return remote ? { trunk: remote } : r;
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

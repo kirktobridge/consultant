@@ -2,7 +2,7 @@
 //
 // session-audit took `--base mian` on trust and reported the repo clean against a
 // branch it never read. The rule is trunk.mjs's trunkFromArgv; this suite finds the
-// scripts that read `--base` (or call trunkFromArgv) from their source, so a new one
+// scripts that read `--base` (or call trunkFromArgv or trunkOrRemote) from their source, so a new one
 // can't skip the rule by not being listed.
 
 import { test, describe, after } from 'node:test';
@@ -33,7 +33,7 @@ const ARGS = {
 const EXEMPT = { 'review.mjs': 'any commit is a valid base' };
 
 const takesBase = readdirSync(join(REPO, 'scripts'))
-  .filter((f) => f.endsWith('.mjs') && /["'`]--base["'`]|trunkFromArgv\(/.test(readFileSync(join(REPO, 'scripts', f), 'utf8')))
+  .filter((f) => f.endsWith('.mjs') && /["'`]--base["'`]|trunk(FromArgv|OrRemote)\(/.test(readFileSync(join(REPO, 'scripts', f), 'utf8')))
   .sort();
 
 function repo(base = 'main') {
