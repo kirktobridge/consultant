@@ -20,6 +20,7 @@ const ARGS = {
   'history.mjs': ['P1'],
   'land.mjs': ['lock', 'status'],
   'next.mjs': [],
+  'preflight.mjs': ['P1'],
   'session-audit.mjs': [],
   'status.mjs': [],
   'trunk.mjs': [],
