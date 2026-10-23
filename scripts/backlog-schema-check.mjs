@@ -32,6 +32,7 @@
 // Modes:
 //   node scripts/backlog-schema-check.mjs           check everything (CI / manual)
 //   node scripts/backlog-schema-check.mjs --all     same, explicit
+//     add --base <branch> to name the trunk whose ad-hoc merges are read (trunk.mjs)
 //   node scripts/backlog-schema-check.mjs --fields  print every required section and
 //                                                   header key as JSON (tests walk them)
 //   node scripts/backlog-schema-check.mjs --graph   what blocks what: open entries with no
@@ -44,12 +45,14 @@
 //                                                   a register, else checks and exits 2
 
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
   loadRegister, parseQueue, idsOf, dependencyGraph,
 } from './entries.mjs';
+import { trunkFromArgv, TRUNK_CANDIDATES } from './trunk.mjs';
 
 let ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -314,6 +317,59 @@ const byId = new Map(loaded.flatMap((l) => l.entries.filter((e) => e.id).map((e)
 const regOf = (e) => loaded.find((l) => l.entries.includes(e))?.reg;
 const isTerminal = (e) => !!e && !!regOf(e)?.terminal.has(e.status ?? '');
 
+/**
+ * The ad-hoc merges on the trunk (P34): `{ merges: [{ sha, date, relates }], trunk }`,
+ * or `{ unread: why }` when there is no history to read. An ad-hoc merge is one
+ * carrying an `Ad-hoc:` trailer, which land.mjs refuses to merge an `adhoc/` branch
+ * without. Read from the trunk, never HEAD: in a worktree, HEAD is a branch cut before
+ * the merges that matter.
+ */
+function adhocMerges() {
+  // safe.directory=*: Windows git refuses a repo inside WSL as another user's, which
+  // would read here as "not a repository" and switch the check off.
+  const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
+  const git = (...a) => {
+    try {
+      return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...a], {
+        cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 << 20,
+      });
+    } catch { return null; }
+  };
+  const lines = (s) => s.split('\n').filter(Boolean);
+  // A repo whose history can't be read stops an explicit run, as every script taking
+  // --base does (B1). A hook can't pass --base, so there it is reported, not fatal.
+  const unread = (why) => {
+    if (hookMode) return { unread: why };
+    console.error(`backlog-schema: ${why}`);
+    process.exit(2);
+  };
+  if (git('rev-parse', '--git-dir') === null) return { unread: 'not a git repository' };
+  const branches = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/heads') ?? '');
+  let { trunk, error } = trunkFromArgv(argv, branches);
+  // A CI checkout holds no local trunk, but a full fetch holds the remote's — the same
+  // fallback commit-ids.mjs takes. Unasked only: a --base naming nothing still stops.
+  if (error && !argv.includes('--base')) {
+    const remote = lines(git('for-each-ref', '--format=%(refname:short)', 'refs/remotes') ?? '')
+      .find((r) => TRUNK_CANDIDATES.includes(r.replace(/^[^/]+\//, '')));
+    if (remote) { trunk = remote; error = null; }
+  }
+  if (error) return unread(error);
+  const fmt = '%h%x1f%cs%x1f%(trailers:key=Ad-hoc,valueonly,separator=%x20)%x1f%(trailers:key=Relates,valueonly,separator=%x2C)%x1e';
+  const log = git('log', '--first-parent', '--merges', '--grep=^Ad-hoc:', `--format=${fmt}`, trunk, '--');
+  if (log === null) return unread(`could not read ${trunk}'s history for ad-hoc merges`);
+  const merges = log
+    .split('\x1e')
+    .map((r) => r.trim().split('\x1f'))
+    .filter(([sha, , adhoc]) => sha && adhoc?.trim())
+    .map(([sha, date, , relates = '']) => ({
+      sha,
+      date,
+      // IDs, not tokens: a hand-written `Relates: P2.` still names P2.
+      relates: relates.toUpperCase().match(/\b[A-Z]-?\d+\b/g) ?? [],
+    }));
+  return { merges, trunk };
+}
+
 // Top-level bullets only: an indented sub-bullet is detail under a criterion, not
 // another criterion, and a paragraph is not a criterion at all.
 const bullets = (lines) => (lines ?? []).filter((l) => /^[-*]\s+\S/.test(l));
@@ -322,6 +378,9 @@ const bullets = (lines) => (lines ?? []).filter((l) => /^[-*]\s+\S/.test(l));
 
 const problems = [];
 const fail = (msg) => problems.push(msg);
+// Flags that must be seen but may not fail the check; printed on every explicit run.
+const notices = [];
+const notice = (msg) => notices.push(msg);
 
 // — the research track is all there, or not adopted —
 // Like any register, a project that has not adopted the track has none of it. But one
@@ -370,6 +429,7 @@ if (queueReg) {
 }
 
 const today = new Date().toISOString().slice(0, 10);
+const adhoc = adhocMerges();
 
 for (const { reg: b, entries } of loaded) {
   if (entries.length === 0 && !b.mayBeEmpty) fail(`${b.dir}: no entry files parsed`);
@@ -497,6 +557,28 @@ for (const { reg: b, entries } of loaded) {
         `${e.file}: ${e.id} (${b.dated} ${drafted}) depends on ${depId}, which landed ${landed} — ` +
           `presumptively stale. Re-verify its claims against the code and bump \`${b.dated}:\`, ` +
           `or rescope it, before building.`,
+      );
+    }
+  }
+
+  // — an open entry older than an ad-hoc change that relates to it (P34) —
+  // Same presumption, from the other way code moves: an ad-hoc branch has no entry to
+  // depend on, but its merge names the entries whose area it touched in `Relates:`.
+  // Same date rule too: a merge on or before `drafted:` is one the entry was written
+  // knowing about, so re-dating after a re-read clears it.
+  // A notice, not a violation (the user's call, P34): land.mjs runs the suite on the
+  // merged result, so a failing flag would be raised by the very merge it names and
+  // reset main — no ad-hoc change relating to an older open entry could ever land.
+  for (const e of entries) {
+    if (!b.open.has(e.status ?? '')) continue;
+    const drafted = e.header[b.dated];
+    if (!drafted) continue;
+    for (const m of adhoc.merges ?? []) {
+      if (!m.relates.includes(e.id) || m.date <= drafted) continue;
+      notice(
+        `${e.file}: ${e.id} (${b.dated} ${drafted}) is named by ad-hoc merge ${m.sha} ` +
+          `(Relates: ${m.relates.join(', ')}), which landed ${m.date} — presumptively stale. Re-verify its ` +
+          `claims against the code and bump \`${b.dated}:\`, or rescope it, before building.`,
       );
     }
   }
@@ -911,7 +993,11 @@ if (graphMode) {
 //
 // Exit 2 in hook mode — that's what feeds the message back into the session while
 // the context needed to fix it is still live. Exit 1 elsewhere, for CI.
+// Notices print first, red run or green, so a violation never hides one.
 
+if (notices.length && !hookMode) {
+  console.log(`backlog-schema: ${notices.length} notice(s):\n- ${notices.join('\n- ')}`);
+}
 if (problems.length) {
   console.error(`backlog-schema: ${problems.length} violation(s):\n- ${problems.join('\n- ')}`);
   process.exit(hookMode ? 2 : 1);
@@ -919,4 +1005,9 @@ if (problems.length) {
 // The count is a positive control, printed every run: a checker that quietly stops
 // parsing reports success exactly like a clean tree (LESSONS L3). A number that
 // drops without files being deleted means the parser broke, not that drift left.
-if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${loaded.length} register(s))`);
+// The ad-hoc count is the same kind of control for the one input read from git: a log
+// that silently read nothing would leave the P34 check passing on every entry.
+const adhocRead = adhoc.merges
+  ? `${adhoc.merges.length} ad-hoc merge(s) read on ${adhoc.trunk}`
+  : `ad-hoc merges not read (${adhoc.unread})`;
+if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${loaded.length} register(s)); ${adhocRead}`);

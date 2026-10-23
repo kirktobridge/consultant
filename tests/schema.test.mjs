@@ -14,7 +14,8 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, B, A, D, X, N, F, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead } from './helpers/fixture.mjs';
+import { execFileSync } from 'node:child_process';
+import { P, B, A, D, X, N, F, decidedD, project, schema, run, out, cleanupAll, daysAgo, daysAhead, gitInit, tempDir } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -432,6 +433,118 @@ describe('staleness', () => {
         nextUp: ['P1'],
       }),
     );
+  });
+});
+
+// P34: an ad-hoc merge names the entries whose area it touched in `Relates:`. The
+// check reads them from the trunk's history, so these fixtures are real repos with
+// real merges, dated by the committer date the check reads.
+describe('staleness from ad-hoc merges (P34)', () => {
+  /** A repo holding `state`, with one merge per spec landed on main, `daysAgo` old. */
+  function adhocRepo(state, merges) {
+    const dir = project(state);
+    const g = gitInit(dir);
+    for (const [i, { days, relates, adhoc = true }] of merges.entries()) {
+      const branch = `${adhoc ? 'adhoc' : 'feat'}/m${i}`;
+      g.checkout(branch, true);
+      writeFileSync(join(dir, `change${i}.txt`), 'x');
+      g.commitAll(`change ${i}`);
+      g.checkout('main');
+      const trailers = [adhoc && 'Ad-hoc: a change with no entry', relates && `Relates: ${relates}`].filter(Boolean);
+      const date = `${daysAgo(days)}T12:00:00`;
+      execFileSync('git', ['merge', '-q', '--no-ff', branch, '-m', `Merge branch '${branch}'`, ...(trailers.length ? ['-m', trailers.join('\n')] : [])], {
+        cwd: dir,
+        env: { ...process.env, GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date },
+      });
+    }
+    return { dir, g, sha: (n = 0) => execFileSync('git', ['log', '-1', '--merges', '--skip', String(n), '--format=%h', 'main'], { cwd: dir, encoding: 'utf8' }).trim() };
+  }
+  const state = (drafted, over = {}) => ({ backlog: [P('P1', { drafted: daysAgo(0) }), P('P2', { drafted, ...over })], nextUp: ['P1'] });
+  // The flag is a notice, never a violation: the check stays green either way (so a
+  // bare `passes` proves nothing here), and only the notice says whether it fired.
+  const flags = (dir, needle) => {
+    const o = passes(dir);
+    assert.match(o, /backlog-schema: \d+ notice\(s\):/);
+    if (needle) assert.match(o, needle);
+    return o;
+  };
+  const unflagged = (dir) => {
+    const o = passes(dir);
+    assert.doesNotMatch(o, /notice\(s\)|is named by ad-hoc merge/);
+    return o;
+  };
+
+  test('an open entry named by an ad-hoc merge dated after its drafted: is flagged, naming the merge', () => {
+    const { dir, sha } = adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P2' }]);
+    flags(dir, new RegExp(`P2 \\(drafted ${daysAgo(10)}\\) is named by ad-hoc merge ${sha()} \\(Relates: P2\\), which landed ${daysAgo(3)} — presumptively stale`));
+  });
+
+  // The reason it's a notice: land.mjs runs the suite on the merged result, and a
+  // failing flag raised by the merge being landed would reset main every time.
+  test('the flag never fails the check, and is printed alongside a real violation', () => {
+    const { dir } = adhocRepo(state(daysAgo(10), { accept: null }), [{ days: 3, relates: 'P2' }]);
+    const o = fails(dir, /open P2 missing \*\*Accept\*\*/);
+    assert.match(o, /is named by ad-hoc merge/);
+  });
+
+  test('every related merge is flagged, and only the entries it names', () => {
+    const { dir, sha } = adhocRepo(
+      { backlog: [P('P1', { drafted: daysAgo(10) }), P('P2', { drafted: daysAgo(10) })], nextUp: ['P1'] },
+      [{ days: 5, relates: 'P2' }, { days: 3, relates: 'P9, P2' }],
+    );
+    const o = flags(dir, /backlog-schema: 2 notice\(s\):/);
+    assert.match(o, new RegExp(`ad-hoc merge ${sha(0)}`));
+    assert.match(o, new RegExp(`ad-hoc merge ${sha(1)}`));
+    assert.doesNotMatch(o, /P1 \(drafted/);
+  });
+
+  test('bumping drafted: to the merge date clears the flag', () => {
+    unflagged(adhocRepo(state(daysAgo(3)), [{ days: 3, relates: 'P2' }]).dir);
+  });
+
+  test('bumping drafted: past the merge date clears the flag', () => {
+    unflagged(adhocRepo(state(daysAgo(1)), [{ days: 3, relates: 'P2' }]).dir);
+  });
+
+  test('an entry no ad-hoc merge relates to gets no new flag', () => {
+    const o = unflagged(adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P1' }, { days: 2 }]).dir);
+    assert.match(o, /; 2 ad-hoc merge\(s\) read on main/);
+  });
+
+  test('a merge without the Ad-hoc: trailer is not ad-hoc, whatever it names', () => {
+    unflagged(adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P2', adhoc: false }]).dir);
+  });
+
+  test('a terminal entry is never flagged', () => {
+    unflagged(adhocRepo(state(daysAgo(10), { status: 'shipped', shipped: daysAgo(9) }), [{ days: 3, relates: 'P2' }]).dir);
+  });
+
+  test("the trunk's merges are read, not HEAD's — a worktree branch cut earlier still sees them", () => {
+    const { dir, g } = adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P2' }]);
+    g.sh('git checkout -q -b feat/p1-early main~1');
+    flags(dir, /is named by ad-hoc merge/);
+  });
+
+  test('the message quotes the merge\'s whole Relates:, and a hand-written one still names its IDs', () => {
+    const { dir } = adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P9, P2.' }]);
+    flags(dir, /\(Relates: P9, P2\)/);
+  });
+
+  // A CI checkout of a feature push holds no local main, only the remote's.
+  test('with no local trunk, the remote trunk is read', () => {
+    const { dir } = adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P2' }]);
+    const clone = tempDir();
+    execFileSync('git', ['clone', '-q', dir, clone]);
+    execFileSync('git', ['checkout', '-q', '-b', 'feat/p1-x'], { cwd: clone });
+    execFileSync('git', ['branch', '-q', '-D', 'main'], { cwd: clone });
+    flags(clone, /is named by ad-hoc merge/);
+  });
+
+  // L3: the one input read from git says how much it read, so a log that silently
+  // read nothing can't pass for a clean history.
+  test('the OK line says how many ad-hoc merges were read, or why none were', () => {
+    assert.match(passes(adhocRepo(state(daysAgo(10)), [{ days: 3, relates: 'P1' }]).dir), /; 1 ad-hoc merge\(s\) read on main$/m);
+    assert.match(passes(project(state(daysAgo(10)))), /; ad-hoc merges not read \(not a git repository\)/);
   });
 });
 
