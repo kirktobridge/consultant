@@ -44,12 +44,16 @@ write a branch name into a git command (`<trunk>` below).
   no commit after the resolution carries a fresh report, the verdicts describe the
   code from before the resolution: mark each one *observed before conflict
   resolution* in the handshake.
+  Then run `node scripts/close-report.mjs --check <ID> --branch <branch>`. It compares
+  the report with the entry's Accept on main. **It never stops a landing.** Exit 1:
+  put each warning it prints in the handshake, next to the criterion it names. Exit 2:
+  say in the handshake that the check did not run, and why.
 
 ## An ad-hoc branch (`adhoc/<slug>`)
 
 A change too small to be an entry (a prose rewrite, a doc fix) lands through the same
 lock, rebase, merge and suite, from a branch `node scripts/worktree.mjs start --adhoc
-<slug>` cut. It has no entry, so the close-report precondition, step 3 and the
+<slug>` cut. It has no entry, so the close-report precondition and its check, step 3 and the
 acceptance handshake do not apply: there is nothing to report against, nothing for
 /ship to flip, and nothing for the user to accept. Everything else holds, the lock
 and the rebase included.
