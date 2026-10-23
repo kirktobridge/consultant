@@ -1038,8 +1038,8 @@ describe('research track', () => {
     decisions: [D('D-1', { waitingOn: 'X1', decisionRule: 'adopt B if it wins ≥ 60% of disagreements.', ...d })],
     research: {
       experiments: [X('X1', {
-        kind: 'test', feeds: ['D-1'], precision: null,
-        hypothesis: 'B wins: it reads the signal A ignores.', power: 'n = 80 detects 60% vs 50%.', ...x,
+        kind: 'test', feeds: ['D-1'], precision: null, n: '80', bar: '50', effect: '70',
+        hypothesis: 'B wins: it reads the signal A ignores.', power: 'n = 80 detects 61% vs 50%.', ...x,
       })],
     },
   });
@@ -1170,6 +1170,130 @@ describe('research track', () => {
 
     test('a test feeding a decision that does not exist fails', () => {
       fails(project(gated({ feeds: ['D-9'] }, { waitingOn: 'user' })), /X1 feeds D-9, which has no entry/);
+    });
+  });
+
+  // P45: the START GATE's arithmetic, read from the header by stats.mjs's own function.
+  // No experiment is filed yet, so these fixtures are what hold the rule (L3).
+  describe("a test's planned n can detect its effect at the bar", () => {
+    test('a test with enough n passes', () => {
+      passes(project(gated()));
+    });
+
+    test('a test whose n cannot detect its effect fails, naming the n, the detectable share and the effect', () => {
+      // At n = 30 and a 50% bar, the smallest share that clears is 67.9%.
+      const o = fails(project(gated({ n: '30', effect: '60%' })), /open X1 \(test\) plans n = 30/);
+      assert.match(o, /minimum detectable share at the bar of 50% is 67\.9%, not below the effect of 60%/);
+    });
+
+    test('an n too small to clear the bar even at n/n fails', () => {
+      fails(project(gated({ n: '3' })), /plans n = 3, which can't clear the bar of 50% even at 3\/3/);
+    });
+
+    for (const field of ['n', 'bar', 'effect']) {
+      test(`a test with no \`${field}:\` fails, naming the field`, () => {
+        fails(project(gated({ [field]: null })), new RegExp(`open X1 \\(test\\) has no \`${field}:\` in the header`));
+      });
+    }
+
+    test('a malformed number fails at the header', () => {
+      fails(project(gated({ bar: '150' })), /bar: not a percent from 1 to under 100 .*: "150"/);
+      fails(project(gated({ n: '8.5' })), /n: not a whole number above 0: "8\.5"/);
+    });
+
+    // stats.mjs reads 0.6 as 60%; read here as 0.6% it would pass any gate.
+    test('a share written the way stats.mjs takes it is refused, not misread', () => {
+      fails(project(gated({ bar: '0.5', effect: '0.7' })), /bar: not a percent .*write 60 for 60%, not 0\.6/);
+    });
+
+    test('an effect not above the bar fails as that, not as too small an n', () => {
+      const o = fails(project(gated({ bar: '70', effect: '60' })), /predicts an effect of 60%, not above its bar of 70%/);
+      assert.doesNotMatch(o, /raise n/);
+    });
+
+    test('a measure owes none of the three', () => {
+      passes(project({ research: { experiments: [X('X1')] } }));
+    });
+  });
+
+  // P45: a run is judged by a rule written before it, and only git knows when that was.
+  describe('a run of a test comes after its decision rule', () => {
+    const withRun = () => {
+      const s = gated({ status: 'active' });
+      s.research.runs = [N('N1')];
+      return s;
+    };
+    const RULE = 'docs/decisions/D-1.md';
+    const RUN = 'docs/research/runs/N1.md';
+    const head = (dir) => execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+
+    test('a run committed after the rule passes, and the read is counted', () => {
+      const dir = project(withRun());
+      const run = readFileSync(join(dir, RUN), 'utf8');
+      rmSync(join(dir, RUN));
+      const g = gitInit(dir);
+      writeFileSync(join(dir, RUN), run);
+      g.commitAll('the run');
+      const o = passes(dir);
+      assert.match(o, /; 1 run\(s\) checked against their decision rule's commit/);
+      assert.doesNotMatch(o, /notice/);
+    });
+
+    test('a run committed before the rule is flagged, naming both commits', () => {
+      const dir = project(withRun());
+      const rule = readFileSync(join(dir, RULE), 'utf8');
+      writeFileSync(join(dir, RULE), rule.replace(/## Decision rule\n\n[^\n]*\n?/, ''));
+      const g = gitInit(dir);
+      const runSha = head(dir);
+      writeFileSync(join(dir, RULE), rule);
+      g.commitAll('the rule, after the numbers');
+      const o = passes(dir);
+      assert.match(o, new RegExp(`N1 was committed in ${runSha}, before D-1's \\*\\*Decision rule\\*\\* \\(added in ${head(dir)}\\)`));
+    });
+
+    test('a run committed together with its rule is flagged — the rule was not there first', () => {
+      const dir = project(withRun());
+      const rule = readFileSync(join(dir, RULE), 'utf8');
+      const run = readFileSync(join(dir, RUN), 'utf8');
+      writeFileSync(join(dir, RULE), rule.replace(/## Decision rule\n\n[^\n]*\n?/, ''));
+      rmSync(join(dir, RUN));
+      const g = gitInit(dir);
+      writeFileSync(join(dir, RULE), rule);
+      writeFileSync(join(dir, RUN), run);
+      g.commitAll('the run and its rule at once');
+      assert.match(passes(dir), new RegExp(`N1 was committed in ${head(dir)}, with D-1's \\*\\*Decision rule\\*\\* \\(added in ${head(dir)}\\)`));
+    });
+
+    test('a run not committed yet is counted as not checked, never as checked', () => {
+      const dir = project(withRun());
+      const run = readFileSync(join(dir, RUN), 'utf8');
+      rmSync(join(dir, RUN));
+      gitInit(dir);
+      writeFileSync(join(dir, RUN), run);
+      const o = passes(dir);
+      assert.match(o, /; 1 run\(s\) not committed yet, so not checked/);
+      assert.doesNotMatch(o, /checked against/);
+    });
+
+    test('a run committed while the rule is still uncommitted is flagged', () => {
+      const dir = project(withRun());
+      const rule = readFileSync(join(dir, RULE), 'utf8');
+      writeFileSync(join(dir, RULE), rule.replace(/## Decision rule\n\n[^\n]*\n?/, ''));
+      gitInit(dir);
+      writeFileSync(join(dir, RULE), rule);
+      assert.match(passes(dir), /N1 was committed in [0-9a-f]{7}, but D-1's \*\*Decision rule\*\* isn't committed/);
+    });
+
+    test('without git, the check says it did not look — never a silent pass', () => {
+      const o = passes(project(withRun()));
+      assert.match(o, /1 run\(s\) of a test not checked against their decision rule's commit — not a git repository/);
+      assert.match(o, /; run order not checked \(not a git repository\)/);
+    });
+
+    test("a measure's run is not read", () => {
+      const s = withRun();
+      Object.assign(s.research.experiments[0], { kind: 'measure', precision: 'n.' });
+      assert.doesNotMatch(passes(project(s)), /run order|run\(s\)/);
     });
   });
 

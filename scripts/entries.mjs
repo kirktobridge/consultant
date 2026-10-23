@@ -38,6 +38,20 @@ import { join } from 'node:path';
 const ID = /^(P\d+|B\d+|A-\d+|D-\d+|X\d+|N\d+|F\d+)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * A header percent (`80` or `80%`) as a share, 0.8; null unless at least 1 and under 100.
+ * Under 1 is refused rather than read: stats.mjs takes `0.6` as a share, so a header
+ * reading it as 0.6% would pass a gate the author meant at 60%.
+ */
+export function percentOf(v) {
+  const m = /^(\d+(?:\.\d+)?)%?$/.exec(v ?? '');
+  const p = m ? Number(m[1]) : NaN;
+  return p >= 1 && p < 100 ? p / 100 : null;
+}
+
+/** A header count (`80`) as a number; null unless a whole number above 0. */
+export const countOf = (v) => (/^[1-9]\d*$/.test(v ?? '') ? Number(v) : null);
+
 // Value types. Each returns an error message, or null when the value is good.
 const TYPES = {
   id: (v) => (ID.test(v) ? null : `not an ID: "${v}"`),
@@ -54,6 +68,10 @@ const TYPES = {
     const bad = v.split(/,\s*/).filter((x) => !ID.test(x));
     return bad.length ? `not a comma-separated ID list (or —): "${v}" — prose belongs in the body` : null;
   },
+  // A test's planned sample size (P45).
+  count: (v) => (countOf(v) === null ? `not a whole number above 0: "${v}"` : null),
+  // A share written as percent, `80` or `80%` (P45).
+  percent: (v) => (percentOf(v) === null ? `not a percent from 1 to under 100 (write 60 for 60%, not 0.6): "${v}"` : null),
   // What an open decision waits on: IDs, and/or `user` for the product owner.
   waits: (v) => {
     const bad = v.split(/,\s*/).filter((x) => x !== 'user' && !ID.test(x));
@@ -175,6 +193,11 @@ export const EXPERIMENTS = {
     drafted: 'date',
     feeds: 'ids',
     depends_on: 'ids',
+    // A test's plan, in numbers code can check: the sample size, the decision rule's
+    // threshold, and the effect the hypothesis predicts (P45).
+    n: 'count',
+    bar: 'percent',
+    effect: 'percent',
     runs: 'ids',
     closed: 'date',
   },

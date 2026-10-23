@@ -52,8 +52,8 @@ legitimate state, not a broken one; say it's empty. Change nothing.
 Write `docs/research/experiments/X#.md` (the next free number) from the experiments
 README's template: `status: proposed`, a `kind:`, today's `drafted:`. Give it what its
 kind owes (framework, "The three kinds"):
-- `test`: `## Hypothesis` and `## Power` (from `stats.mjs --power`), and `feeds:` the
-  decision it gates. That decision's `## Decision rule` (metric, threshold, what each
+- `test`: `## Hypothesis` and `## Power` (from `stats.mjs --power`), its plan as `n:`,
+  `bar:` and `effect:` in the header, and `feeds:` the decision it gates. That decision's `## Decision rule` (metric, threshold, what each
   side means) and its `waiting_on:` naming this `X#` are drafted through /triage →
   /ship, **before** any result exists.
 - `measure`: `## Precision` (from `stats.mjs --precision`); if a decision waits on it,
@@ -68,8 +68,9 @@ the question (one source, one machine), say so in `## Method`. Run
 ## Phase 1: run (`/research run <ID>`)
 1. **START GATE**, by kind:
    - `test`: every `D-n` in `feeds:` carries its `## Decision rule`, written before any
-     result exists, and the `## Power` line's minimum detectable share at that
-     threshold is below the hypothesised effect (`stats.mjs --power --bar … --n …`).
+     result exists, and the header's `n:` can detect its `effect:` at its `bar:`.
+     `npm run check:docs` checks both; don't compute it by hand. Check that `bar:`
+     is the threshold the rule actually names: that match is judgement, not code.
    - `measure`: `## Precision` is planned; if it `feeds:` a decision, that rule is
      written too.
    - `probe`: `## Budget` says what it may spend; its results will be `directional`
