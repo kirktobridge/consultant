@@ -50,8 +50,9 @@ import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
-  loadRegister, parseQueue, idsOf, newHomeOf, dependencyGraph, criteriaOf,
+  loadRegister, parseQueue, idsOf, newHomeOf, dependencyGraph, criteriaOf, percentOf, countOf,
 } from './entries.mjs';
+import { minDetectable } from './stats.mjs';
 import { trunkOrRemote } from './trunk.mjs';
 import { staleFlags, readAdhocMerges } from './sweep.mjs';
 
@@ -146,9 +147,10 @@ const REGISTERS = [
     whileOpenKeys: ['kind'],
     vocabKeys: { kind: 'Kind vocab' },
     // What each kind owes before it runs. A test gates a change, so it feeds a decision
-    // whose rule is written first; a measure plans its precision; a probe its budget.
+    // whose rule is written first, and its plan is numbers the power check reads (P45);
+    // a measure plans its precision; a probe its budget.
     byKind: {
-      test: { keys: ['feeds'], sections: ['Hypothesis', 'Power'] },
+      test: { keys: ['feeds', 'n', 'bar', 'effect'], sections: ['Hypothesis', 'Power'] },
       measure: { keys: [], sections: ['Precision'] },
       probe: { keys: [], sections: ['Budget'] },
     },
@@ -300,18 +302,20 @@ const isTerminal = (e) => !!e && !!regOf(e)?.terminal.has(e.status ?? '');
  * without. Read from the trunk, never HEAD: in a worktree, HEAD is a branch cut before
  * the merges that matter.
  */
+// safe.directory=*: Windows git refuses a repo inside WSL as another user's, which
+// would read here as "not a repository" and switch the checks that read git off.
+const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
+/** git's stdout, or null when it exits non-zero. */
+const git = (...a) => {
+  try {
+    return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...a], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 << 20,
+    });
+  } catch { return null; }
+};
+const lines = (s) => s.split('\n').filter(Boolean);
+
 function adhocMerges() {
-  // safe.directory=*: Windows git refuses a repo inside WSL as another user's, which
-  // would read here as "not a repository" and switch the check off.
-  const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
-  const git = (...a) => {
-    try {
-      return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...a], {
-        cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 << 20,
-      });
-    } catch { return null; }
-  };
-  const lines = (s) => s.split('\n').filter(Boolean);
   // A repo whose history can't be read stops the run, as every script taking --base
   // does (B1) — at the report, after the register checks, so it never hides a
   // violation. The graph has no violations to hide, so it stops here.
@@ -454,6 +458,28 @@ for (const { reg: b, entries } of loaded) {
     for (const key of owes.keys) requireKey(e, b, key, `open ${e.id} (${k})`);
     for (const s of owes.sections) {
       if (!e.sections.has(s)) fail(`${e.file}: open ${e.id} (${k}) missing **${s}**`);
+    }
+    // The START GATE's arithmetic (P45): the planned n must be able to detect the
+    // predicted effect at the rule's threshold, by stats.mjs's own function. A field
+    // that is missing or malformed was reported above.
+    if (k === 'test') {
+      const n = countOf(e.header.n);
+      const bar = percentOf(e.header.bar);
+      const effect = percentOf(e.header.effect);
+      if (n === null || bar === null || effect === null) continue;
+      const num = (x) => +(x * 100).toFixed(1);
+      const pct = (x) => `${num(x)}%`;
+      const md = minDetectable(n, bar, 0.95);
+      if (!(effect > bar)) {
+        fail(`${e.file}: open ${e.id} (test) predicts an effect of ${pct(effect)}, not above its bar of ${pct(bar)} — no n can detect that; check which is which.`);
+      } else if (md === null) {
+        fail(`${e.file}: open ${e.id} (test) plans n = ${n}, which can't clear the bar of ${pct(bar)} even at ${n}/${n} — raise n.`);
+      } else if (!(md < effect)) {
+        fail(
+          `${e.file}: open ${e.id} (test) plans n = ${n}, whose minimum detectable share at the bar of ${pct(bar)} ` +
+            `is ${pct(md)}, not below the effect of ${pct(effect)} — raise n (\`stats.mjs --power --bar ${num(bar)} --effect ${num(effect)}\`).`,
+        );
+      }
     }
   }
 
@@ -748,6 +774,58 @@ for (const { reg, entries } of loaded) {
   }
 }
 
+// — a test's run comes after the rule it is judged by (P45) —
+// Only git can say when a rule was written, so this reads history: the commit that
+// added the run must already hold the decision's `## Decision rule`. A run is
+// append-only, so a breach can never be fixed; it is a notice, and the result is read
+// knowing the rule may fit the numbers. A history that can't be read says so, in a
+// notice and on the OK line, so the check never passes by not looking.
+const runOrder = (() => {
+  const pairs = [];
+  for (const r of loaded.find((l) => l.reg.kind === 'runs')?.entries ?? []) {
+    for (const xId of idsOf(r, 'experiment')) {
+      const x = byId.get(xId);
+      if (x?.header.kind !== 'test') continue;
+      for (const dId of idsOf(x, 'feeds')) {
+        const d = byId.get(dId);
+        if (d && DECISIONS.idPattern.test(dId)) pairs.push({ r, d });
+      }
+    }
+  }
+  if (pairs.length === 0) return { checked: 0 };
+  // The hook speaks only through violations, as with the ad-hoc read.
+  if (hookMode) return { unread: 'hook mode' };
+  const unread = (why) => {
+    notice(`${pairs.length} run(s) of a test not checked against their decision rule's commit — ${why}`);
+    return { unread: why };
+  };
+  if (git('rev-parse', '--git-dir') === null) return unread('not a git repository');
+  // A shallow clone's oldest commit adds every file at once, so every run would pass.
+  if (git('rev-parse', '--is-shallow-repository')?.trim() !== 'false') return unread('a shallow clone');
+  // The oldest commit on HEAD that matches: the run's adding commit, the rule's heading.
+  const oldest = (...a) => lines(git('log', '--format=%H', ...a) ?? '').at(-1) ?? null;
+  const short = (sha) => sha.slice(0, 7);
+  const ruleShas = new Map();
+  let checked = 0, uncommitted = 0;
+  for (const { r, d } of pairs) {
+    const runSha = oldest('--diff-filter=A', '--', r.file);
+    if (!runSha) { uncommitted++; continue; } // nothing committed to be before
+    checked++;
+    if (!ruleShas.has(d.id)) ruleShas.set(d.id, oldest('-G', '^## Decision rule[[:space:]]*$', '--', d.file));
+    const ruleSha = ruleShas.get(d.id);
+    if (!ruleSha) {
+      notice(`${r.file}: ${r.id} was committed in ${short(runSha)}, but ${d.id}'s **Decision rule** isn't committed — the rule was written after the run.`);
+    } else if (ruleSha === runSha || git('merge-base', '--is-ancestor', ruleSha, runSha) === null) {
+      // The same commit counts as before: the rule was not in place when the run was.
+      notice(
+        `${r.file}: ${r.id} was committed in ${short(runSha)}, ${ruleSha === runSha ? 'with' : 'before'} ${d.id}'s **Decision rule** ` +
+          `(added in ${short(ruleSha)}) — a rule written after the numbers fits them; read the result with that in mind.`,
+      );
+    }
+  }
+  return { checked, uncommitted };
+})();
+
 // — Next up never dangles or goes stale —
 if (queueReg && readIf(queueReg.queue) !== null) {
   if (queueIds.length === 0) fail(`${queueReg.queue} has no queued IDs`);
@@ -963,4 +1041,9 @@ if (problems.length) process.exit(hookMode ? 2 : 1);
 const adhocRead = adhoc.merges
   ? `${adhoc.merges.length} ad-hoc merge(s) read on ${adhoc.trunk}`
   : `ad-hoc merges not read (${adhoc.unread})`;
-if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${loaded.length} register(s)); ${adhocRead}`);
+// The run-order count is the same control for P45's read, printed once there is a run to check.
+const runsRead = runOrder.unread
+  ? `; run order not checked (${runOrder.unread})`
+  : (runOrder.checked ? `; ${runOrder.checked} run(s) checked against their decision rule's commit` : '') +
+    (runOrder.uncommitted ? `; ${runOrder.uncommitted} run(s) not committed yet, so not checked` : '');
+if (!hookMode) console.log(`backlog-schema: OK (${all.length} entries across ${loaded.length} register(s)); ${adhocRead}${runsRead}`);

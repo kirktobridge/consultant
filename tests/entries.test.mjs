@@ -5,7 +5,16 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { dependencyMet, newHomeOf } from '../scripts/entries.mjs';
+import { dependencyMet, newHomeOf, percentOf } from '../scripts/entries.mjs';
+
+// A test's `bar:` and `effect:` (P45): one form, percent, so `1` can't mean 100%.
+describe('percentOf', () => {
+  test('percent, with or without the sign, from 1 to under 100; a share is refused', () => {
+    assert.equal(percentOf('70'), 0.7);
+    assert.equal(percentOf('62.5%'), 0.625);
+    for (const bad of ['0', '0.7', '100', '150', '0.7.1', '-5', '70 %', '', null]) assert.equal(percentOf(bad), null, String(bad));
+  });
+});
 
 describe('newHomeOf', () => {
   test('a moved or superseded entry names its new home as IDs; anything else names none', () => {

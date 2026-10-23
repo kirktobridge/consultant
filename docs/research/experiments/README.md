@@ -65,8 +65,12 @@ time, money, and how much it asks of the user.
 ```
 
 A `test` carries `## Hypothesis` (the predicted direction and the mechanism) and
-`## Power` instead of `## Precision`, and its `feeds:` names the decision it gates. A
-`probe` carries `## Budget`.
+`## Power` instead of `## Precision`, and its `feeds:` names the decision it gates. Its
+plan is also in the header, as numbers the schema check reads: `n:` (the planned sample
+size), `bar:` (the decision rule's threshold) and `effect:` (the share the hypothesis
+predicts), the last two as percent (`70` or `70%`). Unlike `stats.mjs`, the header
+refuses a share like `0.7`, so it can't be misread as 0.7%. A `probe` carries
+`## Budget`.
 
 On close, flip `status:`, and add `closed: YYYY-MM-DD` and `runs:` (the run or runs
 that closed it) to the header.
@@ -78,6 +82,7 @@ The header is strict, as in the backlog. The keys are:
 - `drafted`: when its claims were last established.
 - `feeds`: the decisions (`D-n`) this result informs, or `—`.
 - `depends_on`: `P#` / `A-n` / `D-n`, or `—`.
+- `n`, `bar`, `effect`: a `test`'s plan, required while open.
 - `runs`: the `N#` runs it closed on.
 - `closed`: the date it closed.
 
@@ -92,5 +97,13 @@ The schema check holds what the framework's loop depends on:
     `## Decision rule`, and the decision's `waiting_on:` to name the experiment. The
     decision side is checked too: an open decision waiting on an `X#` needs the rule,
     and that `X#` must name it in `feeds:`.
+  - an open `test`'s `n:` must be able to detect its `effect:` at its `bar:`: the
+    minimum detectable share at (bar, n), from `stats.mjs`, must be below the effect.
+- **After the run:** a run of a `test` must be committed after the `## Decision rule`
+  of each decision the test feeds; the check reads git for this. A run is
+  append-only, so a breach is a notice, not a violation: read that result knowing
+  the rule may have been fitted to it. A run committed in the same commit as the rule
+  counts as before it. Where git can't be read (or the clone is shallow), the check
+  says so.
 - **On close:** an `answered`, `abandoned` or `played-out` experiment must name at
   least one existing run in `runs:`.
