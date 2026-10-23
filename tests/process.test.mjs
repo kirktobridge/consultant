@@ -586,6 +586,45 @@ describe("the README's promised output is what the commands actually print", () 
       );
     });
   }
+
+  // P22. The exit codes in the Try-it block teach what 1 and 2 mean, the one distinction
+  // grep-checked exists to make, and P20 broke one silently (the `# exit 1` example began
+  // exiting 2). So every line whose comment names an exit code is run and held to it. A
+  // comment-only line (`# → BLOCKED …, exit 2`) speaks for the command above it.
+  const all = readme.split('\n');
+  const heading = all.indexOf('## Try it');
+  const open = heading < 0 ? -1 : all.indexOf('```bash', heading);
+  const close = open < 0 ? -1 : all.indexOf('```', open + 1);
+  const block = open >= 0 && close > open;
+  const isComment = (l) => /^\s*#/.test(l);
+  // Each claim names the README line of the command it speaks for (1-based).
+  const claims = block ? all.slice(open + 1, close).flatMap((line, k) => {
+    const exit = line.match(/#.*\bexits? (?:code )?(\d+)\b/);
+    if (!exit) return [];
+    let at = open + 1 + k;
+    if (isComment(line)) do at--; while (at > open && (!all[at].trim() || isComment(all[at])));
+    const cmd = at > open ? all[at].replace(/\s+#.*$/, '').trim() : '';
+    return [{ at: `README.md:${at + 1}`, cmd, exit: Number(exit[1]) }];
+  }) : [];
+
+  test('the Try-it block promises an exit 1 and an exit 2, so the check below has something to hold', () => {
+    assert.ok(block, 'README has no "## Try it" bash block');
+    const codes = claims.map((c) => c.exit);
+    assert.ok(codes.includes(1) && codes.includes(2), `exit codes promised in Try it: ${codes.join(', ') || 'none'}`);
+  });
+
+  for (const { at, cmd, exit } of claims) {
+    test(`${at} exits ${exit}, as its comment says`, () => {
+      assert.ok(cmd, `${at}: an exit-code comment with no command above it in the block`);
+      const r = spawnSync('sh', ['-c', cmd], {
+        cwd: REPO, encoding: 'utf8', timeout: 60_000,
+        env: { ...process.env, CLAUDE_PROJECT_DIR: REPO, PATH: `${dirname(process.execPath)}:${process.env.PATH}` },
+      });
+      assert.equal(r.status, exit, `${at}: \`${cmd}\` promises exit ${exit} but exits ${r.status}\n${r.stdout}${r.stderr}`);
+      // node exits 1 on an uncaught exception too: a crash is not the verdict the comment promises.
+      assert.doesNotMatch(r.stderr, /^\s+at .+:\d+:\d+\)?$/m, `${at}: \`${cmd}\` crashed\n${r.stderr}`);
+    });
+  }
 });
 
 describe('the evals stay evals', () => {
