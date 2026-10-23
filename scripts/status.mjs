@@ -35,7 +35,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BACKLOG, BUGS, parseQueue, loadRegister } from './entries.mjs';
+import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, parseQueue, loadRegister, newHomeOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { landings } from './landing.mjs';
 import { trunkGraph, graphIndex, catBlobs } from './trunk-graph.mjs';
@@ -78,13 +78,16 @@ const now = new Date();
 
 // trunk-graph.mjs copies the registers out of git and runs P11's graph there.
 const blobs = (specs) => catBlobs(ROOT, specs);
-// The graph carries no severity, and bugs are ranked by it (next.mjs's order).
+// The graph carries no severity, and bugs are ranked by it (next.mjs's order); nor a
+// moved assumption's or superseded decision's new home, which a blocker names (B10).
 const headers = new Map();
 // `warning` is the schema check saying a malformed tree may have dropped an edge (B8):
 // the report still renders, but says so, as the session audit does.
 const { graph, failed, warning } = trunkGraph({
   root: ROOT, base: BASE, git,
-  onTree: (dir) => { for (const e of loadRegister(dir, BUGS).entries) if (e.id) headers.set(e.id, e.header); },
+  onTree: (dir) => {
+    for (const reg of [BUGS, ASSUMPTIONS, DECISIONS]) for (const e of loadRegister(dir, reg).entries) if (e.id) headers.set(e.id, e.header);
+  },
 });
 if (failed) stop(failed);
 
@@ -197,7 +200,9 @@ const describe = (id) => {
   const m = meta.get(id);
   if (!m) return { id, title: `no entry the graph reads on ${BASE}`, register: 'missing', status: 'not in the graph', waitingOnYou: false };
   const prose = proseOf(id);
-  return { id, title: m.title, register: m.register, status: m.status, waitingOnYou: prose.includes('user') };
+  // Settling it is not the fix: the dependent re-points to its new home.
+  const repointTo = newHomeOf({ header: headers.get(id) }).join(', ') || null;
+  return { id, title: m.title, register: m.register, status: m.status, waitingOnYou: prose.includes('user'), repointTo };
 };
 for (const e of open.filter((x) => isBuildable(x) && x.status !== 'in-progress' && blockersOf(x.id).length)) {
   report.blocked.push({
@@ -215,7 +220,8 @@ try { report.looseEnds = JSON.parse(audit.stdout).findings; } catch { report.loo
 // ── Render ───────────────────────────────────────────────────────────────────
 
 const KIND = { product: 'feature', bugs: 'bug', assumptions: 'assumption', decisions: 'decision', experiments: 'experiment', missing: 'unknown' };
-const why = (b) => `${b.id} (${KIND[b.register] ?? b.register}, ${b.status}${b.waitingOnYou ? ', waiting on you' : ''}): ${b.title}`;
+const why = (b) => `${b.id} (${KIND[b.register] ?? b.register}, ${b.status}${b.waitingOnYou ? ', waiting on you' : ''}): ${b.title}` +
+  (b.repointTo ? ` — re-point to ${b.repointTo}` : '');
 const readyTags = (x) => [
   x.bug ? `${x.severity ?? 'unrated'} bug — picked up before the queue` : x.queued ? `queued #${x.queued}` : 'not queued',
   x.status !== 'proposed' && x.status !== 'open' ? x.status : null,
@@ -258,7 +264,7 @@ function html(r) {
   const section = (title, items, empty) =>
     `<section><h2>${esc(title)} <span class="n">${items.length}</span></h2>` +
     (items.length ? `<ul>${items.join('')}</ul>` : `<p class="empty">${esc(empty)}</p>`) + '</section>';
-  const chip = (b) => `<span class="chip ${esc(b.register)}">${esc(b.id)}</span> ${esc(KIND[b.register] ?? b.register)}, ${esc(b.status)}${b.waitingOnYou ? ' — <strong>waiting on you</strong>' : ''}: ${esc(b.title)}`;
+  const chip = (b) => `<span class="chip ${esc(b.register)}">${esc(b.id)}</span> ${esc(KIND[b.register] ?? b.register)}, ${esc(b.status)}${b.waitingOnYou ? ' — <strong>waiting on you</strong>' : ''}: ${esc(b.title)}${b.repointTo ? ` — re-point to ${esc(b.repointTo)}` : ''}`;
 
   const waiting = r.waitingOnYou.map((w) => card(w.id, w.title, sub(`${esc(w.why)}<br><code>${esc(w.see)}</code>`), 'you'));
   const flight = r.inFlight.map((f) => card(f.id, f.title, sub(

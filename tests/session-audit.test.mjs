@@ -612,6 +612,16 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     assert.deepEqual(ahead(dir).readyUnqueued, ['P3']);
   });
 
+  test('settling an open assumption is not offered as freeing an entry a moved one still holds (B10)', () => {
+    // Verifying A-2 would not free P1: A-1 must be re-pointed, not settled.
+    const { dir } = repo({
+      backlog: [P('P1', { dependsOn: ['A-1', 'A-2'] }), P('P2', { dependsOn: ['A-2'] }), P('P3')],
+      assumptions: [A('A-1', { status: 'moved', resolved: '2026-08-02', movedTo: 'P3', resolution: 'a choice, not a fact.' }), A('A-2')],
+      nextUp: [],
+    });
+    assert.deepEqual(ahead(dir).assumptions.map((a) => [a.id, a.holds]), [['A-2', ['P2']]]);
+  });
+
   test('an entry also resting on an assumption that has no entry is not near the queue (B9)', () => {
     // Settling A-1 would not free P1: A-99 is a bad reference, not a question to settle.
     const { dir } = repo({ backlog: [P('P1', { dependsOn: ['A-1', 'A-99'] }), P('P2', { dependsOn: ['A-1'] })], assumptions: [A('A-1')], nextUp: [] });

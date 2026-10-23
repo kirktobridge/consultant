@@ -36,7 +36,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet } from './entries.mjs';
+import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet, newHomeOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
@@ -148,14 +148,23 @@ if (!REG.claimed.includes(status)) {
 // `--no-verify`, or a dependency that reopened after the claim. Read from main, like
 // the claim, and applied before resuming as well as before creating. Direct
 // dependencies only: the schema check walks the chains.
-const unmet = idsOf(entry, 'depends_on').map((id) => {
+// A moved assumption or a superseded decision is not settled but forwarded (B10): the
+// fix is to re-point the dependency, so the refusal names the new home.
+const deps = idsOf(entry, 'depends_on').map((id) => {
   const reg = registerOf(id);
   const dep = reg && git('show', `${BASE}:${reg.dir}/${id}.md`);
-  return { id, status: dep ? parseEntry(dep, reg.keys).header.status ?? null : null };
+  const parsed = dep ? parseEntry(dep, reg.keys) : null;
+  return { id, status: parsed?.header.status ?? null, to: newHomeOf(parsed) };
 }).filter((d) => !dependencyMet(d.id, d.status));
-if (unmet.length) {
-  done(1, 'refused', `${ID} is claimed but blocked on ${BASE}: it depends on ${unmet.map((d) => `${d.id} (${d.status ? `\`${d.status}\`` : 'no entry'})`).join(', ')}. Settle what blocks it first — an open decision is the user's to take, an open assumption needs its Resolution — then re-run.`,
-    { unmet });
+if (deps.length) {
+  const forwarded = deps.filter((d) => d.to.length);
+  const fixes = [
+    forwarded.length < deps.length && 'settle what blocks it first — an open decision is the user\'s to take, an open assumption needs its Resolution',
+    forwarded.length && `re-point its \`depends_on:\` via /ship: ${forwarded.map((d) => `${d.id} → ${d.to.join(', ')}`).join(', ')}`,
+  ].filter(Boolean);
+  const say = fixes.join('; ');
+  done(1, 'refused', `${ID} is claimed but blocked on ${BASE}: it depends on ${deps.map((d) => `${d.id} (${d.status ? `\`${d.status}\`` : 'no entry'})`).join(', ')}. ${say[0].toUpperCase()}${say.slice(1)} — then re-run.`,
+    { unmet: deps.map(({ id, status }) => ({ id, status })) });
 }
 
 // Existing work for this entry is resumed, not duplicated. The `-` keeps P1 from

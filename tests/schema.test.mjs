@@ -675,6 +675,19 @@ describe('decisions — choices only the product owner makes (P10)', () => {
     fails(project({ decisions: [sup('P1')] }), /`superseded_by:` must name the D-n/);
   });
 
+  // B10: like a moved assumption, a superseded decision is a forwarding address.
+  test('an open entry still depending on a superseded decision fails; a shipped one is history', () => {
+    const sup = D('D-1', { status: 'superseded', waitingOn: null, supersededBy: 'D-2' });
+    fails(
+      project({ backlog: [P('P1'), P('P2', { dependsOn: ['D-1'] })], decisions: [sup, D('D-2')] }),
+      /P2 depends on D-1, which was superseded by D-2 — depend on its new home instead/,
+    );
+    passes(project({
+      backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(30), dependsOn: ['D-1'] })],
+      decisions: [sup, D('D-2')],
+    }));
+  });
+
   test('a decisions register with no entries fails — an empty tracked doc is not a pass', () => {
     const dir = project({ decisions: [D('D-1')] });
     rmSync(join(dir, 'docs/decisions/D-1.md'));

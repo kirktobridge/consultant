@@ -58,6 +58,7 @@ describe('status.mjs tells the owner why each blocked item is blocked', () => {
     const r = report(dir);
     assert.deepEqual(r.ready.map((x) => x.id), ['P3']);
     assert.deepEqual(r.blocked.find((b) => b.id === 'P1')?.waitsOn.map((w) => w.id), ['A-1']);
+    assert.match(status(dir).stdout, /waits on A-1 \(assumption, moved\): .* — re-point to P3/);
   });
 
   // P13 R0. The research track reaches the report: a decision waiting on an experiment

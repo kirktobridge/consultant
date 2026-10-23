@@ -314,6 +314,10 @@ describe('worktree.mjs refuses a claimed entry whose dependencies are unmet (P32
     assert.equal(r.code, 1, out(r));
     assert.deepEqual(JSON.parse(r.stdout).unmet, [{ id: 'A-1', status: 'moved' }, { id: 'D-1', status: 'superseded' }]);
     noBranches(main);
+    // The fix is a re-point, not a settle: the refusal names each new home.
+    const t = start(main, 'P3');
+    assert.match(t.stderr, /Re-point its `depends_on:` via \/ship: A-1 → P4, D-1 → D-2 — then re-run/);
+    assert.doesNotMatch(t.stderr, /settle what blocks it/i);
   });
 
   test('a claimed bug resting on an open assumption is refused', () => {
