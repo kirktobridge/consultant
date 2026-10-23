@@ -196,6 +196,84 @@ describe('resolutions nobody swept', () => {
     assert.match(r.stdout, /\[note \] D-1 is `decided` \(decided today\) and 1 entr\(y\/ies\) depend on it: P2/);
     assert.doesNotMatch(r.stdout, /\[ALERT\]/);
   });
+
+  // P25: only a verified assumption or a decision unblocks anything. The A-1 finding
+  // is picked out, so a word elsewhere in the audit can't pass or fail these.
+  const finding = (stdout, id) => stdout.split('\n\n').find((f) => f.includes(`${id} is \``)) ?? '';
+
+  test('a moved assumption names its moved_to target and says to re-point, never to promote', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] }), P('P3')],
+      assumptions: [A('A-1', { status: 'moved', resolved: daysAgo(0), movedTo: 'P3', resolution: 'a choice, not a fact.' })],
+    });
+    const f = finding(audit(dir).stdout, 'A-1');
+    assert.match(f, /A-1 is `moved` \(resolved today\) and 1 entr\(y\/ies\) depend on it: P2 \(proposed\)/);
+    assert.match(f, /refiled as P3\. Re-point each dependent's `depends_on:` from A-1 to P3 via \/ship/);
+    assert.doesNotMatch(f, /unblocked|promot/i);
+  });
+
+  test('a moot assumption gets advice of its own, not the unblock note', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'moot', resolved: daysAgo(0), resolution: 'no longer matters.' })],
+    });
+    const f = finding(audit(dir).stdout, 'A-1');
+    assert.match(f, /A-1 is `moot`/);
+    assert.match(f, /stopped mattering.*Re-read each for scope/s);
+    assert.doesNotMatch(f, /now unblocked/);
+  });
+
+  // Shipped work isn't promoted, so a verified assumption or a decision with only
+  // terminal dependents has nothing to say. A refutation still does: shipped work may
+  // rest on the false premise.
+  for (const [what, settle] of [
+    ['an assumption verified', { assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: 'held.' })] }],
+    ['a decision taken', { decisions: [decidedD('D-1', { decided: daysAgo(0) })] }],
+  ]) {
+    test(`${what} today whose only dependent is shipped produces no finding`, () => {
+      const id = settle.decisions ? 'D-1' : 'A-1';
+      const { dir } = repo({ backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(1), dependsOn: [id] })], ...settle });
+      const r = audit(dir);
+      // The control: an audit that crashed or printed nothing has no finding either.
+      assert.match(r.stdout, /^session-audit: /);
+      assert.equal(finding(r.stdout, id), '');
+    });
+  }
+
+  test('a deferred dependent is still named: it may have been parked on the question', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { status: 'deferred', dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: 'held.' })],
+    });
+    assert.match(finding(audit(dir).stdout, 'A-1'), /depend on it: P2 \(deferred\)/);
+  });
+
+  test('a moved assumption with no moved_to: says to record it, not to re-point at nothing', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'moved', resolved: daysAgo(0), resolution: 'a choice, not a fact.' })],
+    });
+    const f = finding(audit(dir).stdout, 'A-1');
+    assert.match(f, /records no `moved_to:`.*Record where it moved via \/ship first/s);
+    assert.doesNotMatch(f, /Re-point each/);
+    assert.doesNotMatch(f, /unblocked|promot/i);
+  });
+
+  test('the same setup refuted still raises the alert and names the shipped entry', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(1), dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(0), resolution: 'wrong.' })],
+    });
+    assert.match(audit(dir).stdout, /\[ALERT\] A-1 is `refuted` \(resolved today\) and 1 entr\(y\/ies\) depend on it: P2 \(shipped\)/);
+  });
+
+  test('beside an open dependent, a shipped one is left out of the unblock note', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] }), P('P3', { status: 'shipped', shipped: daysAgo(1), dependsOn: ['A-1'] })],
+      assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: 'held.' })],
+    });
+    assert.match(finding(audit(dir).stdout, 'A-1'), /1 entr\(y\/ies\) depend on it: P2 \(proposed\)\./);
+  });
 });
 
 describe('choices waiting on the user (P10)', () => {

@@ -219,7 +219,13 @@ if (lock?.state === 'stale') {
 // the loop notices. `refuted` is the case worth stopping over: those dependents may
 // be void rather than unblocked.
 
-// A decision taken unblocks its dependents the same way; it cannot void them.
+// A decision taken unblocks its dependents the same way; it cannot void them. Two
+// assumption outcomes unblock nothing (P25): a `moved` assumption was refiled, leaving
+// its dependents pointing at a dead ID, and a `moot` one stopped mattering, which may
+// have taken the reason they waited with it.
+// Entries that are done for good. `deferred` is not among them: an entry parked on an
+// open question is the one most worth hearing that the question settled.
+const DONE = new Set(['shipped', 'abandoned']);
 const settled = [
   ...assumptions.map((x) => ({ x, dir: ASSUMPTIONS.dir, date: x.header.resolved, verb: 'resolved' })),
   ...decisions.map((x) => ({ x, dir: DECISIONS.dir, date: x.header.decided, verb: 'decided' })),
@@ -229,14 +235,25 @@ for (const { x, dir, date, verb } of settled) {
   if (x.status === 'open') continue;
   const settledToday = date === today;
   if (!settledToday && !changed.includes(`${dir}/`)) continue;
-  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(x.id));
+  const refuted = x.status === 'refuted';
+  // Shipped work may rest on a false premise, so a refutation names every dependent.
+  // Every other outcome is advice about what to build next, and a done entry isn't
+  // built again.
+  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(x.id)
+    && (refuted || !DONE.has(e.status)));
   if (dependents.length === 0) continue;
   const ids = dependents.map((d) => `${d.id} (${d.status})`).join(', ');
-  add(x.status === 'refuted' ? 'alert' : 'info',
+  const movedTo = idsOf(x, 'moved_to').join(', ');
+  const advice = {
+    refuted: 'A refutation can VOID dependents rather than unblock them — re-read each against the new truth, and check whether anything already shipped on the false assumption. Deep pass: /triage groom.',
+    moved: movedTo
+      ? `Nothing was settled: ${x.id} was refiled as ${movedTo}. Re-point each dependent's \`depends_on:\` from ${x.id} to ${movedTo} via /ship; the schema check fails an open entry that names a moved ID.`
+      : `Nothing was settled, and ${x.id} records no \`moved_to:\`, so there is nowhere to re-point its dependents yet. Record where it moved via /ship first.`,
+    moot: `The question stopped mattering, so it settled nothing these entries were waiting to learn. Re-read each for scope, since the reason it waited may be gone too, before any goes into the queue via /ship.`,
+  }[x.status] ?? 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.';
+  add(refuted ? 'alert' : x.status === 'moved' ? 'warn' : 'info',
     `${x.id} is \`${x.status}\`${settledToday ? ` (${verb} today)` : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
-    x.status === 'refuted'
-      ? 'A refutation can VOID dependents rather than unblock them — re-read each against the new truth, and check whether anything already shipped on the false assumption. Deep pass: /triage groom.'
-      : 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.');
+    advice);
 }
 
 // ── 5. Choices waiting on the user ───────────────────────────────────────────
