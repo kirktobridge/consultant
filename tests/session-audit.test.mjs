@@ -601,6 +601,17 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     assert.match(audit(dir).stdout, /next up: P2 — P2 example — waits on P98 \(no entry\)\n {2}ready, not queued: P3\n/);
   });
 
+  // B10: neither outcome settled anything; the dependent must re-point first.
+  test('an entry resting on a moved assumption or a superseded decision is not ready (B10)', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { dependsOn: ['A-1'] }), P('P2', { dependsOn: ['D-1'] }), P('P3')],
+      assumptions: [A('A-1', { status: 'moved', resolved: '2026-08-02', movedTo: 'P3', resolution: 'a choice, not a fact.' })],
+      decisions: [D('D-1', { status: 'superseded', waitingOn: null, supersededBy: 'D-2' }), D('D-2')],
+      nextUp: [],
+    });
+    assert.deepEqual(ahead(dir).readyUnqueued, ['P3']);
+  });
+
   test('an entry also resting on an assumption that has no entry is not near the queue (B9)', () => {
     // Settling A-1 would not free P1: A-99 is a bad reference, not a question to settle.
     const { dir } = repo({ backlog: [P('P1', { dependsOn: ['A-1', 'A-99'] }), P('P2', { dependsOn: ['A-1'] })], assumptions: [A('A-1')], nextUp: [] });

@@ -205,8 +205,10 @@ export const registerOf = (id) => REGISTERS.find((r) => r.idPattern.test(id)) ??
  * Whether a dependency has stopped holding what depends on it — /implement's DEPENDS
  * GATE, in one place so every script that applies it agrees (P32). A `P#` must be
  * `shipped` (not `partial`), a `B#` `fixed`, an `X#` closed; an assumption or decision
- * holds only while `open`. `status` is the dependency's, or null when it has no entry: a dangling
- * ref is the schema check's to report, and it is not met.
+ * holds while `open`, and also once `moved` or `superseded` (B10): neither settled
+ * anything, and its dependents must re-point to `moved_to:` / `superseded_by:` first.
+ * `status` is the dependency's, or null when it has no entry: a dangling ref is the
+ * schema check's to report, and it is not met.
  */
 export function dependencyMet(id, status) {
   if (!status) return false;
@@ -215,7 +217,10 @@ export function dependencyMet(id, status) {
   // A decision waiting on an experiment is held until the experiment closes — answered,
   // or given up on. A `deferred` one has not run, so it still holds.
   if (EXPERIMENTS.idPattern.test(id)) return ['answered', 'abandoned', 'played-out'].includes(status);
-  return status !== 'open';
+  // Named, not "anything but open": a status nobody listed holds, so a new one fails closed.
+  if (ASSUMPTIONS.idPattern.test(id)) return ['verified', 'refuted', 'moot'].includes(status);
+  if (DECISIONS.idPattern.test(id)) return status === 'decided';
+  return false;
 }
 
 /** Files in a register directory that are not entries. */

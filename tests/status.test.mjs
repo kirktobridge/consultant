@@ -49,6 +49,17 @@ describe('status.mjs tells the owner why each blocked item is blocked', () => {
     assert.match(t, /P2 .*\n\s+waits on P1 \(feature, proposed\).*\n\s+which rests on A-1 \(assumption, open\): the API returns pages/);
   });
 
+  test('an entry resting on a moved assumption is blocked, not ready (B10)', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { dependsOn: ['A-1'] }), P('P3')],
+      assumptions: [A('A-1', { status: 'moved', resolved: '2026-08-02', movedTo: 'P3', resolution: 'a choice, not a fact.' })],
+      nextUp: ['P3'],
+    });
+    const r = report(dir);
+    assert.deepEqual(r.ready.map((x) => x.id), ['P3']);
+    assert.deepEqual(r.blocked.find((b) => b.id === 'P1')?.waitsOn.map((w) => w.id), ['A-1']);
+  });
+
   // P13 R0. The research track reaches the report: a decision waiting on an experiment
   // is held by it until it closes, and that reads through to what rests on the decision.
   test('an experiment holds the decision waiting on it, and what rests on that decision', () => {
