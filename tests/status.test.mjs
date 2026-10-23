@@ -231,6 +231,18 @@ describe('status.mjs reads main and stores nothing', () => {
   });
 });
 
+describe('status.mjs refuses a trunk it can only read in part (P36)', () => {
+  test('an entry whose first line is not --- stops the report, naming the file', () => {
+    const { dir, commitAll } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P1'] });
+    const f = join(dir, 'docs/backlog/P2.md');
+    writeFileSync(f, readFileSync(f, 'utf8').replace(/^---/, '***'));
+    commitAll('a header nothing can read');
+    const r = status(dir);
+    assert.equal(r.code, 2, out(r));
+    assert.match(r.stderr, /docs\/backlog\/P2\.md/);
+  });
+});
+
 function git(dir, args) {
   return execSync(`git ${args}`, { cwd: dir, encoding: 'utf8' }).trim();
 }

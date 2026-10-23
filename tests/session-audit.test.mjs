@@ -507,6 +507,14 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     assert.match(r.stdout, /Ahead: unreadable — /);
   });
 
+  test('an entry on the trunk whose first line is not --- makes Ahead unreadable, naming the file (P36)', () => {
+    const { dir, g } = repo({ backlog: [P('P1'), P('P2')], nextUp: ['P1'] });
+    const f = join(dir, 'docs', 'backlog', 'P2.md');
+    writeFileSync(f, readFileSync(f, 'utf8').replace(/^---/, '***'));
+    g.commitAll('a header nothing can read');
+    assert.match(audit(dir).stdout, /Ahead: unreadable — .*docs\/backlog\/P2\.md/);
+  });
+
   test('an unqueued entry whose last blocker just shipped is named as ready', () => {
     const before = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] }), P('P3')], nextUp: ['P1'] });
     assert.deepEqual(ahead(before.dir).readyUnqueued, ['P3'], 'P2 is still held by P1');

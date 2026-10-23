@@ -10,15 +10,37 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REGISTERS, dependencyMet } from './entries.mjs';
+import { REGISTERS, EXPERIMENTS, dependencyMet } from './entries.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
 
 /** The graph version these readers understand; a different one is a failure, not a guess. */
 export const GRAPH_VERSION = 1;
+
+// The registers the graph carries: the schema check's runs and findings are `graph: false`.
+const GRAPHED = [...REGISTERS, EXPERIMENTS];
+
+/**
+ * The entry files on the trunk the graph can't stand behind: left out, or in it with no
+ * status. The graph skips an entry whose header it can't read, and the run still
+ * succeeds, so without this a claimed or blocking entry would vanish from every reader
+ * (P36). A file counts when its name is a register's ID; a stray `notes.md` is the
+ * schema check's to report.
+ */
+function droppedFiles(files, graph) {
+  const status = new Map(graph.entries.map((e) => [e.id, e.status]));
+  return files.filter((f) => {
+    const reg = GRAPHED.find((r) => dirname(f) === r.dir);
+    const id = basename(f, '.md');
+    return reg && f.endsWith('.md') && reg.idPattern.test(id) && !status.get(id);
+  });
+}
+
+/** A list of paths short enough for the session audit's few lines. */
+const some = (paths, n = 5) => paths.slice(0, n).join(', ') + (paths.length > n ? `, and ${paths.length - n} more` : '');
 
 /**
  * Many blobs in one git call: each spec (`<rev>:<path>`) comes back as its text, or null
@@ -48,10 +70,10 @@ export function catBlobs(root, specs) {
 
 /**
  * The graph on `base`: `{ graph, failed, warning }`, exactly one of graph and failed
- * set. `warning` is the schema check's own note that a malformed tree may have dropped
- * an edge. `git` is the caller's wrapper (null on failure). `onTree(dir)` sees the
- * copied registers before the directory goes, for a reader that needs a header the
- * graph does not carry. Never throws: a reader whose graph is optional must not lose
+ * set. An entry file the graph left out is `failed`, never a shorter graph. `warning`
+ * is the schema check's own note that a malformed tree may have dropped an edge. `git`
+ * is the caller's wrapper (null on failure). `onTree(dir)` sees the copied registers
+ * before the directory goes, for a reader that needs a header the graph does not carry. Never throws: a reader whose graph is optional must not lose
  * the rest of its report to it.
  */
 export function trunkGraph({ root, base, git, onTree = null }) {
@@ -62,11 +84,15 @@ export function trunkGraph({ root, base, git, onTree = null }) {
   try {
     tmp = mkdtempSync(join(tmpdir(), 'trunk-graph-'));
     // docs/research whole: the graph's experiments, and the framework that adopts the track.
-    const files = (git('ls-tree', '-r', '--name-only', base, '--', ...REGISTERS.map((r) => r.dir), 'docs/research') || '')
-      .split('\n').filter(Boolean);
-    catBlobs(root, files.map((f) => `${base}:${f}`)).forEach((text, n) => {
+    const listed = git('ls-tree', '-r', '--name-only', base, '--', ...REGISTERS.map((r) => r.dir), 'docs/research');
+    if (listed === null) throw new Error('git could not list its registers');
+    const files = listed.split('\n').filter(Boolean);
+    const texts = catBlobs(root, files.map((f) => `${base}:${f}`));
+    const unread = files.filter((_, n) => texts[n] === null);
+    if (unread.length) throw new Error(`git could not read ${some(unread)}`);
+    texts.forEach((text, n) => {
       mkdirSync(dirname(join(tmp, files[n])), { recursive: true });
-      writeFileSync(join(tmp, files[n]), text ?? '');
+      writeFileSync(join(tmp, files[n]), text);
     });
     if (onTree) onTree(tmp);
     const r = spawnSync(process.execPath, [join(HERE, 'backlog-schema-check.mjs'), '--graph', '--json'], {
@@ -79,8 +105,14 @@ export function trunkGraph({ root, base, git, onTree = null }) {
     } else if (graph.version !== GRAPH_VERSION) {
       failed = `graph version ${graph.version} is not one this reader reads (${GRAPH_VERSION})`;
       graph = null;
-    } else if ((r.stderr || '').trim()) {
-      warning = r.stderr.trim().split('\n')[0];
+    } else {
+      const dropped = droppedFiles(files, graph);
+      if (dropped.length) {
+        failed = `the graph on ${base} has no entry, or no status, under the ID of ${some(dropped)}: check each file's header`;
+        graph = null;
+      } else if ((r.stderr || '').trim()) {
+        warning = r.stderr.trim().split('\n')[0];
+      }
     }
   } catch (e) {
     failed = `could not read the graph on ${base}: ${e.message}`;
