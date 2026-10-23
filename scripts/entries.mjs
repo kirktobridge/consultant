@@ -280,6 +280,15 @@ export function parseEntry(text, keys) {
   return { header, headerLine, sections, errors };
 }
 
+/**
+ * A moved assumption's or superseded decision's new home: the IDs its dependents must
+ * re-point to, since it settled nothing (B10). Empty for any other entry.
+ */
+export const newHomeOf = (entry) => {
+  const key = { moved: 'moved_to', superseded: 'superseded_by' }[entry?.header?.status];
+  return key ? idsOf(entry, key) : [];
+};
+
 /** Whether a string is one ID in any register's namespace. */
 export const isId = (v) => ID.test(v);
 

@@ -317,7 +317,8 @@ const ahead = (() => {
     // feature to build first. An open assumption counts every such entry it holds,
     // directly or through another; one held by two is counted under both.
     // An A-n or D-n with no entry (B9) is nothing the owner can settle: it is a bad reference.
-    const settleable = (id) => meta.has(id) && (ASSUMPTIONS.idPattern.test(id) || DECISIONS.idPattern.test(id));
+    // Only an open one: a moved or superseded blocker is re-pointed, not settled (B10).
+    const settleable = (id) => meta.get(id)?.status === 'open' && (ASSUMPTIONS.idPattern.test(id) || DECISIONS.idPattern.test(id));
     const near = new Set(features
       .filter((e) => queued.includes(e.id) || (blockersOf(e.id).length && blockersOf(e.id).every(settleable)))
       .map((e) => e.id));

@@ -50,7 +50,7 @@ import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
-  loadRegister, parseQueue, idsOf, isId, dependencyGraph,
+  loadRegister, parseQueue, idsOf, isId, newHomeOf, dependencyGraph,
 } from './entries.mjs';
 import { trunkFromArgv, TRUNK_CANDIDATES } from './trunk.mjs';
 
@@ -610,6 +610,10 @@ for (const { reg: b, entries } of loaded) {
   //
   // An open decision gates exactly the same way: work resting on a choice nobody has
   // made is resting on a guess about which way it will go.
+  //
+  // A moved assumption or a superseded decision is not graded: any open dependent
+  // fails, parked or not. Nothing will ever settle it, and the fix is one edit to the
+  // dependent's `depends_on:`, so there is no reason to let it sit.
   for (const e of entries) {
     for (const depId of idsOf(e, 'depends_on')) {
       if (!GATING.test(depId)) continue;
@@ -617,12 +621,14 @@ for (const { reg: b, entries } of loaded) {
       // A dangling reference is wrong at any status: a terminal entry citing a
       // nonexistent assumption or decision is a broken audit trail, not a harmless leftover.
       if (!dep) { fail(`${e.file}: ${e.id} depends on ${depId}, which has no entry`); continue; }
-      // A moved assumption is a forwarding address, not a dependency: whatever this
-      // entry waits on now lives at the new home, which has its own status.
-      if (dep.status === 'moved' && b.open.has(e.status ?? '')) {
+      // A moved assumption or a superseded decision is a forwarding address, not a
+      // dependency: whatever this entry waits on now lives at the new home, which has its
+      // own status (B10).
+      const forwarded = { moved: 'moved to', superseded: 'superseded by' }[dep.status];
+      if (forwarded && b.open.has(e.status ?? '')) {
         fail(
-          `${e.file}: ${e.id} depends on ${depId}, which was moved to ` +
-            `${idsOf(dep, 'moved_to').join(', ') || 'a new home'} — depend on its new home instead.`,
+          `${e.file}: ${e.id} depends on ${depId}, which was ${forwarded} ` +
+            `${newHomeOf(dep).join(', ') || 'a new home'} — depend on its new home instead.`,
         );
         continue;
       }

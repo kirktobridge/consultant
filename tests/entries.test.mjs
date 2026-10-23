@@ -5,7 +5,18 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { dependencyMet } from '../scripts/entries.mjs';
+import { dependencyMet, newHomeOf } from '../scripts/entries.mjs';
+
+describe('newHomeOf', () => {
+  test('a moved or superseded entry names its new home as IDs; anything else names none', () => {
+    assert.deepEqual(newHomeOf({ header: { status: 'moved', moved_to: 'P3' } }), ['P3']);
+    assert.deepEqual(newHomeOf({ header: { status: 'superseded', superseded_by: 'D-2, D-2' } }), ['D-2']);
+    assert.deepEqual(newHomeOf({ header: { status: 'superseded', superseded_by: 'D-2 (see thread)' } }), []);
+    assert.deepEqual(newHomeOf({ header: { status: 'moved', moved_to: '—' } }), []);
+    assert.deepEqual(newHomeOf({ header: { status: 'verified', moved_to: 'P3' } }), []);
+    assert.deepEqual(newHomeOf(null), []);
+  });
+});
 
 describe('dependencyMet', () => {
   const table = {
