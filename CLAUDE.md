@@ -4,6 +4,8 @@
      Keep it short — this file is loaded into every session's context, so every line
      costs tokens on every turn. Link out rather than explain. -->
 
+Speak plainly and directly. Avoid unnecessary verbosity and technical jargon. Be brief.
+
 **Run:** `<start command>`. `<test command>` runs the suite. `<typecheck>` / `<lint>`
 for checks. `npm run check:docs` runs the backlog schema check.
 
