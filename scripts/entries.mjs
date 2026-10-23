@@ -275,6 +275,9 @@ export function parseEntry(text, keys) {
   return { header, headerLine, sections, errors };
 }
 
+/** Whether a string is one ID in any register's namespace. */
+export const isId = (v) => ID.test(v);
+
 /** The IDs in an ID-list header value; `—` and an absent key are both empty. */
 export const idsOf = (entry, key) => {
   const v = entry.header[key];

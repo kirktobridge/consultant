@@ -15,6 +15,9 @@ after(cleanupAll);
 
 // The arguments each script needs to reach its trunk resolution.
 const ARGS = {
+  // --graph, not --all: the probe's `--base --json` must reach the trunk rule, and
+  // --json is refused before it anywhere but under --graph.
+  'backlog-schema-check.mjs': ['--graph'],
   'claims.mjs': [],
   'commit-ids.mjs': ['--history'],
   'history.mjs': ['P1'],
