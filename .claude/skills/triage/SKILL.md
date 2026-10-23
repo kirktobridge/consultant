@@ -219,44 +219,45 @@ someone. Groom mode reads and proposes. It writes nothing, which is the same con
 the rest of this skill. Run it periodically. Always run it after an assumption resolves
 or after the user takes a decision.
 
-1. **Check the blocker of each blocked entry again.**
-   - For each entry that has a `depends_on:`, find the current status of each ID.
-   - If a dependency became terminal after the entry was drafted, the entry is
-     **unblocked**. Say so.
+**Start from `node scripts/groom.mjs`.** It computes the five groups from the docs and
+git, each item with its suggested action, and writes nothing. Exit 0 means there is
+nothing to groom, and exit 1 means it found items. **Exit 2 means it never ran**: fix
+what it names and run it again. Don't fill the gap by guessing. The script decides who
+is in each group. The steps below are what it cannot decide.
+
+1. **Unblocked.** An entry is unblocked when every dependency is met now, and at least
+   one of them was met after the entry was drafted.
    - This is the most valuable output of the groom, because nothing else notices it.
-2. **Sweep assumption resolutions.**
-   - For each assumption that changed to `verified` or `refuted` after the last groom,
-     list each entry that names it.
-   - A `refuted` assumption is the urgent case. The entries that rest on it are not only
-     unblocked. They can be **void or wrong**. Also look again at any entry that already
-     shipped on that assumption.
-   - **Decisions that wait on the user** are the user's own queue. List each open `D-n`
-     whose `waiting_on:` includes `user`. Include the entries that the decision holds
-     back.
-   - A decision that the user took unblocks its dependents in the same way that a
-     verified assumption does.
-3. **Find the assumptions that will soon block work.**
-   - Compare each `open` assumption against the queue (`docs/backlog/QUEUE.md`) and the
-     entries just behind the queue.
-   - An assumption that blocks an entry at the head of the queue will soon stop work.
+   - Read each entry again against the code. Then say if it is still accurate, if it
+     needs rescoping, or if it is void.
+2. **Newly void.** These are the dependents of a `refuted` assumption. This is the
+   urgent case.
+   - The entries that rest on a refuted assumption are not only unblocked. They can be
+     **void or wrong**.
+   - Look again at any entry that already shipped on that assumption, too.
+3. **About to block.** An `open` assumption or decision that holds back a queued entry
+   will soon stop work.
+   - The script reads only the queue. Also look at the entries just behind the queue,
+     for example an entry the user says goes in next.
    - An assumption that blocks only entries deep in the pool costs nothing yet.
    - **This finding starts the spike decision below.** Nothing else in the loop looks
      for it. The schema check fires only after the entry is *already* in the queue or
      claimed.
-4. **Act on staleness flags.**
-   - Run the schema check.
-   - The schema check flags each entry that was drafted before a dependency landed.
-     For each flagged entry, read the entry again and compare it against the code.
+4. **Stale.** An entry is stale when it was drafted before a dependency or an ad-hoc
+   merge that names it landed, or when it still names a moved or superseded ID.
+   - For each one, read the entry again and compare it against the code.
    - Report one of these results:
      - *Still accurate*: bump `drafted:`. Bump it only after a real re-read. Never bump
        it to silence the check.
      - *Needs rescoping*: say how.
      - *Void*: say why.
-5. **Flag stale claims.**
-   - An entry that is `in-progress` and has no branch and no recent commits is an
-     abandoned claim. Report it.
+   - An entry that names a moved or superseded ID gets re-pointed via /ship.
+5. **Abandoned.** This is an `in-progress` entry that no branch names.
    - To change it back to `proposed` is a /ship flip. Do it only when the user says so.
-6. **Propose. Never apply a change silently.**
+6. **Decisions that wait on the user** are the user's own queue. The session audit
+   lists them (`npm run audit`, "Waiting on the user"). Report each one with the
+   entries that it holds back.
+7. **Propose. Never apply a change silently.**
    - Demotion and deletion are the user's decisions.
    - Ranking is not the user's decision. The ranking rule of the queue
      ([docs/backlog/README.md](../../../docs/backlog/README.md#the-queue)) decides it.

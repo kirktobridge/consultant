@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf, parseQueue } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { trunkGraph, graphIndex } from './trunk-graph.mjs';
+import { settledDependents, sweepAdvice, isRecent, branchNames } from './sweep.mjs';
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const argv = process.argv.slice(2);
@@ -150,9 +151,7 @@ const fresh = gitMerged.filter(([, sha]) => firstParent.has(sha)).map(([b]) => b
 
 for (const e of buildable.filter((x) => x.status === 'in-progress')) {
   const bug = BUGS.idPattern.test(e.id);
-  // A word match, not a substring: `includes('p1')` read feat/p18-… as P1's branch,
-  // which hid an abandoned P1 claim behind any branch whose ID starts with 1.
-  const names = new RegExp(`\\b${e.id}\\b`, 'i');
+  const names = branchNames(e.id);
   const onUnmerged = [...unmerged, ...fresh].some((b) => names.test(b));
   const onMerged = merged.some((b) => names.test(b));
   if (onUnmerged) continue; // legitimately in flight
@@ -219,41 +218,18 @@ if (lock?.state === 'stale') {
 // the loop notices. `refuted` is the case worth stopping over: those dependents may
 // be void rather than unblocked.
 
-// A decision taken unblocks its dependents the same way; it cannot void them. Two
-// assumption outcomes unblock nothing (P25): a `moved` assumption was refiled, leaving
-// its dependents pointing at a dead ID, and a `moot` one stopped mattering, which may
-// have taken the reason they waited with it.
-// Entries that are done for good. `deferred` is not among them: an entry parked on an
-// open question is the one most worth hearing that the question settled.
-const DONE = new Set(['shipped', 'abandoned']);
-const settled = [
-  ...assumptions.map((x) => ({ x, dir: ASSUMPTIONS.dir, date: x.header.resolved, verb: 'resolved' })),
-  ...decisions.map((x) => ({ x, dir: DECISIONS.dir, date: x.header.decided, verb: 'decided' })),
-];
-const changed = git('diff', BASE, '--name-only') || '';
-for (const { x, dir, date, verb } of settled) {
-  if (x.status === 'open') continue;
-  const settledToday = date === today;
-  if (!settledToday && !changed.includes(`${dir}/`)) continue;
-  const refuted = x.status === 'refuted';
-  // Shipped work may rest on a false premise, so a refutation names every dependent.
-  // Every other outcome is advice about what to build next, and a done entry isn't
-  // built again.
-  const dependents = backlog.filter((e) => idsOf(e, 'depends_on').includes(x.id)
-    && (refuted || !DONE.has(e.status)));
-  if (dependents.length === 0) continue;
-  const ids = dependents.map((d) => `${d.id} (${d.status})`).join(', ');
-  const movedTo = idsOf(x, 'moved_to').join(', ');
-  const advice = {
-    refuted: 'A refutation can VOID dependents rather than unblock them — re-read each against the new truth, and check whether anything already shipped on the false assumption. Deep pass: /triage groom.',
-    moved: movedTo
-      ? `Nothing was settled: ${x.id} was refiled as ${movedTo}. Re-point each dependent's \`depends_on:\` from ${x.id} to ${movedTo} via /ship; the schema check fails an open entry that names a moved ID.`
-      : `Nothing was settled, and ${x.id} records no \`moved_to:\`, so there is nowhere to re-point its dependents yet. Record where it moved via /ship first.`,
-    moot: `The question stopped mattering, so it settled nothing these entries were waiting to learn. Re-read each for scope, since the reason it waited may be gone too, before any goes into the queue via /ship.`,
-  }[x.status] ?? 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.';
-  add(refuted ? 'alert' : x.status === 'moved' ? 'warn' : 'info',
-    `${x.id} is \`${x.status}\`${settledToday ? ` (${verb} today)` : ''} and ${dependents.length} entr(y/ies) depend on it: ${ids}.`,
-    advice);
+// What each outcome did to its dependents, features and bugs both, is sweep.mjs's
+// answer, shared with groom and /ship's sweep (P42). This section adds only when it is
+// news: settled today, or the resolution's own file differs from the trunk.
+const changed = (git('diff', BASE, '--name-only') || '').split('\n').filter(Boolean);
+for (const x of [...assumptions, ...decisions]) {
+  const r = settledDependents(x, buildable);
+  if (!r || !r.dependents.length || !isRecent(x, changed, today)) continue;
+  const verb = ASSUMPTIONS.idPattern.test(x.id) ? 'resolved' : 'decided';
+  const ids = r.dependents.map((d) => `${d.id} (${d.status})`).join(', ');
+  add(r.kind === 'void' ? 'alert' : r.kind === 're-point' ? 'warn' : 'info',
+    `${x.id} is \`${x.status}\`${r.date === today ? ` (${verb} today)` : ''} and ${r.dependents.length} entr(y/ies) depend on it: ${ids}.`,
+    `${sweepAdvice(r)}${r.kind === 'void' ? ' Deep pass: /triage groom.' : ''}`);
 }
 
 // ── 5. Choices waiting on the user ───────────────────────────────────────────

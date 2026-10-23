@@ -35,7 +35,8 @@ and /ship writes it in.
 dangling queues — and then waits for someone to care. `/triage groom` is that someone:
 it reports what's newly unblocked (usually the most valuable output — nothing else
 notices), what a `refuted` assumption just voided, which open assumptions are about to
-start blocking the queue, and what needs re-dating. It proposes; you decide.
+start blocking the queue, and what needs re-dating. `npm run groom` computes those
+groups; the skill adds the judgement. It proposes; you decide.
 
 ### /implement — "build P#"
 Takes one backlog entry (or one milestone of it) to verified code on a feature branch.
@@ -173,6 +174,7 @@ aren't — they run whether or not anyone remembers them.
 | `npm run check:manifest` | every tracked file is marked *suite* or *instance* (`scripts/manifest.mjs`), so the export knows what ships | `npm test` |
 | `npm run test:clean` | the suite passes in a clean export of itself, with none of this repo's entries | CI only (it doubles the suite's time) |
 | `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |
+| `npm run groom` | the groom report's five groups (unblocked, newly void, about to block, stale, abandoned), each item with its action; `--for <A-n\|D-n>` sweeps one resolution's dependents, the same answer as the audit's | /triage groom; /ship after a resolution |
 | `npm run history` | each entry's commits and close reports, and unmerged branches | on demand |
 | `npm run status` | the product owner's view: waiting on you, in flight, ready, blocked and why — as text, or as one HTML page with `--html` | on demand |
 | `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |

@@ -85,10 +85,12 @@ write a branch name into a git command.
 | Rules / spec changed | *(human-only)* | **do not edit** the spec — it's human-owned and edit-guard blocks it. Propose the exact diff to the user, and flag that ARCHITECTURE needs its matching update once applied. |
 
 3. **Sweep what a resolution unblocked.** If this pass wrote an assumption's Resolution
-   or recorded a decision, name every entry whose `depends_on:` cites it — they just
-   changed state and nothing else notices. A `verified` assumption unblocks them; a **`refuted`** one may have *voided* them,
-   which is the case worth stopping over. Report the list; the deep pass is
-   `/triage groom`.
+   or recorded a decision, run `node scripts/groom.mjs --for <A-n|D-n>` after the
+   commit. It names every entry, feature or bug, whose `depends_on:` cites it. They
+   just changed state and nothing else notices. A `verified` assumption unblocks them; a **`refuted`** one may have *voided* them,
+   which is the case worth stopping over. A superseded decision unblocks nothing: its
+   dependents re-point to `superseded_by:`. Report its list and its advice. Exit 2 means
+   it never ran, which is not an empty list. The deep pass is `/triage groom`.
 4. **Verify:** relative links resolve; no stale `proposed`/`deferred`/`partial` left on
    an entry that's now fully shipped. Before writing an "X is still owed" clause into a
    terminal flip, check the obligation against the **diff that actually landed** —
