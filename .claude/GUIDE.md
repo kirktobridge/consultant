@@ -150,7 +150,10 @@ flight with its branch, worktree and claim date, what is ready, and what each bl
 entry waits on, down to the assumption or decision at the root. It reads main through
 the [graph JSON](#the-dependency-graph), git and the audit, and keeps nothing. `--html`
 writes the same report as one self-contained page, `.claude/status.html` (gitignored),
-stamped with the commit it was built from.
+stamped with the commit it was built from. When main has a schema violation, the graph
+may have dropped an edge, so the report leads with the check's own warning (and
+`--json` carries it as `graphWarning`) rather than reading as sound. An entry whose
+`depends_on:` names an ID with no entry is blocked on it, as `worktree.mjs` would refuse it.
 
 ## The checks behind the skills
 
