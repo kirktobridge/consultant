@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { P, X, N, project, gitInit, cleanupAll } from './helpers/fixture.mjs';
-import { trunkGraph } from '../scripts/trunk-graph.mjs';
+import { trunkGraph, graphIndex } from '../scripts/trunk-graph.mjs';
 
 after(cleanupAll);
 
@@ -84,6 +84,24 @@ describe('trunkGraph names an entry file the graph left out', () => {
     const r = trunkGraph({ root: dir, base: 'main', git: () => null });
     assert.equal(r.graph, null);
     assert.match(r.failed ?? '', /could not list/);
+  });
+});
+
+describe('a dependency on an ID with no entry still blocks (B9)', () => {
+  test('trunkGraph names it per entry, and graphIndex counts it as a blocker', () => {
+    const dir = repo({ backlog: [P('P1', { dependsOn: ['P99', 'P2'] }), P('P2'), P('P3', { dependsOn: ['B9'] })], nextUp: ['P2'] });
+    const { graph, failed } = read(dir);
+    assert.equal(failed, null);
+    assert.deepEqual(graph.missing, { P1: ['P99'], P3: ['B9'] });
+    const { blockersOf } = graphIndex(graph);
+    assert.deepEqual(blockersOf('P1').sort(), ['P2', 'P99']);
+    assert.deepEqual(blockersOf('P3'), ['B9']);
+    assert.deepEqual(blockersOf('P2'), []);
+  });
+
+  test('a graph with every dependency present has nothing missing', () => {
+    const dir = repo({ backlog: [P('P1', { dependsOn: ['P2'] }), P('P2')], nextUp: ['P2'] });
+    assert.deepEqual(read(dir).graph.missing, {});
   });
 });
 

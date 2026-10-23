@@ -515,6 +515,20 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     assert.match(audit(dir).stdout, /Ahead: unreadable — .*docs\/backlog\/P2\.md/);
   });
 
+  test('an entry whose dependency has no entry is not ready, and a held head names it (B9)', () => {
+    const { dir } = repo({ backlog: [P('P1', { dependsOn: ['P99'] }), P('P2', { dependsOn: ['P98'] }), P('P3')], nextUp: ['P2'] });
+    const a = ahead(dir);
+    assert.deepEqual(a.readyUnqueued, ['P3']);
+    assert.deepEqual(a.nextUp.waitsOn, ['P98']);
+    assert.match(audit(dir).stdout, /next up: P2 — P2 example — waits on P98 \(no entry\)\n {2}ready, not queued: P3\n/);
+  });
+
+  test('an entry also resting on an assumption that has no entry is not near the queue (B9)', () => {
+    // Settling A-1 would not free P1: A-99 is a bad reference, not a question to settle.
+    const { dir } = repo({ backlog: [P('P1', { dependsOn: ['A-1', 'A-99'] }), P('P2', { dependsOn: ['A-1'] })], assumptions: [A('A-1')], nextUp: [] });
+    assert.deepEqual(ahead(dir).assumptions.map((a) => [a.id, a.holds]), [['A-1', ['P2']]]);
+  });
+
   test('an unqueued entry whose last blocker just shipped is named as ready', () => {
     const before = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] }), P('P3')], nextUp: ['P1'] });
     assert.deepEqual(ahead(before.dir).readyUnqueued, ['P3'], 'P2 is still held by P1');
