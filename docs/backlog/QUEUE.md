@@ -1,7 +1,8 @@
 # Next up
 
 1. **P47** — the eval checks each rep's transcript: the prompt arrived whole, and no
-   tools were used. Recorded order (D-3).
+   tools were used. Landed 2026-10-24 (ae0a823), awaiting the owner's acceptance.
+   Recorded order (D-3).
 2. **P48** — review.mjs names the eval cases a skill-prose diff should re-run. Recorded
    order (D-3); unblocks nothing.
 3. **P49** — eval cases for /land and /orchestrate. Recorded order (D-3); unblocks
