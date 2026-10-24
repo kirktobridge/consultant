@@ -24,9 +24,15 @@
 // the integration branch, so it covers committed and uncommitted work alike: the step
 // runs before the build commit. Paths are repo-root relative wherever this is run from.
 //
+// A changed `.claude/skills/<s>/SKILL.md` is exactly what the eval measures (P48), so
+// each one adds an advisory line: `eval: <s>'s SKILL.md changed — <n> eval case(s) …`
+// with the command that runs them, or that the skill has none. The count is the working
+// tree's eval runner's own selection. Running them is the product owner's call: the line
+// never changes the exit code, and an eval suite that can't be read only says so.
+//
 // Exit: 0 review required (stdout: `review: required`, then `security-review: warranted`
 // or `security-review: not warranted`) | 1 skippable (stdout: `review: skip — <why>`)
-// | 2 could not run — never a skip
+// | 2 could not run — never a skip. Either of the first two may add `eval:` lines.
 //
 // Usage: node scripts/review.mjs [--base <ref>] [--json]
 
@@ -125,8 +131,48 @@ const code = files.filter((f) => !/\.md$/i.test(f));
 const required = code.length > 0 || security.length > 0;
 const why = files.length === 0 ? `no changes against ${BASE}` : `only Markdown changed against ${BASE} (${files.length} file(s))`;
 
+// ── What the eval measures ───────────────────────────────────────────────────
+
+// The count comes from the eval runner's own selection (`--list --skill <s>`), so it is
+// the set the named command runs. It runs as a child process: the suite is the branch's
+// code, and whatever it does on load — exit, print, hang — must not reach this exit
+// code or this stdout.
+const RUNNER = 'evals/run.mjs';
+const skills = [...new Set(files.map((f) => f.match(/^\.claude\/skills\/([^/]+)\/SKILL\.md$/)?.[1]).filter(Boolean))];
+
+/** How many eval cases measure `skill`, or `{ error }` when the runner can't say. */
+function casesFor(skill) {
+  if (!existsSync(join(top, RUNNER))) return { error: `no ${RUNNER} here` };
+  let raw;
+  try {
+    raw = execFileSync(process.execPath, [RUNNER, '--list', '--skill', skill], {
+      cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000,
+    });
+  } catch (e) {
+    const said = String(e.stderr || e.message || '').trim().split('\n')[0];
+    return { error: `${RUNNER} --list failed${said ? `: ${said}` : ''}` };
+  }
+  try {
+    const { cases } = JSON.parse(raw.trim().split('\n').pop());
+    if (Array.isArray(cases)) return { cases: cases.length };
+  } catch {
+    /* reported below */
+  }
+  return { error: `${RUNNER} --list printed no case list` };
+}
+
+const evals = skills.map((skill) => ({ skill, deleted: !existsSync(join(top, '.claude', 'skills', skill, 'SKILL.md')), ...casesFor(skill) }));
+const evalLines = evals.map(({ skill, deleted, cases, error }) => {
+  const what = `eval: ${skill}'s SKILL.md ${deleted ? 'was deleted' : 'changed'} — `;
+  if (error) return `${what}its cases can't be counted (${error})`;
+  if (deleted) return `${what}${cases ? `${cases} eval case(s) still name the skill` : 'no eval case names it'}`;
+  return cases
+    ? `${what}${cases} eval case(s) measure it: npm run eval -- --skill ${skill} (advisory; the owner decides whether to run them)`
+    : `${what}it has no eval cases`;
+});
+
 if (asJson) {
-  console.log(JSON.stringify({ base: BASE, review: required, security: security.length > 0, files, code, securityFiles: security }));
+  console.log(JSON.stringify({ base: BASE, review: required, security: security.length > 0, files, code, securityFiles: security, eval: evals }));
 } else if (required) {
   console.log('review: required');
   console.log(`security-review: ${security.length ? 'warranted' : 'not warranted'}`);
@@ -135,4 +181,5 @@ if (asJson) {
 } else {
   console.log(`review: skip — ${why}`);
 }
+if (!asJson) for (const l of evalLines) console.log(l);
 process.exit(required ? 0 : 1);

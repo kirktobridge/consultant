@@ -51,6 +51,8 @@
 //   npm run eval -- --dry-run         render prompts + self-check grading, spawns nothing
 //   npm run eval                      emit prompts for every case, 3 reps each
 //   npm run eval -- --case depends    only cases whose id contains "depends"
+//   npm run eval -- --skill implement only the cases that measure that skill's SKILL.md
+//   npm run eval -- --list [--skill s] the cases a run would select, as JSON; spawns nothing
 //   npm run eval -- --reps 1          fewer repetitions (each one costs a subagent)
 //   npm run eval -- --grade <dir>     score the replies collected in <dir>
 //   npm run eval -- --check-transcripts <dir>
@@ -78,6 +80,8 @@ const opts = {
   dryRun: argv.includes('--dry-run'),
   reps: Number(flag('reps', 3)),
   filter: flag('case', null),
+  skill: flag('skill', null),
+  list: argv.includes('--list'),
   grade: flag('grade', null),
   checkTranscripts: flag('check-transcripts', null),
   transcripts: flag('transcripts', null),
@@ -795,9 +799,27 @@ if (opts.grade && opts.checkTranscripts) {
 if (opts.grade) process.exit(gradeRun(opts.grade));
 if (opts.checkTranscripts) process.exit(checkTranscripts(opts.checkTranscripts));
 
-const selected = opts.filter ? CASES.filter((c) => c.id.includes(opts.filter)) : CASES;
+if (argv.includes('--skill') && !opts.skill) {
+  // A bare --skill would select every case, and each one costs a subagent.
+  console.error('evals: --skill needs a skill name.');
+  process.exit(2);
+}
+const selected = CASES.filter(
+  (c) => (!opts.filter || c.id.includes(opts.filter)) && (!opts.skill || c.skill === opts.skill),
+);
+if (opts.list) {
+  // The selection a run would make, as JSON, for review.mjs to count (P48). An empty one
+  // is an answer here, not an error.
+  console.log(JSON.stringify({ cases: selected.map(({ id, skill }) => ({ id, skill })) }));
+  process.exit(0);
+}
 if (selected.length === 0) {
-  console.error(`evals: no case matches "${opts.filter}". Known ids:\n  ${CASES.map((c) => c.id).join('\n  ')}`);
+  const asked = [opts.filter && `"${opts.filter}"`, opts.skill && `skill ${opts.skill}`].filter(Boolean).join(' and ');
+  console.error(
+    asked
+      ? `evals: no case matches ${asked}. Known ids:\n  ${CASES.map((c) => `${c.id}  [${c.skill ?? 'no skill'}]`).join('\n  ')}`
+      : 'evals: cases.mjs has no cases.',
+  );
   process.exit(2);
 }
 console.log(
