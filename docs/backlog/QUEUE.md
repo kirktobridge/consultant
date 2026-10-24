@@ -7,5 +7,5 @@
 3. **P37** — next.mjs judges readiness one way, in both modes. Recorded order (D-3).
 4. **P52** — a build the owner hands back can be resumed through the claim gate.
    Unblocks P54; the recorded order (D-3) ends at P37.
-5. **P29** — suite prose cites no instance IDs. Ready; unblocks nothing, first of the
-   ready pool by ID.
+5. **P56** — close-report --check checks a bug's report too. Unblocks P60; ties with
+   P52, which keeps its place.
