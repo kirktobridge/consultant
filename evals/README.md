@@ -42,6 +42,7 @@ npm run eval -- --dry-run       # renders every prompt, self-checks the graders,
 npm run eval                    # → writes evals/runs/<stamp>/prompts/*.md
 #   … the session runs one subagent per prompt file and saves each reply verbatim
 #     to evals/runs/<stamp>/replies/<same-key>.txt …
+npm run eval -- --check-transcripts evals/runs/<stamp>   # each prompt arrived whole, no tools used
 npm run eval -- --grade evals/runs/<stamp>
 
 npm run eval -- --case spike    # just the spike-decision cases
@@ -51,7 +52,13 @@ npm run eval -- --note 'opus-5, effort high'   # recorded in the summary line
 
 `--emit` is the default because the emitted prompt is the artifact under test: it is
 handed to the subagent **whole and unedited**. Summarising it, or wrapping it in your
-own framing, measures your framing.
+own framing, measures your framing. `--check-transcripts` holds that after the fact:
+it reads each rep's subagent transcript from the harness (by default this project's
+directories, and its worktrees', under `$CLAUDE_CONFIG_DIR/projects/` or
+`~/.claude/projects/`; `--transcripts <dir>` overrides it), and names
+any rep whose sent prompt differs from its file, with the first differing line, or
+whose subagent called a tool. The one hand-off that returns the reply isn't counted.
+A rep with no transcript exits 2, never clean.
 
 **Reps of the same case must be independent subagents.** One agent answering the same
 prompt twice measures its own consistency, not the prompt.

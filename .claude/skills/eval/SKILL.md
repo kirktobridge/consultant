@@ -65,6 +65,17 @@ The prompt tells each subagent to use no tools. If a subagent reads the repo any
 note it. The fixture state in the prompt is not the state on disk. So that reply
 answered a different question. Re-run that case-rep instead of grading the reply.
 
+When every reply is saved, check the transcripts before you grade:
+
+```bash
+npm run eval -- --check-transcripts evals/runs/<stamp>
+```
+
+It finds each rep's subagent transcript. It names a rep whose prompt arrived edited
+(with the first line that differs) or whose subagent used a tool. Re-run each rep it
+names. Exit `2` means it could not find a transcript for every rep, and it says where
+it looked. That is not a clean result. Name the directory with `--transcripts <dir>`.
+
 ### 4. Grade
 
 ```bash
