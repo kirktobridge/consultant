@@ -14,8 +14,8 @@
 //   a bug      its `## Repro`, to re-run, and its `## Expected`, verbatim, each with a
 //              verdict slot. `Expected` is optional in a bug; its absence is said.
 //
-// Then the review slot (review.mjs's plain `review:` line, and which findings were fixed
-// or left) and the preflight slot, the two lines /implement's close step also owes. Each
+// Then the review slot (review.mjs's plain `review:` line and any `eval:` lines, and
+// which findings were fixed or left) and the preflight slot, the two lines /implement's close step also owes. Each
 // slot is one `<…>` and starts with `<`, so a slot left unfilled is never read as the
 // line it holds the place of (`git log --grep '^preflight:'` counts those).
 //
@@ -60,7 +60,7 @@ const indent = (t) => t.split('\n').map((l) => (l ? `  ${l}` : l)).join('\n');
 
 const SLOTS = [
   '',
-  '<review.mjs\'s plain-output `review:` line>',
+  '<review.mjs\'s plain-output `review:` line, and each `eval:` line it printed>',
   '<which findings were fixed, and which were left and why>',
   '',
   '<`preflight: agreed`, or `preflight: disagreed — <gate>: <what each side said>`>',

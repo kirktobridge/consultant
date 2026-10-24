@@ -175,7 +175,9 @@ run all of them.
 
   The close report carries one review line: the script's plain-output `review:`
   line (not `--json`), and which
-  findings were fixed or left.
+  findings were fixed or left. It also carries each `eval:` line the script prints.
+  Such a line names a changed SKILL.md and the eval cases that measure it. Whether
+  to run them is the product owner's decision. It is never a gate.
 - Run **/verify `<ID>`** — it drives the entry's `Accept:` criteria in the real app,
   not a flow guessed from the diff. A docs-only change has no app to drive: check
   each criterion directly (read the file, run the command it names) and say in the

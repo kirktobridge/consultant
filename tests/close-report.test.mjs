@@ -28,7 +28,7 @@ describe('a feature: each Accept criterion, word for word, one per criterion', (
     assert.equal(r.code, 0, out(r));
     assert.deepEqual(quoted(r.stdout), accept);
     assert.equal(r.stdout.match(/<OBSERVED \| NOT OBSERVED \| NOT EXERCISED>/g).length, 3);
-    assert.match(r.stdout, /^<review\.mjs's plain-output `review:` line>$/m);
+    assert.match(r.stdout, /^<review\.mjs's plain-output `review:` line, and each `eval:` line it printed>$/m);
     assert.match(r.stdout, /^<`preflight: agreed`/m);
   });
 
