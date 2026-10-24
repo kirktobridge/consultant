@@ -41,8 +41,8 @@ npm run eval                                # the full sweep at the default reps
 ```
 
 This writes `evals/runs/<stamp>/prompts/*.md`, one per case-rep, and prints the paths.
-Emit one run at a time. The stamp counts whole seconds, so a second emit in the same
-second writes into the same directory and overwrites the first run's manifest.
+Each emit gets its own directory. A second emit in the same second gets `<stamp>-2`, and
+an `--out` that already holds a run is refused.
 
 ### 3. One subagent per prompt file
 

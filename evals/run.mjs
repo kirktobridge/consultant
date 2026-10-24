@@ -394,9 +394,44 @@ function dryRun(cases) {
 
 const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
+/**
+ * Claims `dir` for one emit by creating its prompts/ non-recursively: that fails if
+ * another emit, finished or still writing, got there first, so the claim is atomic.
+ * Without it a second emit overwrites the first one's manifest, and grading reads
+ * only the manifest (B12).
+ */
+function claim(dir) {
+  mkdirSync(dir, { recursive: true });
+  try {
+    mkdirSync(join(dir, 'prompts'));
+    return true;
+  } catch (e) {
+    if (e.code === 'EEXIST') return false;
+    throw e;
+  }
+}
+
+/** A run directory no other emit owns. Two emits in the same second share a stamp, so
+ *  the default name takes a suffix; a taken `--out` is refused. */
+function claimRunDir() {
+  if (opts.outDir) {
+    const dir = resolve(opts.outDir);
+    if (claim(dir)) return dir;
+    console.error(`evals: ${dir} already holds a run (prompts/). Pass a fresh --out.`);
+    return null;
+  }
+  // EVAL_RUNS_ROOT lets the tests emit somewhere other than the real evals/runs/.
+  const runs = process.env.EVAL_RUNS_ROOT ?? join(REPO, 'evals', 'runs');
+  const base = stamp();
+  for (let n = 1; ; n++) {
+    const dir = join(runs, n === 1 ? base : `${base}-${n}`);
+    if (claim(dir)) return dir;
+  }
+}
+
 function emit(cases) {
-  const dir = opts.outDir ? resolve(opts.outDir) : join(REPO, 'evals', 'runs', stamp());
-  mkdirSync(join(dir, 'prompts'), { recursive: true });
+  const dir = claimRunDir();
+  if (!dir) return 2;
   mkdirSync(join(dir, 'replies'), { recursive: true });
 
   const items = [];
