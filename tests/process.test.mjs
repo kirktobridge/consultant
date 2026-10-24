@@ -669,8 +669,13 @@ describe('the evals stay evals', () => {
       assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
       return dir;
     };
-    const reply = (dir, key, body) => writeFileSync(join(dir, 'replies', `${key}.txt`), body);
-    const json = (o) => `Some reasoning.\n\n\`\`\`json\n${JSON.stringify(o)}\n\`\`\`\n`;
+    // A reply echoes its own prompt's nonce (P46): `json` leaves a placeholder that
+    // `reply` fills from the manifest entry for that key.
+    const nonceOf = (dir, key) =>
+      JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')).items.find((i) => i.key === key).nonce;
+    const reply = (dir, key, body) =>
+      writeFileSync(join(dir, 'replies', `${key}.txt`), body.replace('<NONCE>', () => nonceOf(dir, key)));
+    const json = (o) => `Some reasoning.\n\n\`\`\`json\n${JSON.stringify({ nonce: '<NONCE>', ...o })}\n\`\`\`\n`;
     const REFUSE = 'depends-gate-refuses-blocked-entry.0';
     const PROCEED = 'depends-gate-allows-unblocked-entry.0';
 

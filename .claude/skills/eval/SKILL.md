@@ -81,6 +81,10 @@ Exit codes:
 - `1`: at least one case is below the bar.
 - `2`: the harness could not grade the run at all, because replies are missing or
   stray. An incomplete run is not a measurement.
+- `2` also when a reply fails the nonce check. Each prompt carries its own nonce, so a
+  reply saved under another key, or written without reading its prompt, fails as a
+  transport fault. The summary still prints, but its rate leaves those reps out, so it
+  is not a measurement. Re-run the case-reps it names, then grade again.
 
 ### 5. Report what it can support
 
