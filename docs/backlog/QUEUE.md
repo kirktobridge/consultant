@@ -1,7 +1,7 @@
 # Next up
 
-1. **P49** — eval cases for /land and /orchestrate. Recorded order (D-3); unblocks
-   nothing.
+1. **P49** — eval cases for /land and /orchestrate. Landed 2026-10-24 (f503486),
+   awaiting the owner's acceptance. Recorded order (D-3); unblocks nothing.
 2. **P24** — the queue is generated from the dependency graph, with the recorded order
    (MANUAL-ORDER.md) first. Recorded order (D-3).
 3. **P39** — a one-sided conflict resolution stops with the builder's case for it.
