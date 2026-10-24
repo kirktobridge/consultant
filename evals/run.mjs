@@ -28,6 +28,11 @@
 // is a convention (one fenced ```json block) rather than a guarantee. A malformed
 // reply grades as a failure, never as a silent pass.
 //
+// Each prompt carries a random nonce, recorded in the manifest, that its reply's JSON
+// block must echo. A reply saved under another rep's key, or written without the prompt
+// being read, then fails as a transport fault ("nonce mismatch" / "nonce missing")
+// instead of being graded as an answer to a question it never saw.
+//
 // ── An honest limit ────────────────────────────────────────────────────────────
 // Grading a pass *rate* rigorously — how many repetitions, what counts as a real
 // difference between two prompt versions, when a result is worth acting on — is
@@ -51,6 +56,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname, relative, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { CASES } from './cases.mjs';
 import { renderFiles } from '../tests/helpers/fixture.mjs';
@@ -141,7 +147,7 @@ function userFor(c) {
  * agent is told not to look anything up: the real repo on disk is a *different* state
  * from the fixture, so a single Read would silently swap the situation under test.
  */
-function promptFor(c) {
+function promptFor(c, nonce) {
   return [
     systemFor(c),
     '',
@@ -168,6 +174,7 @@ function promptFor(c) {
     '```json',
     JSON.stringify(
       {
+        nonce,
         action: 'proceed | refuse | clarify',
         classification: 'feature | bug | assumption | decision | experiment | both | not-applicable',
         cites: ['every identifier the decision turns on'],
@@ -187,6 +194,7 @@ function fieldNotes() {
   const p = DECISION_SCHEMA.properties;
   return [
     'Field meanings:',
+    `- nonce — ${p.nonce.description}`,
     `- action — ${p.action.description}`,
     `- classification — ${p.classification.description}`,
     `- cites — ${p.cites.description}`,
@@ -203,6 +211,11 @@ function fieldNotes() {
 const DECISION_SCHEMA = {
   type: 'object',
   properties: {
+    nonce: {
+      type: 'string',
+      description:
+        "This prompt's own value, copied exactly as the block above shows it. It ties the reply to this prompt; a reply carrying any other value is discarded as a transport fault.",
+    },
     action: {
       type: 'string',
       enum: ['proceed', 'refuse', 'clarify'],
@@ -222,7 +235,7 @@ const DECISION_SCHEMA = {
     },
     reason: { type: 'string', description: 'One or two sentences.' },
   },
-  required: ['action', 'classification', 'cites', 'reason'],
+  required: ['nonce', 'action', 'classification', 'cites', 'reason'],
   additionalProperties: false,
 };
 
@@ -262,6 +275,29 @@ export function grade(c, decision, text = '') {
   return { pass: fails.length === 0, fails };
 }
 
+/**
+ * The transport check, run before the decision is graded. A reply whose nonce is not its
+ * own prompt's did not answer that prompt, so grading its decision would score the wrong
+ * question: it fails with `nonce: true`, which the summary counts apart from wrong
+ * decisions. Returns null when the nonce is right.
+ *
+ * `owners` maps every nonce in the run to its key, so a reply copied from another rep
+ * says whose it is.
+ */
+export function checkNonce(item, decision, owners = new Map()) {
+  const got = decision.nonce;
+  if (got === undefined || got === null || got === '') {
+    return { pass: false, nonce: true, fails: [`nonce missing (expected "${item.nonce}")`] };
+  }
+  if (String(got) === item.nonce) return null;
+  const owner = owners.get(String(got));
+  return {
+    pass: false,
+    nonce: true,
+    fails: [`nonce mismatch: the reply carries "${got}"${owner ? `, which is ${owner}'s` : ''}, expected "${item.nonce}"`],
+  };
+}
+
 // ── Dry run: prove the harness works without spending anything ───────────────
 //
 // Renders every prompt (catching a broken case or a renamed skill) and runs the
@@ -271,6 +307,18 @@ export function grade(c, decision, text = '') {
 
 function dryRun(cases) {
   let bad = 0;
+  // The nonce check, the same way as the graders: its own nonce passes, another rep's
+  // and none fail. It does not depend on the case, so it runs once.
+  const item = { key: 'case.0', nonce: 'aaaa1111' };
+  const owners = new Map([['aaaa1111', 'case.0'], ['bbbb2222', 'case.1']]);
+  const nonceOk =
+    checkNonce(item, { nonce: 'aaaa1111' }, owners) === null &&
+    checkNonce(item, { nonce: 'bbbb2222' }, owners)?.nonce === true &&
+    checkNonce(item, {}, owners)?.nonce === true;
+  if (!nonceOk) {
+    console.error('  ✖ the nonce check is not discriminating: it passes a foreign or missing nonce');
+    bad++;
+  }
   for (const c of cases) {
     let sys, usr;
     try {
@@ -315,13 +363,18 @@ function dryRun(cases) {
       bad++;
       continue;
     }
+    if (!promptFor(c, 'aaaa1111').includes('"nonce": "aaaa1111"')) {
+      console.error(`  ✖ ${c.id}: the prompt does not carry its nonce`);
+      bad++;
+      continue;
+    }
     console.log(
       `  ✔ ${c.id}  [${c.skill}]  system ${sys.length}c / user ${usr.length}c  — bar: ${c.bar}`,
     );
   }
   console.log(
     bad === 0
-      ? `\ndry run: ${cases.length} case(s) render, and every grader accepts the right answer and rejects the wrong one.`
+      ? `\ndry run: ${cases.length} case(s) render, and every grader accepts the right answer and rejects the wrong one, and the nonce check rejects a missing or foreign nonce.`
       : `\ndry run: ${bad} case(s) BROKEN.`,
   );
   return bad === 0 ? 0 : 1;
@@ -337,12 +390,16 @@ function emit(cases) {
   mkdirSync(join(dir, 'replies'), { recursive: true });
 
   const items = [];
+  const drawn = new Set();
   for (const c of cases) {
-    const prompt = promptFor(c);
     for (let rep = 0; rep < opts.reps; rep++) {
       const key = `${c.id}.${rep}`;
-      writeFileSync(join(dir, 'prompts', `${key}.md`), prompt);
-      items.push({ key, id: c.id, skill: c.skill, rep, bar: c.bar });
+      let nonce;
+      do nonce = randomBytes(4).toString('hex');
+      while (drawn.has(nonce));
+      drawn.add(nonce);
+      writeFileSync(join(dir, 'prompts', `${key}.md`), promptFor(c, nonce));
+      items.push({ key, id: c.id, skill: c.skill, rep, bar: c.bar, nonce });
     }
   }
   writeFileSync(
@@ -405,6 +462,18 @@ function gradeRun(dir) {
 
   const missing = [];
   const byCase = new Map();
+  // A manifest emitted before nonces existed carries none; its replies grade as they did.
+  // One that carries some is damaged, and grading it would switch the check off unseen.
+  const withNonce = manifest.items.filter((i) => typeof i.nonce === 'string').length;
+  if (withNonce && withNonce < manifest.items.length) {
+    console.error(
+      `evals: ${manifest.items.length - withNonce} of ${manifest.items.length} manifest items carry no nonce — ` +
+        `the manifest was edited or merged, so its replies cannot be tied to their prompts.`,
+    );
+    return 2;
+  }
+  const nonced = withNonce > 0;
+  const owners = new Map(nonced ? manifest.items.map((i) => [i.nonce, i.key]) : []);
 
   for (const item of manifest.items) {
     const c = byId.get(item.id);
@@ -420,11 +489,10 @@ function gradeRun(dir) {
     }
     const text = readFileSync(path, 'utf8');
     const decision = parseDecision(text);
-    byCase.get(c.id).outcomes.push(
-      decision
-        ? grade(c, decision, text)
-        : { pass: false, fails: [`no parseable JSON block in the reply (${text.trim().slice(0, 80)}…)`] },
-    );
+    const outcome = decision
+      ? (nonced && checkNonce(item, decision, owners)) || grade(c, decision, text)
+      : { pass: false, unparsed: true, fails: [`no parseable JSON block in the reply (${text.trim().slice(0, 80)}…)`] };
+    byCase.get(c.id).outcomes.push({ ...outcome, key: item.key });
   }
 
   // Stray replies with no manifest entry mean the run and the directory disagree; the
@@ -445,16 +513,24 @@ function gradeRun(dir) {
     return 2;
   }
 
-  const results = [...byCase.values()].map(({ c, outcomes }) => ({
-    c,
-    outcomes,
-    passed: outcomes.filter((o) => o.pass).length,
-    of: outcomes.length,
-  }));
+  // A nonce failure is not an answer to its prompt, so it is left out of the rate and
+  // the bar, where it would blame the prompt for a transport fault. It is not dropped
+  // quietly either: it is counted, named, and the run exits 2 until it is re-run.
+  const results = [...byCase.values()].map(({ c, outcomes }) => {
+    const graded = outcomes.filter((o) => !o.nonce);
+    return {
+      c,
+      outcomes,
+      nonce: outcomes.length - graded.length,
+      passed: graded.filter((o) => o.pass).length,
+      of: graded.length,
+    };
+  });
 
   for (const r of results) {
-    const mark = r.passed / r.of >= bar ? '✔' : '✖';
-    console.log(`  ${mark} ${r.c.id}  ${r.passed}/${r.of}  — ${r.c.bar}`);
+    const mark = r.of === 0 ? '–' : r.passed / r.of >= bar ? '✔' : '✖';
+    const extra = r.nonce ? `  (+${r.nonce} nonce)` : '';
+    console.log(`  ${mark} ${r.c.id}  ${r.passed}/${r.of}${extra}  — ${r.c.bar}`);
     for (const o of r.outcomes.filter((x) => !x.pass).slice(0, 2)) {
       console.log(`        ${o.fails.join('; ')}`);
     }
@@ -462,12 +538,27 @@ function gradeRun(dir) {
 
   const total = results.reduce((n, r) => n + r.passed, 0);
   const of = results.reduce((n, r) => n + r.of, 0);
-  const below = results.filter((r) => r.passed / r.of < bar);
+  const below = results.filter((r) => r.of > 0 && r.passed / r.of < bar);
+  const all = results.flatMap((r) => r.outcomes);
+  const nonceFailed = all.filter((o) => o.nonce).map((o) => o.key);
+  const unparsed = all.filter((o) => o.unparsed).length;
 
   console.log(
-    `\neval: ${total}/${of} (${((total / of) * 100).toFixed(0)}%) from ${opts.note}, ` +
+    `\neval: ${total}/${of} (${of ? ((total / of) * 100).toFixed(0) : '–'}%) from ${opts.note}, ` +
       `reps=${manifest.reps}, pre-registered bar=${bar}`,
   );
+  console.log(
+    `failures: ${of - total} decision${unparsed ? ` (${unparsed} with no parseable JSON block)` : ''}, ` +
+      (nonced ? `${nonceFailed.length} nonce` : 'nonce not checked (the run was emitted before nonces)'),
+  );
+  if (nonceFailed.length) {
+    console.log(
+      `\n${nonceFailed.length} reply(ies) failed the nonce check: each was saved under the wrong key, or ` +
+        `written without its prompt being read. That is a transport fault, not an answer, so the ` +
+        `rate above leaves them out — and it is not a measurement until they are re-run:\n  ` +
+        nonceFailed.join('\n  '),
+    );
+  }
   if (below.length) {
     console.log(`\n${below.length} case(s) below the bar — the prompt, not the model, is the thing to fix:`);
     for (const r of below) console.log(`  ${r.c.id}: ${r.c.why}`);
@@ -476,6 +567,7 @@ function gradeRun(dir) {
     `\nA rate from ${manifest.reps} rep(s) is directional. Treat a drop as a reason to look, ` +
       `not as evidence a prompt edit worked — see the note at the top of this file.`,
   );
+  if (nonceFailed.length) return 2;
   return below.length ? 1 : 0;
 }
 

@@ -81,6 +81,13 @@ block; the harness parses it and asserts on the fields. A judge would put a seco
 probabilistic system between the thing under test and the verdict, and its drift would
 be indistinguishable from the drift being measured.
 
+**Each prompt carries a nonce** its JSON block must echo, recorded in the run's
+`manifest.json`. A reply saved under another rep's key, or written without its prompt
+being read, fails with `nonce mismatch` or `nonce missing`: a transport fault. It is
+left out of the rate (it answered no question of this case), counted apart from wrong
+decisions in the summary (`failures: N decision, M nonce`), and the run exits 2 until
+those reps are re-run. A run emitted before nonces grades as it always did.
+
 A reply the harness cannot parse **fails** — it is never skipped. So does a run with a
 missing reply, which refuses to report a rate at all: dropping unanswered reps quietly
 raises the pass rate, which is LESSONS L3 wearing a different hat.
