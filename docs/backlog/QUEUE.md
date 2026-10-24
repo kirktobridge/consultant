@@ -1,12 +1,12 @@
 # Next up
 
-1. **P46** — each eval prompt carries a nonce its reply must echo. Recorded order
-   (D-3); unblocks nothing.
-2. **P47** — the eval checks each rep's transcript: the prompt arrived whole, and no
+1. **P47** — the eval checks each rep's transcript: the prompt arrived whole, and no
    tools were used. Recorded order (D-3).
-3. **P48** — review.mjs names the eval cases a skill-prose diff should re-run. Recorded
+2. **P48** — review.mjs names the eval cases a skill-prose diff should re-run. Recorded
    order (D-3); unblocks nothing.
-4. **P49** — eval cases for /land and /orchestrate. Recorded order (D-3); unblocks
+3. **P49** — eval cases for /land and /orchestrate. Recorded order (D-3); unblocks
    nothing.
-5. **P24** — the queue is generated from the dependency graph, with the recorded order
+4. **P24** — the queue is generated from the dependency graph, with the recorded order
    (MANUAL-ORDER.md) first. Recorded order (D-3).
+5. **P39** — a one-sided conflict resolution stops with the builder's case for it.
+   Recorded order (D-3); D-4 decided.
