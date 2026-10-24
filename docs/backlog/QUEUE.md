@@ -1,7 +1,8 @@
 # Next up
 
-1. **P48** — review.mjs names the eval cases a skill-prose diff should re-run. Recorded
-   order (D-3); unblocks nothing.
+1. **P48** — review.mjs names the eval cases a skill-prose diff should re-run. Landed
+   2026-10-24 (115fe88), awaiting the owner's acceptance. Recorded order (D-3);
+   unblocks nothing.
 2. **P49** — eval cases for /land and /orchestrate. Recorded order (D-3); unblocks
    nothing.
 3. **P24** — the queue is generated from the dependency graph, with the recorded order
