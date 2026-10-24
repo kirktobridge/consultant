@@ -1,7 +1,7 @@
 # Next up
 
 1. **P24** — the queue is generated from the dependency graph, with the recorded order
-   (MANUAL-ORDER.md) first. Recorded order (D-3).
+   (MANUAL-ORDER.md) first. Recorded order (D-3); unblocks P55.
 2. **P39** — a one-sided conflict resolution stops with the builder's case for it.
    Recorded order (D-3); D-4 decided.
 3. **P37** — next.mjs judges readiness one way, in both modes. Recorded order (D-3).
