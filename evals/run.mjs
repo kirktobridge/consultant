@@ -53,9 +53,13 @@
 //   npm run eval -- --case depends    only cases whose id contains "depends"
 //   npm run eval -- --reps 1          fewer repetitions (each one costs a subagent)
 //   npm run eval -- --grade <dir>     score the replies collected in <dir>
+//   npm run eval -- --check-transcripts <dir>
+//                                     check each rep's subagent got its prompt whole and
+//                                     used no tools (--transcripts <dir> says where to look)
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
-import { join, dirname, relative, resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, relative, resolve, basename } from 'node:path';
+import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { CASES } from './cases.mjs';
@@ -75,6 +79,8 @@ const opts = {
   reps: Number(flag('reps', 3)),
   filter: flag('case', null),
   grade: flag('grade', null),
+  checkTranscripts: flag('check-transcripts', null),
+  transcripts: flag('transcripts', null),
   outDir: flag('out', null),
   // Free-text record of *what answered* — model, effort, agent type. The harness
   // cannot know it (the session picks it), so it is written down rather than guessed.
@@ -415,7 +421,8 @@ function emit(cases) {
      subagent as the prompt. Do not summarise it and do not add framing: the file is
      the thing being measured.
   2. Save that subagent's reply verbatim to ${join(rel, 'replies')}/<key>.txt
-  3. When every reply is saved:  npm run eval -- --grade ${rel}
+  3. When every reply is saved:  npm run eval -- --check-transcripts ${rel}
+     (re-run any rep it names), then:  npm run eval -- --grade ${rel}
 
 Reps of the same case must be independent subagents — the same agent answering twice
 measures its own consistency, not the prompt. Nothing here reads the repo: the agents
@@ -571,9 +578,222 @@ function gradeRun(dir) {
   return below.length ? 1 : 0;
 }
 
+// ── Check transcripts: the prompt arrived whole, and no tools were used ─────
+//
+// The grade scores what came back; it cannot see what went out. That is in the
+// harness's transcripts, one JSONL file per subagent: the first record with no parent
+// and string content is the prompt the subagent was sent, and each `tool_use` item
+// names a tool it called (the harness's format, observed 2026-10-21). A rep's
+// transcript is found by the nonce its prompt carries (P46), or, when the prompt lost
+// it, by the reply the subagent handed back.
+
+// The one call that returns the reply. It is the transport, not a look at anything, so
+// exactly one per rep is not counted as tool use (owner, 2026-10-24); a second is.
+const HANDOFF_TOOL = 'SubagentHandback';
+
+/** Where the harness keeps this project's transcripts, unless --transcripts names it. */
+function transcriptRoots() {
+  if (opts.transcripts) return [resolve(opts.transcripts)];
+  const base = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'projects');
+  // The harness names a project's directory after its path. A session started in the
+  // main checkout keeps its transcripts there even when this runs from a worktree.
+  // Its worktrees' sessions get directories of their own, which it scans too.
+  const repo = REPO.split(`${join('/', '.claude', 'worktrees')}/`)[0];
+  const slug = repo.replace(/[^A-Za-z0-9]/g, '-');
+  const ours = (d) => d === slug || d.startsWith(`${slug}--claude-worktrees-`);
+  const dirs = existsSync(base) ? readdirSync(base).filter(ours) : [];
+  return dirs.length ? dirs.map((d) => join(base, d)) : [join(base, slug)];
+}
+
+/** Every agent-*.jsonl at most two directories below a root, modified at or after `since`. */
+function transcriptFiles(roots, since) {
+  const files = [];
+  const walk = (dir, depth) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory() && depth > 0) walk(p, depth - 1);
+      else if (e.isFile() && /^agent-.*\.jsonl$/.test(e.name) && statSync(p).mtimeMs >= since) files.push(p);
+    }
+  };
+  for (const r of roots) walk(r, 2);
+  return files;
+}
+
+/**
+ * The sent prompt, every tool called, and what each hand-off returned. Tool calls are
+ * read from `assistant` records only, once per call id: the harness also writes
+ * `api-request-blob` records that replay earlier turns, and counting those would count
+ * one call several times (seen in 133 of 350 transcripts on 2026-10-24).
+ */
+export function readTranscript(text) {
+  const recs = text
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((l) => {
+      try {
+        return [JSON.parse(l)];
+      } catch {
+        return [];
+      }
+    });
+  const first = recs.find((r) => r.parentUuid == null && typeof r.message?.content === 'string');
+  const seen = new Set();
+  const uses = recs
+    .filter((r) => r.type === 'assistant' && Array.isArray(r.message?.content))
+    .flatMap((r) => r.message.content.filter((c) => c?.type === 'tool_use'))
+    .filter((u) => !u.id || (!seen.has(u.id) && seen.add(u.id)));
+  return {
+    prompt: first ? first.message.content : null,
+    tools: uses.map((u) => u.name),
+    handoffs: uses.filter((u) => u.name === HANDOFF_TOOL).map((u) => u.input?.message),
+  };
+}
+
+/**
+ * The first line where the sent prompt and the prompt file differ, or null when they
+ * match. One trailing newline is not a difference: the harness drops it in transit.
+ */
+export function firstDiff(sent, file) {
+  const a = sent.replace(/\n$/, '').split('\n');
+  const b = file.replace(/\n$/, '').split('\n');
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (a[i] !== b[i]) return { line: i + 1, sent: a[i] ?? '<end of prompt>', file: b[i] ?? '<end of file>' };
+  }
+  return null;
+}
+
+/** The tools a rep used, less the one hand-off that carried its reply back. */
+export function toolsUsed(tools) {
+  const i = tools.indexOf(HANDOFF_TOOL);
+  return i < 0 ? tools : [...tools.slice(0, i), ...tools.slice(i + 1)];
+}
+
+const clip = (line) => JSON.stringify(line.length > 80 ? `${line.slice(0, 80)}…` : line);
+
+function checkTranscripts(dir) {
+  const root = resolve(dir);
+  const manifestPath = join(root, 'manifest.json');
+  if (!existsSync(manifestPath)) {
+    console.error(`evals: no manifest at ${manifestPath}. Run \`npm run eval\` first to emit a run.`);
+    return 2;
+  }
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  // A transcript older than the run cannot hold one of its reps, so the run's start
+  // bounds the search. Without it the search has no bound and would blame the location.
+  const since = Date.parse(manifest.createdAt);
+  if (Number.isNaN(since)) {
+    console.error(`evals: ${manifestPath} has no valid createdAt (${manifest.createdAt}), so no transcript can be tied to this run.`);
+    return 2;
+  }
+  const roots = transcriptRoots();
+  const looked = `looked in ${roots.join(', ')} for agent-*.jsonl written since ${manifest.createdAt}`;
+  const files = transcriptFiles(roots, since - 1000);
+  if (!files.length) {
+    console.error(`evals: no subagent transcripts found — ${looked}. Name the directory with --transcripts <dir>.`);
+    return 2;
+  }
+
+  // A saved reply, matched to a hand-off whatever whitespace the saving added or dropped.
+  const savedFor = (item) => {
+    const p = REPLY_EXTS.map((ext) => join(root, 'replies', item.key + ext)).find((x) => existsSync(x));
+    return p ? readFileSync(p, 'utf8').trimEnd() : null;
+  };
+  const saved = new Map(manifest.items.map((i) => [i.key, savedFor(i)]));
+  // Most transcripts in the directory belong to other work. Only one that names a nonce
+  // or a saved reply of this run (as its JSONL escapes it) is parsed.
+  const needles = [
+    ...manifest.items.map((i) => i.nonce).filter(Boolean),
+    ...[...saved.values()].filter(Boolean).map((r) => JSON.stringify(r).slice(1, -1).slice(0, 120)),
+  ];
+  const transcripts = files.flatMap((path) => {
+    const text = readFileSync(path, 'utf8');
+    return needles.some((n) => text.includes(n)) ? [{ path, ...readTranscript(text) }] : [];
+  });
+
+  const unfound = [];
+  const noPrompt = [];
+  let edited = 0;
+  let withTools = 0;
+  let ambiguous = 0;
+  for (const item of manifest.items) {
+    const reply = saved.get(item.key);
+    const byNonce = item.nonce ? transcripts.filter((t) => t.prompt?.includes(`"nonce": "${item.nonce}"`)) : [];
+    const byReply = reply === null ? [] : transcripts.filter((t) => t.handoffs.some((m) => m?.trimEnd() === reply));
+    // The saved reply settles which transcript answered when a rep was re-run.
+    const found = byReply.length ? byReply : byNonce;
+    if (found.length === 0) {
+      unfound.push(item.key);
+      console.log(`  ? ${item.key}  no transcript carries its nonce or its saved reply`);
+      continue;
+    }
+    if (found.length > 1) {
+      console.log(
+        `  ✖ ${item.key}  ${found.length} transcripts match and none is settled by a saved reply: ` +
+          found.map((t) => basename(t.path)).join(', '),
+      );
+      ambiguous++;
+      continue;
+    }
+    const [t] = found;
+    const problems = [];
+    const promptPath = join(root, 'prompts', `${item.key}.md`);
+    if (!existsSync(promptPath)) {
+      noPrompt.push(item.key);
+      console.log(`  ? ${item.key}  its prompt file is gone, so there is nothing to compare with`);
+      continue;
+    }
+    const want = readFileSync(promptPath, 'utf8');
+    const diff = t.prompt === null ? { line: 1, sent: '<no prompt record>', file: want.split('\n')[0] } : firstDiff(t.prompt, want);
+    if (diff) {
+      edited++;
+      problems.push(`prompt differs at line ${diff.line}: sent ${clip(diff.sent)}, file ${clip(diff.file)}`);
+    }
+    const tools = toolsUsed(t.tools);
+    if (tools.length) {
+      withTools++;
+      problems.push(`used tools: ${[...new Set(tools)].join(', ')} (${tools.length} call(s))`);
+    }
+    console.log(
+      problems.length
+        ? `  ✖ ${item.key}  ${problems.join('; ')}  (${basename(t.path)})`
+        : `  ✔ ${item.key}  prompt whole, no tools  (${basename(t.path)})`,
+    );
+  }
+
+  console.log(
+    `\ntranscripts: ${manifest.items.length} rep(s), ${edited} with a prompt that differs, ` +
+      `${withTools} that used tools, ${ambiguous} matched by several, ${unfound.length} not found. ` +
+      `One ${HANDOFF_TOOL} call per rep ` +
+      `carries its reply back and is not counted.`,
+  );
+  if (unfound.length) {
+    console.error(
+      `evals: ${unfound.length} rep(s) have no transcript, so they are not shown clean — ${looked}:\n  ` +
+        unfound.join('\n  '),
+    );
+  }
+  if (noPrompt.length) {
+    console.error(`evals: ${noPrompt.length} rep(s) have no prompt file in ${join(root, 'prompts')}:\n  ${noPrompt.join('\n  ')}`);
+  }
+  if (unfound.length || noPrompt.length) return 2;
+  return edited || withTools || ambiguous ? 1 : 0;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+if (opts.grade && opts.checkTranscripts) {
+  // Run as one, the first would return before the second ran, and a pass would hide it.
+  console.error('evals: --grade and --check-transcripts are two steps; run --check-transcripts first, then --grade.');
+  process.exit(2);
+}
 if (opts.grade) process.exit(gradeRun(opts.grade));
+if (opts.checkTranscripts) process.exit(checkTranscripts(opts.checkTranscripts));
 
 const selected = opts.filter ? CASES.filter((c) => c.id.includes(opts.filter)) : CASES;
 if (selected.length === 0) {
