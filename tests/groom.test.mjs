@@ -141,6 +141,15 @@ describe('about to block', () => {
     });
     assert.match(groups(dir).aboutToBlock[0]?.action ?? '', /Ask the owner to decide D-1/);
   });
+
+  test('it counts an entry in the recorded order, which the queue leaves out (P24)', () => {
+    const { dir } = repo({
+      backlog: [P('P1'), P('P2', { dependsOn: ['A-1'] })],
+      assumptions: [A('A-1')],
+      manualOrder: ['P2'],
+    });
+    assert.match(groups(dir).aboutToBlock[0]?.why.join() ?? '', /holds P2, in the recorded order/);
+  });
 });
 
 describe('stale and abandoned', () => {

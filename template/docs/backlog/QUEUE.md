@@ -1,3 +1,3 @@
 # Next up
 
-1. **P1** — the seed entry; replace it with your first real one.
+1. **P1** — Replace this seed with your first real entry. Unblocks no open entry.

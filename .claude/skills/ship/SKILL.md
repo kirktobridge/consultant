@@ -96,17 +96,16 @@ write a branch name into a git command.
    terminal flip, check the obligation against the **diff that actually landed** —
    scope-listed follow-ups whose premise the build voided get dropped with a one-line
    why, not copied forward.
-5. **Refresh the queue:** on any product status flip or intake, update
-   `docs/backlog/QUEUE.md`. When a flip makes a queued entry terminal, edit the queue
-   **before** the entry. The schema check runs after every edit, and the queue may
-   leave out an open entry but may not list a terminal one, so the other order goes
-   red between the two edits. Drop a now-terminal ID, promote the next
-   dependency-ready entry, ≤5, `N. **P#** — one-line why`. **Rank it yourself**, by the
-   rule in [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue): most
-   open entries unblocked through the `depends_on` graph first, ties in existing order.
-   Report the ranking to the user; don't ask them for it. The file
-   holds the queue and nothing else; notes about what's absent go nowhere. The schema
-   check fails CI if the queue dangles, lists a terminal ID, or carries any other line.
+5. **Refresh the queue:** on any product status flip or intake, run `npm run queue`,
+   and commit what it writes in the same commit as the flip. It rewrites
+   `docs/backlog/QUEUE.md` by the rule in
+   [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue) and names each
+   entry in the recorded order that it skipped, with what holds it. Never edit the
+   queue by hand. The schema check fails any queue that isn't what the generator
+   writes, so it stays red between the flip and the run. When a flip makes an entry
+   terminal, also take it off `docs/backlog/MANUAL-ORDER.md` if it is listed there.
+   Beyond that, the recorded order changes only on the user's word. Report the new
+   queue to the user.
 
 ## `shipped` is the user's flip
 

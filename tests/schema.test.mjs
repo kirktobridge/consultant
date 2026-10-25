@@ -206,7 +206,6 @@ describe('graduated assumption blocking — severity tracks proximity to the wor
         // and this isolates the block itself.
         backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(10), dependsOn: ['A-1'] })],
         assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(40), resolution: 'held.' })],
-        nextUp: ['P1'],
       }),
     );
   });
@@ -237,7 +236,6 @@ describe('graduated assumption blocking — severity tracks proximity to the wor
       project({
         backlog: [P('P1'), P('P2', { status: 'in-progress', drafted: daysAgo(5), dependsOn: ['A-1'] })],
         assumptions: [A('A-1', { status: 'refuted', resolved: daysAgo(30), resolution: 'wrong.' })],
-        nextUp: ['P1'],
       }),
     );
   });
@@ -288,7 +286,12 @@ describe('feature dependencies gate the queue and claims (P23)', () => {
   });
 
   test('PARKED: proposed, not queued, unshipped dependency → passes', () => {
-    passes(project({ backlog: [P('P1'), dep('P2')], nextUp: ['P1'] }));
+    // The generated queue takes every ready entry while it has room, so P9 is parked by
+    // a full queue: P1 unblocks it, and the ties ahead of it have lower IDs.
+    const backlog = [P('P1'), P('P3'), P('P4'), P('P5'), P('P6'), dep('P9')];
+    const dir = project({ backlog });
+    assert.doesNotMatch(readFileSync(join(dir, 'docs/backlog/QUEUE.md'), 'utf8'), /\*\*P9\*\*/);
+    passes(dir);
   });
 
   test('a shipped dependency is met, and the walk stops there', () => {
@@ -296,7 +299,6 @@ describe('feature dependencies gate the queue and claims (P23)', () => {
     passes(
       project({
         backlog: [P('P0'), P('P1', { status: 'shipped', dependsOn: ['P0'] }), P('P2', { status: 'in-progress', dependsOn: ['P1'] })],
-        nextUp: ['P2'],
       }),
     );
   });
@@ -365,7 +367,6 @@ describe('spike ↔ assumption pairing', () => {
       project({
         backlog: [P('P1'), P('P9', { resolves: 'A-1' })],
         assumptions: [A('A-1')],
-        nextUp: ['P1'],
       }),
     );
   });
@@ -430,7 +431,6 @@ describe('staleness', () => {
           P('P2', { drafted: daysAgo(10), dependsOn: ['P3'] }),
           P('P3', { status: 'shipped', shipped: daysAgo(60) }),
         ],
-        nextUp: ['P1'],
       }),
     );
   });
@@ -459,7 +459,7 @@ describe('staleness from ad-hoc merges (P34)', () => {
     }
     return { dir, g, sha: (n = 0) => execFileSync('git', ['log', '-1', '--merges', '--skip', String(n), '--format=%h', 'main'], { cwd: dir, encoding: 'utf8' }).trim() };
   }
-  const state = (drafted, over = {}) => ({ backlog: [P('P1', { drafted: daysAgo(0) }), P('P2', { drafted, ...over })], nextUp: ['P1'] });
+  const state = (drafted, over = {}) => ({ backlog: [P('P1', { drafted: daysAgo(0) }), P('P2', { drafted, ...over })] });
   // The flag is a notice, never a violation: the check stays green either way (so a
   // bare `passes` proves nothing here), and only the notice says whether it fired.
   const flags = (dir, needle) => {
@@ -489,7 +489,7 @@ describe('staleness from ad-hoc merges (P34)', () => {
 
   test('every related merge is flagged, and only the entries it names', () => {
     const { dir, sha } = adhocRepo(
-      { backlog: [P('P1', { drafted: daysAgo(10) }), P('P2', { drafted: daysAgo(10) })], nextUp: ['P1'] },
+      { backlog: [P('P1', { drafted: daysAgo(10) }), P('P2', { drafted: daysAgo(10) })] },
       [{ days: 5, relates: 'P2' }, { days: 3, relates: 'P9, P2' }],
     );
     const o = flags(dir, /backlog-schema: 2 notice\(s\):/);
@@ -1023,9 +1023,115 @@ describe('the queue file holds the queue and nothing else', () => {
   });
 
   test('an item may wrap onto indented lines', () => {
-    const dir = project();
-    patch(dir, 'docs/backlog/QUEUE.md', '— queued.', '— queued, for a reason\n   that runs onto a second line.');
+    const dir = project({ backlog: [P('P1', { title: 'a title long enough that the generated line runs onto a second, indented line' })] });
+    assert.match(readFileSync(join(dir, 'docs/backlog/QUEUE.md'), 'utf8'), /\n {3}\S/, 'the fixture must actually wrap');
     passes(dir);
+  });
+});
+
+// P24: the queue is what scripts/queue.mjs writes — the owner's recorded order first,
+// then the entries that unblock the most, ties in the order the file already holds.
+describe('the queue is generated from the dependency graph (P24)', () => {
+  const queueOf = (dir) => readFileSync(join(dir, 'docs/backlog/QUEUE.md'), 'utf8');
+  const order = (dir) => [...queueOf(dir).matchAll(/^\d+\. \*\*(P\d+)\*\*/gm)].map((m) => m[1]);
+  const generate = (dir) => {
+    const r = run('queue.mjs', [], { cwd: dir });
+    assert.equal(r.code, 0, out(r));
+    return r;
+  };
+  // P2 unblocks P3 and P4 (P4 through P3); P1 unblocks nothing.
+  const chain = () => [P('P1'), P('P2'), P('P3', { dependsOn: ['P2'] }), P('P4', { dependsOn: ['P3'] })];
+
+  test('entries that unblock more go first, and each why names what it unblocks', () => {
+    const dir = project({ backlog: chain() });
+    assert.deepEqual(order(dir), ['P2', 'P3', 'P1', 'P4']);
+    assert.match(queueOf(dir), /\*\*P2\*\* — P2 example\. Unblocks P3, P4\./);
+    assert.match(queueOf(dir), /\*\*P1\*\* — P1 example\. Unblocks no open entry\./);
+    passes(dir);
+  });
+
+  test('ready entries in the recorded order come first, in that order; an unready one stays out', () => {
+    const dir = project({
+      backlog: [...chain(), P('P5', { dependsOn: ['A-1'] })],
+      assumptions: [A('A-1')],
+      manualOrder: ['P5', 'P4', 'P1'],
+    });
+    // P4 waits on P3, which nothing above it has picked, and P5 on an open assumption:
+    // both stay out, even of the ranked slots below.
+    assert.deepEqual(order(dir), ['P1', 'P2', 'P3']);
+    assert.match(queueOf(dir), /\*\*P1\*\* — P1 example\. In your recorded order\./);
+    assert.doesNotMatch(queueOf(dir), /\*\*P2\*\* — [^\n]*recorded order/);
+    passes(dir);
+    const r = generate(dir);
+    assert.match(r.stdout, /skipped P5 from the recorded order: it waits on A-1 \(open\)/);
+    assert.match(r.stdout, /skipped P4 from the recorded order: it waits on P3 \(proposed\)/);
+  });
+
+  test('a recorded entry is ready once one above it in the recorded order is picked', () => {
+    // P3 waits on P2 at its turn, so it is skipped, and P4 then waits on P3.
+    const dir = project({ backlog: chain(), manualOrder: ['P3', 'P2', 'P4'] });
+    assert.deepEqual(order(dir), ['P2', 'P1']);
+    const later = project({ backlog: chain(), manualOrder: ['P2', 'P3', 'P4'] });
+    assert.deepEqual(order(later), ['P2', 'P3', 'P4', 'P1']);
+  });
+
+  test('tied entries keep their order from the current file; newcomers follow, lowest ID first', () => {
+    const dir = project({ backlog: [P('P1'), P('P2'), P('P3'), P('P4')], nextUp: ['P3', 'P1'] });
+    generate(dir);
+    assert.deepEqual(order(dir), ['P3', 'P1', 'P2', 'P4']);
+    passes(dir);
+  });
+
+  test('running the generator twice in a row changes nothing', () => {
+    const dir = project({ backlog: [...chain(), P('P6'), P('P7')], manualOrder: ['P7'], nextUp: ['P6', 'P1'] });
+    generate(dir);
+    const once = queueOf(dir);
+    generate(dir);
+    assert.equal(queueOf(dir), once);
+    passes(dir);
+  });
+
+  test('a hand reorder that breaks the ranking fails, naming both IDs', () => {
+    const o = fails(project({ backlog: chain(), nextUp: ['P1', 'P2', 'P3', 'P4'] }), /QUEUE\.md: item 1 is P1 \(unblocks 0\), but the generator puts P2 \(unblocks 2\) there/);
+    assert.match(o, /run `npm run queue`/);
+  });
+
+  test('leaving out a ready entry that outranks a queued one fails, naming both IDs', () => {
+    fails(project({ backlog: chain(), nextUp: ['P1'] }), /item 1 is P1 \(unblocks 0\), but the generator puts P2 \(unblocks 2\) there/);
+  });
+
+  test('a ranked entry put above the recorded order fails, naming both IDs', () => {
+    fails(project({ backlog: chain(), manualOrder: ['P1'], nextUp: ['P2', 'P1', 'P3', 'P4'] }), /item 1 is P2 \(unblocks 2\), but the generator puts P1 \(in your recorded order\) there/);
+  });
+
+  test('a hand queue that is dependency-ready in its own order still fails when the generator ranks others first', () => {
+    // P1–P5 each unblock two; P8 unblocks only P9, so the generator never picks P8.
+    // Queued as P8, P9 the file is ready on its own terms, and must not pass on that.
+    const backlog = [1, 2, 3, 4, 5].flatMap((k) => [P(`P${k}`), P(`P${10 + k}`, { dependsOn: [`P${k}`] }), P(`P${20 + k}`, { dependsOn: [`P${10 + k}`] })]);
+    fails(project({ backlog: [...backlog, P('P8'), P('P9', { dependsOn: ['P8'] })], nextUp: ['P8', 'P9'] }), /item 1 is P8 \(unblocks 1\), but the generator puts P1 \(unblocks 2\) there/);
+  });
+
+  test('a hand-written note on a queued item fails: the queue holds generated lines only', () => {
+    const dir = project({ backlog: chain() });
+    patch(dir, 'docs/backlog/QUEUE.md', 'Unblocks P3, P4.', 'Unblocks P3, P4. Do this first!');
+    fails(dir, /its text is not the generated text/);
+  });
+
+  test('the recorded order holds IDs of open entries, and nothing else', () => {
+    const dir = project({ backlog: [P('P1'), P('P2', { status: 'shipped', shipped: daysAgo(1) })], manualOrder: ['P1'] });
+    writeFileSync(join(dir, 'docs/backlog/MANUAL-ORDER.md'), '# Recorded order\n\n1. P1\n2. P2\n3. P9\nP1 matters most.\n');
+    const o = fails(dir, /MANUAL-ORDER\.md:6: not a recorded-order item/);
+    assert.match(o, /MANUAL-ORDER\.md: P2 is terminal \("shipped"\)/);
+    assert.match(o, /MANUAL-ORDER\.md: P9 has no entry/);
+    // The generator says so too: a malformed line drops out of the order, so it must be seen.
+    const r = run('queue.mjs', [], { cwd: dir });
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /MANUAL-ORDER\.md:6: not a recorded-order item .* — ignored/);
+  });
+
+  test('an ID listed twice in the recorded order fails', () => {
+    const dir = project({ backlog: [P('P1'), P('P2')], manualOrder: ['P2', 'P1', 'P2'] });
+    fails(dir, /MANUAL-ORDER\.md: P2 is listed more than once/);
   });
 });
 

@@ -176,6 +176,7 @@ aren't — they run whether or not anyone remembers them.
 | `npm run test:clean` | the suite passes in a clean export of itself, with none of this repo's entries | CI only (it doubles the suite's time) |
 | `npm run audit` | what the last session left dangling — claims that don't match git, unswept resolutions, uncommitted work | session start (SessionStart hook) |
 | `npm run groom` | the groom report's five groups (unblocked, newly void, about to block, stale, abandoned), each item with its action; `--for <A-n\|D-n>` sweeps one resolution's dependents, the same answer as the audit's | /triage groom; /ship after a resolution |
+| `npm run queue` | rewrites QUEUE.md from the dependency graph: ready entries in the owner's recorded order (MANUAL-ORDER.md) first, then those that unblock the most; names each recorded entry it skipped and what holds it. The schema check fails a queue it wouldn't write | /ship's queue refresh |
 | `npm run history` | each entry's commits and close reports, and unmerged branches | on demand |
 | `npm run status` | the product owner's view: waiting on you, in flight, ready, blocked and why — as text, or as one HTML page with `--html` | on demand |
 | `npm run eval` | whether the skills' **prose** causes the right decision | never automatically — see below |

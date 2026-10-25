@@ -15,6 +15,8 @@ import { spawnSync, execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { REGISTERS, EXPERIMENTS, parseEntry } from '../../scripts/entries.mjs';
+import { generateQueue, renderQueue } from '../../scripts/queue.mjs';
 
 // Git exports repo-locating variables to the hooks it runs — under `git commit -a`,
 // GIT_INDEX_FILE points at the outer repo's temporary index. The pre-commit hook runs
@@ -353,8 +355,10 @@ const RESEARCH_DOCS = {
 // disagreement between them would make an eval failure impossible to attribute.
 
 /**
- * Every file of a project's registers, as `{ relative path: content }`. `nextUp` is a
- * list of P ids; pass [] deliberately to test the empty-queue failure. The READMEs
+ * Every file of a project's registers, as `{ relative path: content }`. The queue is
+ * the generator's (P24) unless `nextUp` gives a list of P ids, written in that order
+ * with the generator's line for each; pass [] deliberately to test the empty-queue
+ * failure. `manualOrder` is the owner's recorded order, as P ids. The READMEs
  * carry the status vocab lines verbatim because the checker reads its vocabulary *from
  * them* — a fixture that omitted them would be testing a different contract than the
  * real docs have. The bugs, assumptions and decisions registers are only written when
@@ -362,13 +366,14 @@ const RESEARCH_DOCS = {
  * The research track is written when `research` is given, as `{ experiments, runs,
  * findings }` (any may be omitted).
  */
-export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false, assumptions = [], decisions = [], research = null, nextUp = ['P1'] } = {}) {
+export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false, assumptions = [], decisions = [], research = null, nextUp, manualOrder } = {}) {
   const files = {
     'docs/backlog/README.md':
       '# Product backlog\n\nStatus vocab: `proposed` / `in-progress` / `partial` / `shipped` / `deferred` / `abandoned`.\n\nPlan vocab: `yes` / `no`.\n',
-    'docs/backlog/QUEUE.md':
-      '# Next up\n\n' + nextUp.map((id, i) => `${i + 1}. **${id}** — queued.`).join('\n') + '\n',
   };
+  if (manualOrder) {
+    files['docs/backlog/MANUAL-ORDER.md'] = '# Recorded order\n\n' + manualOrder.map((id, i) => `${i + 1}. ${id}`).join('\n') + '\n';
+  }
   for (const e of backlog) files[`docs/backlog/${e.id}.md`] = renderP(e);
   if (bugs.length || bugsReadme) {
     files['docs/bugs/README.md'] =
@@ -390,6 +395,13 @@ export function renderFiles({ backlog = [P('P1')], bugs = [], bugsReadme = false
     for (const e of research.runs ?? []) files[`docs/research/runs/${e.id}.md`] = renderR(e);
     for (const e of research.findings ?? []) files[`docs/research/findings/${e.id}.md`] = renderF(e);
   }
+  // The queue last, from the entries just rendered, read back the way the checker reads them.
+  const entries = [...REGISTERS, EXPERIMENTS].flatMap((reg) => Object.entries(files)
+    .filter(([rel]) => /^[^/]+\.md$/.test(rel.slice(reg.dir.length + 1)) && rel.startsWith(`${reg.dir}/`))
+    .map(([, text]) => parseEntry(text, reg.keys))
+    .map((e) => ({ ...e, id: e.header.id ?? null, status: e.header.status ?? null })));
+  const gen = generateQueue(entries, { manualText: files['docs/backlog/MANUAL-ORDER.md'] ?? '' });
+  files['docs/backlog/QUEUE.md'] = nextUp ? renderQueue(nextUp.map((id) => ({ id, why: gen.whyOf(id) }))) : gen.text;
   return files;
 }
 

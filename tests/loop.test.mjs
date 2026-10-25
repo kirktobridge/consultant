@@ -20,7 +20,8 @@ import { P, A, project, schema, out, cleanupAll, daysAgo } from './helpers/fixtu
 after(cleanupAll);
 
 /** The whole project state, as data. A "transition" returns the next state. */
-const state = (over = {}) => ({ backlog: [], assumptions: [], nextUp: [], ...over });
+// A state without `nextUp` gets the generated queue (P24): what /ship's refresh writes.
+const state = (over = {}) => ({ backlog: [], assumptions: [], ...over });
 
 const legal = (s, why) => {
   const r = schema(project(s));
@@ -116,7 +117,6 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
       state({
         backlog: [other, feature({ drafted: daysAgo(0), dependsOn: ['A-1'] }), spike({ status: 'shipped' })],
         assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
-        nextUp: ['P1'],
       }),
       'spike and assumption must be able to close together',
     );
@@ -166,7 +166,6 @@ describe('the full loop: an idea blocked on an assumption, settled by a spike', 
           spike({ status: 'shipped' }),
         ],
         assumptions: [A('A-1', { status: 'verified', resolved: daysAgo(0), resolution: '40/min.' })],
-        nextUp: ['P1'],
       }),
       'the feature was unblocked in step 7 and may now be built',
     );
@@ -238,7 +237,6 @@ describe('the parallel-session invariant', () => {
     legal(
       state({
         backlog: [P('P1', { status: 'in-progress' }), P('P2', { status: 'in-progress' }), P('P4')],
-        nextUp: ['P4'],
       }),
       'one branch per session, but several sessions — the docs must permit concurrent claims',
     );

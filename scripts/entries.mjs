@@ -83,6 +83,9 @@ export const BACKLOG = {
   dir: 'docs/backlog',
   readme: 'docs/backlog/README.md',
   queue: 'docs/backlog/QUEUE.md',
+  // The product owner's recorded order (D-3): the queue generator puts its ready
+  // entries first (P24). Absent means no recorded order.
+  manualOrder: 'docs/backlog/MANUAL-ORDER.md',
   idPattern: /^P\d+$/,
   // The statuses a build may start or resume from: a feature mid-milestone sits
   // `partial` between claims.
@@ -276,7 +279,7 @@ export function dependencyMet(id, status) {
 }
 
 /** Files in a register directory that are not entries. */
-const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md']);
+const NOT_ENTRIES = new Set(['README.md', 'QUEUE.md', 'MANUAL-ORDER.md']);
 
 // ── One entry ────────────────────────────────────────────────────────────────
 
@@ -417,6 +420,23 @@ export function parseQueue(text) {
       return;
     }
     errors.push({ line: n + 1, msg: `not a queue item (expected "N. **P#** — why"): "${l}"` });
+  });
+  return { ids, errors };
+}
+
+/**
+ * The recorded order holds IDs only: `# ` headings, blank lines, and numbered items
+ * `N. P#`. Any other line is an error, for the same reason as the queue's: a sentence
+ * naming an ID can never be read as ordering it.
+ */
+export function parseManualOrder(text) {
+  const ids = [];
+  const errors = [];
+  text.split('\n').forEach((l, n) => {
+    if (l.trim() === '' || /^# /.test(l)) return;
+    const m = l.match(/^\d+\.\s+(\S+)\s*$/);
+    if (m && BACKLOG.idPattern.test(m[1])) { ids.push(m[1]); return; }
+    errors.push({ line: n + 1, msg: `not a recorded-order item (expected "N. P#", one ID and nothing else): "${l}"` });
   });
   return { ids, errors };
 }

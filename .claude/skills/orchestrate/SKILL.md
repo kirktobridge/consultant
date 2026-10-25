@@ -105,5 +105,6 @@ landed and awaiting acceptance, or stopped (and why).
 
 ## Not this skill
 - Building one entry → **/implement**.
-- Choosing what goes in the queue → **/ship** ranks it; this skill only reads it.
+- Choosing what goes in the queue → the generator, which **/ship** runs; this skill
+  only reads it.
 - Accepting on the owner's behalf → never. `shipped` is their word (see /ship).

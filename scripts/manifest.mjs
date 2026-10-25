@@ -64,6 +64,7 @@ export const INSTANCE = [
   'docs/BUILD_ORDER.md',
   'docs/LESSONS.md',
   'docs/backlog/QUEUE.md',
+  'docs/backlog/MANUAL-ORDER.md',
   // Entry files by ID, `#` not `*`: a register can hold a file that starts with its ID
   // letter (runs/NOTES.md, backlog/PLAN.md), and `*` would mark it instance.
   'docs/backlog/P#.md',
