@@ -834,9 +834,13 @@ if (opts.grade && opts.checkTranscripts) {
 if (opts.grade) process.exit(gradeRun(opts.grade));
 if (opts.checkTranscripts) process.exit(checkTranscripts(opts.checkTranscripts));
 
+// A bare --skill or --case would select every case, and each one costs a subagent.
 if (argv.includes('--skill') && !opts.skill) {
-  // A bare --skill would select every case, and each one costs a subagent.
   console.error('evals: --skill needs a skill name.');
+  process.exit(2);
+}
+if (argv.includes('--case') && !opts.filter) {
+  console.error('evals: --case needs a case id or part of one.');
   process.exit(2);
 }
 const selected = CASES.filter(
