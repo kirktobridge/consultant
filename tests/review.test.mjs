@@ -346,4 +346,10 @@ describe('evals/run.mjs --list --skill: the selection review.mjs counts (P48)', 
     assert.equal(r.status, 2);
     assert.match(r.stderr, /--skill needs a skill name/);
   });
+
+  test('a bare --case is refused, rather than selecting every case (B11)', () => {
+    const r = evalRun('--case', '--list');
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--case needs a case id/);
+  });
 });
