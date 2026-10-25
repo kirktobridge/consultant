@@ -13,6 +13,7 @@
     "check:commits": "node scripts/commit-ids.mjs --history",
     "audit": "node scripts/session-audit.mjs",
     "groom": "node scripts/groom.mjs",
+    "queue": "node scripts/queue.mjs",
     "history": "node scripts/history.mjs",
     "status": "node scripts/status.mjs",
     "eval": "node evals/run.mjs",

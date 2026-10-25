@@ -73,7 +73,7 @@ export function sweepAdvice({ id, status, kind, to }) {
       ? `Nothing was settled: ${id} was ${verb} ${to.join(', ')}. Re-point each dependent's \`depends_on:\` from ${id} to ${to.join(', ')} via /ship; the schema check fails an open entry that names a ${status} ID.`
       : `Nothing was settled, and ${id} records no \`${key}:\`, so there is nowhere to re-point its dependents yet. Record where it ${status === 'moved' ? 'moved' : 'went'} via /ship first.`;
   }
-  return 'These are now unblocked and nothing else will notice. Consider promoting one into the queue (docs/backlog/QUEUE.md) via /ship.';
+  return 'These are now unblocked and nothing else will notice. Have /ship run `npm run queue`: the queue is generated, and may now take one.';
 }
 
 /**

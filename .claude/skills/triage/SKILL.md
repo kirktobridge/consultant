@@ -259,10 +259,10 @@ is in each group. The steps below are what it cannot decide.
    entries that it holds back.
 7. **Propose. Never apply a change silently.**
    - Demotion and deletion are the user's decisions.
-   - Ranking is not the user's decision. The ranking rule of the queue
-     ([docs/backlog/README.md](../../../docs/backlog/README.md#the-queue)) decides it.
-     If a groom finds the queue in the wrong order, say so, and give the correction to
-     /ship.
+   - Ranking is not the user's decision. The queue is generated
+     ([docs/backlog/README.md](../../../docs/backlog/README.md#the-queue)); if a groom
+     finds it out of date, ask /ship to run `npm run queue`. Only the user's own
+     recorded order is theirs to change.
    - For all other changes, say what you would change and why. Let the user decide.
    - Name each priority that events made out of date. That is usually why the user
      asked for a groom.
@@ -311,7 +311,7 @@ stays parked."
 
 ## Not this skill
 - To write the entry → **/ship** (Intake). To write an experiment → **/research**.
-- To decide *when* to build it → /ship ranks the queue with the rule in
-  [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue).
+- To decide *when* to build it → the queue generator, which /ship runs, by the rule
+  in [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue).
 - To settle an assumption → the person who meets the block. If the work needs a build,
   it is a spike P#. A spike goes through **/implement** like all other entries.

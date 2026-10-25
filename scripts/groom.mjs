@@ -8,7 +8,8 @@
 //   unblocked      an open entry whose dependencies are all met now, at least one of
 //                  them since it was drafted — or the dependents of a resolution
 //   newly void     the dependents of a refuted assumption, shipped ones included
-//   about to block an open assumption or decision holding back a queued entry
+//   about to block an open assumption or decision holding back a queued entry, or one
+//                  in the owner's recorded order
 //   stale          an open entry drafted before a dependency or an ad-hoc merge
 //                  touching it landed, or still naming a moved or superseded ID
 //   abandoned      an `in-progress` entry no branch names
@@ -18,8 +19,8 @@
 // rule is the schema check's own (sweep.mjs too). It reads this checkout's docs, as the
 // audit's section 4 does, and the trunk's branches and ad-hoc merges. Read-only.
 //
-// "About to block" reads the queue only. The owner's recorded order (D-3) joins it once
-// P24 gives that order a file.
+// "About to block" reads the queue and the owner's recorded order (D-3, P24): an entry
+// the owner has ordered is as near to being built as a queued one.
 //
 // Exit: 0 nothing to groom | 1 items to act on | 2 could not groom (not a repo, &c.)
 //
@@ -29,7 +30,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, loadRegister, idsOf, parseQueue, dependencyMet, buildableRegister } from './entries.mjs';
+import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, loadRegister, idsOf, parseQueue, parseManualOrder, dependencyMet, buildableRegister } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { DONE, settledDependents, sweepAdvice, staleFlags, readAdhocMerges, branchNames, heldBy } from './sweep.mjs';
 
@@ -128,7 +129,7 @@ for (const { e, why } of cleared) {
   if (held.length) put('stale', e, `${why}; still waits on ${held.join(', ')}`, `Presumptively stale: ${reread(e)}, or rescope it via /ship, before building.`);
   else put('unblocked', e, why, BUGS.idPattern.test(e.id)
     ? `${reread(e)}; a ready bug is picked up before the queue.`
-    : `${reread(e)}, and consider it for the queue via /ship.`);
+    : `${reread(e)}; /ship's \`npm run queue\` ranks it.`);
 }
 
 // Stale: a dead ID to re-point, or a change that landed since the entry was drafted.
@@ -147,13 +148,18 @@ for (const f of flags.filter((x) => x.merge)) {
     `Presumptively stale: ${reread(e)}, or rescope it via /ship, before building.`);
 }
 
-// About to block: an open assumption or decision holding back anything queued.
-const queueText = existsSync(join(ROOT, BACKLOG.queue)) ? readFileSync(join(ROOT, BACKLOG.queue), 'utf8') : '';
-const queued = parseQueue(queueText).ids;
+// About to block: an open assumption or decision holding back anything queued or ordered.
+const readOr = (rel) => (existsSync(join(ROOT, rel)) ? readFileSync(join(ROOT, rel), 'utf8') : '');
+const queued = parseQueue(readOr(BACKLOG.queue)).ids;
+const ordered = parseManualOrder(readOr(BACKLOG.manualOrder)).ids.filter((id) => !queued.includes(id));
 for (const x of settleable.filter((s) => s.status === 'open')) {
-  const held = [...heldBy(x.id, pool)].filter((id) => queued.includes(id));
-  if (!held.length) continue;
-  put('aboutToBlock', x, `holds queued ${held.join(', ')}`, ASSUMPTIONS.idPattern.test(x.id)
+  const held = [...heldBy(x.id, pool)];
+  const holds = [
+    [held.filter((id) => queued.includes(id)), (ids) => `holds queued ${ids}`],
+    [held.filter((id) => ordered.includes(id)), (ids) => `holds ${ids}, in the recorded order`],
+  ].filter(([ids]) => ids.length).map(([ids, say]) => say(ids.join(', ')));
+  if (!holds.length) continue;
+  put('aboutToBlock', x, holds.join('; '), ASSUMPTIONS.idPattern.test(x.id)
     ? `Take the spike decision (/triage): settle ${x.id} now if it is cheap, build its spike, or rescope what it holds.`
     : `Ask the owner to decide ${x.id}; /ship records it.`);
 }

@@ -50,8 +50,9 @@ import { join } from 'node:path';
 import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
-  loadRegister, parseQueue, idsOf, newHomeOf, dependencyGraph, criteriaOf, percentOf, countOf,
+  loadRegister, parseQueue, parseManualOrder, idsOf, newHomeOf, dependencyGraph, criteriaOf, percentOf, countOf,
 } from './entries.mjs';
+import { generateQueue, queueMismatch } from './queue.mjs';
 import { minDetectable } from './stats.mjs';
 import { trunkOrRemote } from './trunk.mjs';
 import { staleFlags, readAdhocMerges } from './sweep.mjs';
@@ -834,6 +835,33 @@ if (queueReg && readIf(queueReg.queue) !== null) {
     if (!e) { fail(`${queueReg.queue}: Next-up ID ${id} has no entry`); continue; }
     if (isTerminal(e)) fail(`${queueReg.queue}: Next-up ${id} is terminal ("${e.status}") — refresh the queue`);
   }
+}
+
+// — the recorded order names live entries, and the queue is what the generator writes —
+//
+// The owner's recorded order (D-3) is IDs only, each an open backlog entry: a shipped
+// one has done its work there and comes off in the flip's commit. The queue itself is
+// generated (P24), so any difference from the generator's output is a hand edit: a
+// reorder that breaks the ranking, an entry left out, a note. Two tied entries swapped
+// by hand pass, because the tie-break reads this same file (owner's reading, 2026-10-24).
+if (queueReg && readIf(queueReg.queue) !== null) {
+  const manualText = readIf(queueReg.manualOrder) ?? '';
+  const m = parseManualOrder(manualText);
+  for (const e of m.errors) fail(`${queueReg.manualOrder}:${e.line}: ${e.msg}`);
+  for (const id of new Set(m.ids.filter((x, i) => m.ids.indexOf(x) !== i))) {
+    fail(`${queueReg.manualOrder}: ${id} is listed more than once — the recorded order names each entry once`);
+  }
+  for (const id of new Set(m.ids)) {
+    const e = byId.get(id);
+    if (!e) fail(`${queueReg.manualOrder}: ${id} has no entry`);
+    else if (isTerminal(e)) fail(`${queueReg.manualOrder}: ${id} is terminal ("${e.status}") — take it off the recorded order`);
+  }
+  const gen = generateQueue(loaded.flatMap((l) => l.entries), { queueText: readIf(queueReg.queue), manualText });
+  const why = queueMismatch(readIf(queueReg.queue), gen);
+  // A queued entry that isn't ready, read in the file's own order, already failed above
+  // with its own fix; the generator's difference would only restate it. The run is red
+  // either way.
+  if (why && gen.readyInOrder(queueIds)) fail(`${queueReg.queue}: ${why} — the queue is generated (P24): run \`npm run queue\``);
 }
 
 // — feature dependencies gate the queue and claims, read from one graph —

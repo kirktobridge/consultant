@@ -1,11 +1,12 @@
 # Next up
 
-1. **P24** — the queue is generated from the dependency graph, with the recorded order
-   (MANUAL-ORDER.md) first. Recorded order (D-3); unblocks P55.
-2. **P39** — a one-sided conflict resolution stops with the builder's case for it.
-   Recorded order (D-3); D-4 decided.
-3. **P37** — next.mjs judges readiness one way, in both modes. Recorded order (D-3).
-4. **P52** — a build the owner hands back can be resumed through the claim gate.
-   Unblocks P54; the recorded order (D-3) ends at P37.
-5. **P56** — close-report --check checks a bug's report too. Unblocks P60; ties with
-   P52, which keeps its place.
+1. **P24** — The queue is generated from the dependency graph, not ranked by hand. In
+   your recorded order. Unblocks P55.
+2. **P55** — ship.mjs writes the tracked docs as one transaction per change. In your
+   recorded order. Unblocks no open entry.
+3. **P39** — A one-sided conflict resolution stops with the builder's case for it. In
+   your recorded order. Unblocks no open entry.
+4. **P37** — next.mjs judges readiness one way, in both modes. In your recorded order.
+   Unblocks no open entry.
+5. **P52** — A build the owner hands back can be resumed through the claim gate.
+   Unblocks P54.
