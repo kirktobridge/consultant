@@ -119,6 +119,14 @@ describe('the land lock: one landing or claim at a time (P15 R2)', () => {
     assert.equal(JSON.parse(readFileSync(lockFile(main), 'utf8')).owner, 'claim:P2');
   });
 
+  test('a ship: owner names no branch, so it is never judged stale by one (P55 R1)', () => {
+    const { main } = repo([]);
+    assert.equal(land(main, 'lock', 'take', 'ship:P1').code, 0);
+    const r = land(main, 'lock', 'take', 'claim:P2', '--wait', '0');
+    assert.equal(r.code, 1, out(r));
+    assert.equal(JSON.parse(readFileSync(lockFile(main), 'utf8')).owner, 'ship:P1');
+  });
+
   test('a lock whose owner branch is already merged is stale, and is cleared', () => {
     const { main, sh } = repo([]);
     sh('git branch feat/p9-done');
