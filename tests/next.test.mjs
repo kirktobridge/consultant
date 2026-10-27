@@ -645,3 +645,31 @@ describe('a rejection resets the landing; direct commits and remote builds read 
     assert.match(reason(r.dir), BUILDING);
   });
 });
+
+// P60: a bug /land marked fixed can be reopened; next.mjs names claimed bugs with their state.
+describe('next.mjs names each claimed bug with its state (P60)', () => {
+  const claimedLine = (dir, ...args) => (next(dir, ...args).stdout.match(/^ {2}claimed: B1 \(bug\) — (.*)$/m) || [])[1] ?? null;
+
+  test('landed and awaiting, then marked fixed, then reopened and being built again', () => {
+    const r = repo({ backlog: [P('P1')], nextUp: ['P1'], bugs: [B('B1', { status: 'in-progress' })] });
+    r.checkout('feat/b1-fix', true);
+    writeFileSync(join(r.dir, 'x.txt'), 'fix');
+    r.commitAll('fix: x (B1)');
+    r.checkout('main');
+    r.merge('feat/b1-fix');
+    for (const args of [[], ['--count', '2']]) assert.match(claimedLine(r.dir, ...args) ?? '', /^landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance$/);
+
+    const f = join(r.dir, 'docs/bugs/B1.md');
+    writeFileSync(f, readFileSync(f, 'utf8').replace('status: in-progress', 'status: fixed'));
+    r.commitAll('docs: B1 fixed by /land under D-7 (B1)');
+    r.sh('git branch -D feat/b1-fix');
+    assert.equal(claimedLine(r.dir), null, 'a fixed bug is not claimed');
+
+    // What /ship does on a reopen: back to in-progress, the date appended to rejected:.
+    writeFileSync(f, `${readFileSync(f, 'utf8').replace('status: fixed', 'status: in-progress\nrejected: 2026-10-27')}\nReopened: still breaks.\n`);
+    r.commitAll('docs: B1 reopened (B1)');
+    for (const args of [[], ['--count', '2']]) assert.match(claimedLine(r.dir, ...args) ?? '', /another session is building it/);
+    const j = JSON.parse(next(r.dir, '--json').stdout);
+    assert.deepEqual(j.claimedBugs, [{ id: 'B1', why: 'claimed (in-progress): another session is building it' }]);
+  });
+});
