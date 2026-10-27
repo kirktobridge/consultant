@@ -579,7 +579,7 @@ describe('the skills land through land.mjs (P15 R2)', () => {
       at('**ExitWorktree** (`keep`'), at('then run\n     **/land**'),
     ];
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'steps out of order');
-    assert.match(t, /lock take claim:<ID>/, 'the claim commit must take the lock too');
+    assert.match(t, /node scripts\/ship\.mjs claim <ID>/, 'the claim commit goes through ship.mjs, which takes the lock');
   });
 
   test('/implement tells a subagent how to work in its worktree without the worktree tools (A-12)', () => {

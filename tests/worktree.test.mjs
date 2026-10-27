@@ -457,7 +457,7 @@ describe('the repo is set up for the worktrees /implement makes (P15 R1)', () =>
 
   test('/implement starts the worktree after the claim, not before', () => {
     const t = readFileSync(join(REPO, '.claude', 'skills', 'implement', 'SKILL.md'), 'utf8');
-    const claim = t.indexOf('in-progress` **via /ship, committed on main before branching**');
+    const claim = t.indexOf('node scripts/ship.mjs claim <ID>');
     const wt = t.indexOf('node scripts/worktree.mjs start');
     assert.ok(claim > 0 && wt > claim, 'the worktree step must follow the claim step');
   });
