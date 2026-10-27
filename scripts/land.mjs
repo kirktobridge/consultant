@@ -102,7 +102,8 @@ const readLock = () => { try { return JSON.parse(readFileSync(LOCK, 'utf8')); } 
  *     one, and only a person can tell → ambiguous.
  */
 function judge(l) {
-  if (!l.owner.startsWith('claim:')) {
+  // A `claim:` or `ship:` owner is a write on main, not a branch: only its age can say.
+  if (!/^(claim|ship):/.test(l.owner)) {
     if (!branches.includes(l.owner)) return 'stale';
     if (ok('merge-base', '--is-ancestor', l.owner, BASE) && !worktreeOf(l.owner)) return 'stale';
   }

@@ -5,7 +5,7 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { P, B, A, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles } from './helpers/fixture.mjs';
 
@@ -208,5 +208,183 @@ describe('ship.mjs claim refuses, names why, and leaves the tree as it was', () 
     const r = ship(repo().dir, 'claim', '--json');
     assert.equal(r.code, 2);
     assert.equal(JSON.parse(r.stdout).action, 'error');
+  });
+});
+
+// ── Terminal flips (P55 R1) ──────────────────────────────────────────────────
+
+const today = new Date().toISOString().slice(0, 10);
+const headerOf = (dir, rel, key) => new RegExp(`^${key}: (.*)$`, 'm').exec(readFileSync(join(dir, rel), 'utf8'))?.[1] ?? null;
+const filesOf = (dir) => sh(dir, 'git show --name-only --format= HEAD').split('\n').sort();
+const noLock = (dir) => assert.ok(!existsSync(lockFile(dir)), 'the lock is released');
+const refusedFlip = (dir, r, why) => {
+  assert.equal(r.code, 1, out(r));
+  assert.match(r.stderr, why);
+  assert.equal(sh(dir, 'git status --porcelain'), '', 'the tree is as it was');
+  noLock(dir);
+};
+/** Merge `branch` (one empty commit saying `message`) into main as land.mjs does; the merge's short sha. */
+const mergeBranch = (dir, branch, message) => {
+  sh(dir, `git checkout -q -b ${branch}`);
+  execSync('git commit -q --allow-empty -F -', { cwd: dir, input: message });
+  sh(dir, 'git checkout -q main');
+  sh(dir, `git merge -q --no-ff -m "Merge branch '${branch}'" ${branch}`);
+  return sh(dir, 'git rev-parse --short HEAD');
+};
+
+describe('ship.mjs shipped: the owner accepts a feature in one commit (P55 R1)', () => {
+  test('the entry, the recorded order and the queue land together, green', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2'), P('P3')], manualOrder: ['P3', 'P1', 'P2'] });
+    const before = commits(dir);
+    const r = ship(dir, 'shipped', 'P1', '--owner', 'all criteria observed', '--trailer', 'Co-Authored-By: X <x@example.com>');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(commits(dir), before + 1);
+    assert.equal(statusOf(dir, 'docs/backlog/P1.md'), 'shipped');
+    assert.equal(headerOf(dir, 'docs/backlog/P1.md', 'shipped'), today);
+    assert.match(readFileSync(join(dir, 'docs/backlog/P1.md'), 'utf8'), new RegExp(`## Notes\\n\\nShipped ${today} on the owner's word: all criteria observed\\n$`));
+    assert.equal(readFileSync(join(dir, 'docs/backlog/MANUAL-ORDER.md'), 'utf8'), '# Recorded order\n\n1. P3\n2. P2\n');
+    assert.deepEqual(filesOf(dir), ['docs/backlog/MANUAL-ORDER.md', 'docs/backlog/P1.md', 'docs/backlog/QUEUE.md']);
+    assert.equal(sh(dir, 'git log -1 --format=%s'), 'docs: P1 shipped (P1)');
+    assert.match(sh(dir, 'git log -1 --format=%B'), /Co-Authored-By: X <x@example.com>$/);
+    assert.equal(run('backlog-schema-check.mjs', ['--all'], { cwd: dir }).code, 0);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+    noLock(dir);
+  });
+
+  test('the note names the merge that landed the branch', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')] });
+    const sha = mergeBranch(dir, 'feat/p1-x', 'feat: x (P1)');
+    assert.equal(ship(dir, 'shipped', 'P1', '--owner', 'ok').code, 0);
+    assert.match(readFileSync(join(dir, 'docs/backlog/P1.md'), 'utf8'), new RegExp(`Shipped ${today} on the owner's word \\(merge ${sha}\\): ok`));
+  });
+
+  test('without the owner\'s flag it is refused before anything is touched', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    refusedFlip(dir, ship(dir, 'shipped', 'P1'), /P1 is not shipped without the owner's word/);
+    assert.equal(statusOf(dir, 'docs/backlog/P1.md'), 'in-progress');
+  });
+
+  test('an entry not awaiting acceptance is refused', () => {
+    const { dir } = repo({ backlog: [P('P1')] });
+    refusedFlip(dir, ship(dir, 'shipped', 'P1', '--owner', 'ok'), /P1 is `proposed` on main, not `in-progress`/);
+  });
+
+  test('a dependent left presumptively stale turns the check red: every file is put back', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] })], manualOrder: ['P1', 'P2'] });
+    const manual = readFileSync(join(dir, 'docs/backlog/MANUAL-ORDER.md'), 'utf8');
+    const r = ship(dir, 'shipped', 'P1', '--owner', 'ok');
+    refusedFlip(dir, r, /schema check is red with P1 shipped, so nothing was committed[\s\S]*P2 .*depends on P1, which landed .*presumptively stale/);
+    assert.equal(statusOf(dir, 'docs/backlog/P1.md'), 'in-progress');
+    assert.equal(readFileSync(join(dir, 'docs/backlog/MANUAL-ORDER.md'), 'utf8'), manual);
+  });
+});
+
+describe('ship.mjs fixed: on the owner\'s word, or when the report clears it (P55 R1, D-7)', () => {
+  const REPRO = '1. Run `tool --case --list`.\n2. It lists all 31 cases.';
+  const EXPECTED = 'It refuses with usage, as a bare `--skill` does.';
+  const report = (verdict = 'NOT OBSERVED') => `fix: x (B1)\n\nRepro, re-run:\n${REPRO.split('\n').map((l) => `  ${l}`).join('\n')}\n  ${verdict} to still break. It exits 2 now.\n\nExpected:\n  ${EXPECTED}\n  OBSERVED. Same usage message.\n`;
+  /** B1 in progress, its branch merged as /land merges it, and the landing record still there. */
+  const landed = (message) => {
+    const { dir } = repo({ bugs: [B('B1', { status: 'in-progress', repro: REPRO, expected: EXPECTED })] });
+    const sha = mergeBranch(dir, 'feat/b1-x', message);
+    mkdirSync(join(dir, '.git', 'loop-land'), { recursive: true });
+    writeFileSync(join(dir, '.git', 'loop-land', 'feat__b1-x.json'), JSON.stringify({ branch: 'feat/b1-x', conflicts: [], pending: null }));
+    return { dir, sha };
+  };
+
+  test('--clears with a report that clears it writes D-7\'s note', () => {
+    const { dir, sha } = landed(report());
+    const r = ship(dir, 'fixed', 'B1', '--clears');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(statusOf(dir, 'docs/bugs/B1.md'), 'fixed');
+    assert.match(readFileSync(join(dir, 'docs/bugs/B1.md'), 'utf8'),
+      new RegExp(`Fixed ${today} by /land under D-7: the report clears it \\(Repro not observed to still break, Expected observed\\); merge ${sha}\\.`));
+    assert.equal(sh(dir, 'git log -1 --format=%s'), 'docs: B1 fixed (B1)');
+    noLock(dir);
+  });
+
+  test('inside a landing, under the branch\'s own lock, it writes without taking the lock again', () => {
+    const { dir } = landed(report());
+    assert.equal(land(dir, 'lock', 'take', 'feat/b1-x').code, 0);
+    const r = ship(dir, 'fixed', 'B1', '--clears', '--wait', '0');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(statusOf(dir, 'docs/bugs/B1.md'), 'fixed');
+    assert.equal(JSON.parse(readFileSync(lockFile(dir), 'utf8')).owner, 'feat/b1-x', 'the landing still holds its lock');
+  });
+
+  test('--clears with a report that does not clear it is refused, naming why', () => {
+    const { dir } = landed(report('OBSERVED'));
+    refusedFlip(dir, ship(dir, 'fixed', 'B1', '--clears'), /B1's report does not clear it, so it stays `in-progress`/);
+    assert.equal(statusOf(dir, 'docs/bugs/B1.md'), 'in-progress');
+  });
+
+  test('on the owner\'s word', () => {
+    const { dir } = repo({ bugs: [B('B1', { status: 'in-progress' })] });
+    const r = ship(dir, 'fixed', 'B1', '--owner', 'checked by hand');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(statusOf(dir, 'docs/bugs/B1.md'), 'fixed');
+    assert.match(readFileSync(join(dir, 'docs/bugs/B1.md'), 'utf8'), new RegExp(`Fixed ${today} on the owner's word: checked by hand`));
+  });
+
+  test('with neither flag it is refused', () => {
+    const { dir } = repo({ bugs: [B('B1', { status: 'in-progress' })] });
+    refusedFlip(dir, ship(dir, 'fixed', 'B1'), /this call gave neither/);
+  });
+
+  test('the wrong word for the register, or both flags, cannot run', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })], bugs: [B('B1', { status: 'in-progress' })] });
+    assert.equal(ship(dir, 'fixed', 'P1', '--owner', 'x').code, 2);
+    assert.equal(ship(dir, 'shipped', 'B1', '--owner', 'x').code, 2);
+    assert.equal(ship(dir, 'fixed', 'B1', '--owner', 'x', '--clears').code, 2);
+    assert.equal(ship(dir, 'shipped', 'P1', 'R1', '--owner', 'x').code, 2);
+    assert.equal(ship(dir, 'shipped', 'P1', '--owner').code, 2);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+  });
+});
+
+describe('ship.mjs reject: the owner rejects a landing (P55 R1)', () => {
+  test('it stays in progress; each rejection appends today, even twice in a day', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    assert.equal(ship(dir, 'reject', 'P1', '--owner', 'the chime is too loud').code, 0);
+    assert.equal(statusOf(dir, 'docs/backlog/P1.md'), 'in-progress');
+    assert.equal(headerOf(dir, 'docs/backlog/P1.md', 'rejected'), today);
+    assert.equal(sh(dir, 'git log -1 --format=%s'), 'docs: P1 rejected (P1)');
+    const r = ship(dir, 'reject', 'P1', '--owner', 'still too loud');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(headerOf(dir, 'docs/backlog/P1.md', 'rejected'), `${today}, ${today}`);
+    const text = readFileSync(join(dir, 'docs/backlog/P1.md'), 'utf8');
+    assert.match(text, new RegExp(`Rejected ${today} on the owner's word: the chime is too loud\\n\\nRejected ${today} on the owner's word: still too loud\\n$`));
+    noLock(dir);
+  });
+
+  test('a bug /land marked fixed is reopened', () => {
+    const { dir } = repo({ bugs: [B('B1', { status: 'fixed' })] });
+    const r = ship(dir, 'reject', 'B1', '--owner', 'it still lists every case');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(statusOf(dir, 'docs/bugs/B1.md'), 'in-progress');
+    assert.equal(headerOf(dir, 'docs/bugs/B1.md', 'rejected'), today);
+    assert.equal(sh(dir, 'git log -1 --format=%s'), 'docs: B1 reopened (B1)');
+  });
+
+  test('a queue file this run creates is committed with the entry', () => {
+    const { dir, commitAll } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')] });
+    sh(dir, 'git rm -q docs/backlog/QUEUE.md');
+    commitAll('no queue yet');
+    const r = ship(dir, 'reject', 'P1', '--owner', 'x');
+    assert.equal(r.code, 0, out(r));
+    assert.deepEqual(filesOf(dir), ['docs/backlog/P1.md', 'docs/backlog/QUEUE.md']);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+  });
+
+  test('a note with a line break cannot run: it could forge a section', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
+    assert.equal(ship(dir, 'reject', 'P1', '--owner', 'ok\n## Accept').code, 2);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+  });
+
+  test('without the owner\'s words, or on an entry not landed, it is refused', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')] });
+    refusedFlip(dir, ship(dir, 'reject', 'P1'), /a rejection is the owner's verdict/);
+    refusedFlip(dir, ship(dir, 'reject', 'P2', '--owner', 'x'), /P2 is `proposed` on main: only a landing awaiting acceptance/);
   });
 });
