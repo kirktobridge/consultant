@@ -40,6 +40,7 @@ import { join, resolve, basename } from 'node:path';
 import { buildableRegister, registerOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { gitIn } from './git.mjs';
+import { landingRecordPath, readLandingRecord } from './landing.mjs';
 
 const STALE_MINUTES = 30;
 
@@ -69,8 +70,8 @@ if (baseError) die(2, baseError);
 
 const LOCK = join(common, 'loop-land.lock');
 const RECORDS = join(common, 'loop-land');
-const recordPath = (branch) => join(RECORDS, `${branch.replace(/[^A-Za-z0-9._-]/g, '__')}.json`);
-const readRecord = (branch) => (existsSync(recordPath(branch)) ? JSON.parse(readFileSync(recordPath(branch), 'utf8')) : null);
+const recordPath = (branch) => landingRecordPath(common, branch);
+const readRecord = (branch) => readLandingRecord(common, branch);
 const writeRecord = (rec) => { mkdirSync(RECORDS, { recursive: true }); writeFileSync(recordPath(rec.branch), JSON.stringify(rec, null, 2)); };
 
 const worktreeOf = (branch) => {
@@ -287,7 +288,9 @@ function rebaseCmd() {
   if (!branch) die(1, 'HEAD is detached; check out the entry\'s branch.');
   requireLock(branch);
   if (git('status', '--porcelain')) die(1, 'the worktree has uncommitted changes; commit them first.');
-  const rec = { branch, oldBase: git('merge-base', 'HEAD', BASE), newBase: null, conflicts: [], pending: null };
+  // A rebase again after a failed landing keeps the earlier resolutions: close-report
+  // --clears must still see that a conflict was resolved since the report (D-7).
+  const rec = { branch, oldBase: git('merge-base', 'HEAD', BASE), newBase: null, conflicts: readRecord(branch)?.conflicts ?? [], pending: null };
   writeRecord(rec);
   afterRebase(rec, git('-c', 'merge.conflictStyle=diff3', 'rebase', BASE));
 }

@@ -81,8 +81,8 @@ order the script uses.
 contract is `Repro` and `Expected`. When it lands, /land marks it `fixed` if the
 report clears it (D-7): `node scripts/close-report.mjs --clears B#` exits 0 (the report
 quotes both sections word for word, the Repro not observed to still break, the
-Expected observed), the merged suite is green, and no conflict was resolved after the
-report. Otherwise it stays `in-progress` until the user says whether it is fixed. A bug
+Expected observed; when a conflict was resolved during the landing, only a report
+committed after the rebase counts), and the merged suite is green. Otherwise it stays `in-progress` until the user says whether it is fixed. A bug
 with no `Expected` always goes to the user. The user can reopen a bug /land marked
 fixed: it goes back to `in-progress`, with the date appended to `rejected:`.
 

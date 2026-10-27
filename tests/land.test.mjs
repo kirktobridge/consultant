@@ -229,6 +229,9 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
     assert.deepEqual(rep.conflicts[0].branch, ['five, by this branch']);
     // Where the rebase left the branch, so close-report --clears can see a report made after it.
     assert.equal(rep.rebasedTip, git1(r.main, 'rev-parse feat/p1-one'));
+    // Rebasing again (a landing retried) keeps the resolution: --clears still has to see it.
+    assert.equal(land(r.wts['p1-one'], 'rebase').code, 0);
+    assert.equal(JSON.parse(land(r.main, 'report', 'feat/p1-one', '--json').stdout).conflicts.length, 1);
   });
 
   test('a resolution identical to the main side is flagged (exit 4) and the rebase is left for the user', () => {

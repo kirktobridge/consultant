@@ -44,8 +44,9 @@
 // --clears B# decides D-7's question for /land and /ship: does the report clear the bug,
 // so /land may mark it `fixed` without asking the owner (P60)? Only when --check would
 // be quiet, the Repro is *not observed* to still break, and the Expected is *observed*
-// (clearsBug), and, when land.mjs's landing record shows a conflict resolved, a report
-// was committed after the rebase. A feature is refused: its `shipped` is the owner's verdict.
+// (clearsBug), and, when land.mjs's landing record shows a conflict resolved, the report
+// that says so was committed after the rebase. With no readable landing record, nothing
+// clears. A feature is refused: its `shipped` is the owner's verdict.
 //
 // Exit: 0 the skeleton is on stdout, --check found nothing to warn about, or --clears
 // clears | 1 --check warns (each criterion or section named), or --clears does not clear
@@ -57,12 +58,12 @@
 //        node scripts/close-report.mjs --check <P#|B#> [--branch <branch>] [--base <branch>]
 //        node scripts/close-report.mjs --clears <B#> [--branch <branch>] [--base <branch>]
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolve, join, dirname } from 'node:path';
+import { resolve } from 'node:path';
 import { BUGS, buildableRegister, parseEntry, criteriaOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
-import { entryOfBranch } from './landing.mjs';
+import { entryOfBranch, readLandingRecord } from './landing.mjs';
 
 /** A section's text as written, minus the blank lines around it; null when it says nothing. */
 const textOf = (lines) => {
@@ -225,11 +226,21 @@ export function checkBugReport(sections, messages) {
  * *observed*. Code reads the verdicts, so no session judges whether its own report
  * clears; the verdicts themselves are still the report's, written by the build. A bug
  * with no Expected never clears: nothing in it says what
- * working looks like, so it goes to the owner. `{ clears, why }`, `why` empty on a clear.
+ * working looks like, so it goes to the owner.
+ *
+ * `landing` is what land.mjs's landing record says (readLandingRecord): `{ record }`, or
+ * `{ error }` when it could not be read. A report written before a conflict resolution
+ * describes code that no longer exists, so when the record shows one, `graded` must come
+ * from the commits after the rebase (`rebasedTip..branch`) alone: an older report, or a
+ * later commit that is no report, clears nothing. Without a readable record nothing
+ * clears: it fails closed. `{ clears, why }`, `why` empty on a clear.
  */
-export function clearsBug(graded) {
+export function clearsBug(graded, landing) {
   const of = (name) => graded.find((g) => g.section === name);
   const why = [];
+  if (landing?.error) why.push(`its landing record could not be read (${landing.error})`);
+  else if (!landing?.record) why.push('there is no landing record for its branch: --clears runs during /land, before `land.mjs finish`');
+  else if (landing.record.conflicts?.length && !landing.record.rebasedTip) why.push(`${landing.record.conflicts.length} conflict region(s) were resolved and the record does not say where the rebase left the branch`);
   for (const g of graded) if (g.grade !== 'ok') why.push(`its ${g.section} is ${g.grade} in the report`);
   const repro = of('Repro');
   const expected = of('Expected');
@@ -310,11 +321,24 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   // NUL-separated: a message may hold any text, a line of dashes included.
   const log = git('log', '--format=%B%x00', range);
   if (log === null) stop(`could not read ${range}. git: ${lastError.split('\n')[0]}`);
-  const messages = log.split('\0').map((m) => m.trim()).filter(Boolean);
+  let messages = log.split('\0').map((m) => m.trim()).filter(Boolean);
   if (!messages.length) stop(`${branch} has no commits beyond ${trunk}, and no merge into ${trunk} brought it in: there is no report to read.`);
 
   const bug = reg === BUGS;
+  // --clears: when the landing record shows a conflict resolved, only a report committed
+  // after the rebase counts, so only those commits are graded (clearsBug).
+  let landing = null;
   let graded;
+  if (clears) {
+    const common = git('rev-parse', '--path-format=absolute', '--git-common-dir')?.trim();
+    try { landing = { record: common ? readLandingRecord(common, branch) : null }; } catch (e) { landing = { error: e.message }; }
+    const rec = landing.record;
+    if (rec?.conflicts?.length && rec.rebasedTip) {
+      const after = git('log', '--format=%B%x00', `${rec.rebasedTip}..${branch}`);
+      if (after === null) stop(`could not read ${rec.rebasedTip}..${branch}. git: ${lastError.split('\n')[0]}`);
+      messages = after.split('\0').map((m) => m.trim()).filter(Boolean);
+    }
+  }
   if (bug) {
     if (!textOf(entry.sections.get('Repro'))) stop(`${ID} on ${trunk} has no Repro to check a report against.`);
     graded = checkBugReport(entry.sections, messages);
@@ -324,19 +348,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     graded = checkReport(criteria, messages);
   }
   if (clears) {
-    const { why } = clearsBug(graded);
-    // A report written before a conflict resolution describes code that no longer
-    // exists, so it clears nothing until a fresh one is committed after the rebase
-    // (D-7). land.mjs's landing record holds both; no record means no landing through it.
-    const land = spawnSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'land.mjs'), 'report', branch, '--json', '--base', trunk], { encoding: 'utf8' });
-    let rec = null;
-    try { rec = land.status === 0 ? JSON.parse(land.stdout) : null; } catch { /* unreadable: as if none */ }
-    if (rec?.conflicts?.length) {
-      const fresh = rec.rebasedTip && git('rev-list', '--count', `${rec.rebasedTip}..${branch}`)?.trim();
-      if (!(Number(fresh) > 0)) why.push(`${rec.conflicts.length} conflict region(s) were resolved and no report was committed after the rebase`);
-    }
-    const ok = !why.length;
-    const head = `close-report --clears ${ID}: ${branch} against ${trunk}, ${messages.length} commit(s) read`;
+    const { clears: ok, why } = clearsBug(graded, landing);
+    const after = landing.record?.conflicts?.length ? `, only those after the rebase (${landing.record.conflicts.length} conflict region(s) were resolved)` : '';
+    const head = `close-report --clears ${ID}: ${branch} against ${trunk}, ${messages.length} commit(s) read${after}`;
     console.log(ok
       ? `${head}\nclears: the report quotes the Repro, not observed to still break, and the Expected, observed. /land may mark it fixed (D-7).`
       : `${head}\ndoes not clear: ${why.join('; ')}. It stays in-progress: ask the owner whether it is fixed.`);

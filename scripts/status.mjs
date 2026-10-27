@@ -156,7 +156,7 @@ for (const e of open.filter((x) => isBuildable(x) && x.status === 'in-progress')
       kind: 'acceptance', id: e.id, title: e.title, since: landed,
       // A bug is accepted against its Repro and Expected; it has no Accept criteria.
       why: `landed ${short(landed)} (${days(landed)}); ${BUGS.idPattern.test(e.id)
-        ? 'its report did not clear it (D-7), so it awaits your word: is it fixed, against its Repro and Expected?'
+        ? 'awaiting your word: is it fixed, against its Repro and Expected? (/land marks a bug fixed itself only when its report clears it, D-7)'
         : 'awaiting your acceptance against its Accept criteria'}`,
       see: `npm run history ${e.id}`,
     });

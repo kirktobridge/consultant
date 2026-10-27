@@ -163,7 +163,7 @@ describe('status.mjs names what is in flight, and what has landed awaiting accep
     checkout('main');
     merge('feat/b1-fix');
     const s = status(dir).stdout;
-    assert.match(s, /its report did not clear it \(D-7\), so it awaits your word: is it fixed, against its Repro and Expected\?/);
+    assert.match(s, /awaiting your word: is it fixed, against its Repro and Expected\? \(\/land marks a bug fixed itself only when its report clears it, D-7\)/);
     assert.doesNotMatch(s, /B1[^\n]*\n[^\n]*Accept criteria/);
   });
 
