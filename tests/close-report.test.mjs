@@ -215,14 +215,112 @@ describe('--check: which branch, and what it cannot check', () => {
     assert.match(r.stderr, /feat\/p1-x has no commits beyond main/);
   });
 
-  test('a bug is not checked, and says so; a branch that names nothing still stops it', () => {
-    const dir = repo({ bugs: [B('B1')] });
-    execSync('git checkout -q -b feat/b1-x', { cwd: dir });
-    commit(dir, 'fix: x (B1)');
-    execSync('git checkout -q main', { cwd: dir });
-    const r = run('close-report.mjs', ['--check', 'B1'], { cwd: dir });
-    assert.equal(r.code, 0, out(r));
-    assert.match(r.stdout, /a bug's Repro and Expected are not checked/);
+  test('a bug\'s branch that names nothing stops it', () => {
+    const dir = bugLanding('fix: x (B1)');
     assert.equal(run('close-report.mjs', ['--check', 'B1', '--branch', 'typo'], { cwd: dir }).code, 2);
+  });
+});
+
+// ── --check on a bug (P56) ───────────────────────────────────────────────────
+
+const REPRO = '1. Run `tool --case --list`.\n2. It lists all 31 cases.';
+const EXPECTED = 'It refuses with usage, as a bare `--skill` does.';
+/** A repo whose main holds B1, and a branch whose one commit says `message`. */
+function bugLanding(message, over = {}) {
+  const dir = repo({ bugs: [B('B1', { repro: REPRO, expected: EXPECTED, ...over })] });
+  execSync('git checkout -q -b feat/b1-x', { cwd: dir });
+  commit(dir, message);
+  execSync('git checkout -q main', { cwd: dir });
+  return dir;
+}
+const checkBug = (dir) => run('close-report.mjs', ['--check', 'B1'], { cwd: dir });
+/** The skeleton's layout, filled in: what /implement's close step writes for a bug. */
+const filled = (repro = REPRO, expected = EXPECTED) => `fix: x (B1)\n\nRepro, re-run:\n${repro.split('\n').map((l) => `  ${l}`).join('\n')}\n  NOT OBSERVED to still break. It exits 2 now.\n\nExpected:\n  ${expected}\n  OBSERVED. Same usage message.\n\nreview: required\n`;
+
+describe('--check on a bug grades its Repro and Expected (P56)', () => {
+  test('the skeleton\'s layout, filled in, warns about nothing', () => {
+    const r = checkBug(bugLanding(filled()));
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /feat\/b1-x against main's Repro and Expected, 1 commit\(s\) read/);
+    assert.match(r.stdout, /^ {2}ok {10}Repro: "1\. Run `tool --case --list`\. …"$/m);
+    assert.match(r.stdout, /^ {2}ok {10}Expected: "It refuses with usage/m);
+    assert.match(r.stdout, /no warnings: every section is quoted word for word with a verdict/);
+  });
+
+  test('a reworded Repro is ALTERED, with what the report has under its heading', () => {
+    const r = checkBug(bugLanding(filled(REPRO.replace('It lists all 31 cases.', 'It lists every case.'))));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /^ {2}ALTERED {5}Repro: /m);
+    assert.match(r.stdout, /the report has: "1\. Run `tool --case --list`\. 2\. It lists every case\. NOT OBSERVED/);
+    assert.match(r.stdout, /^ {2}ok {10}Expected: /m);
+    assert.match(r.stdout, /^warnings: 1 — a section/m);
+  });
+
+  test('a dropped Expected is MISSING; a Repro with no verdict after it says so', () => {
+    const msg = `fix: x (B1)\n\nRepro, re-run:\n${REPRO}\n  <OBSERVED | NOT OBSERVED> to still break. <evidence>\n`;
+    const r = checkBug(bugLanding(msg));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /NO VERDICT {2}Repro: /);
+    assert.match(r.stdout, /MISSING {5}Expected: /);
+  });
+
+  test('a bug with no Expected is checked on its Repro alone', () => {
+    const r = checkBug(bugLanding(`fix: x (B1)\n\nRepro, re-run:\n  ${REPRO}\n  NOT OBSERVED to still break.\n`, { expected: null }));
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /against main's Repro, 1 commit/);
+    assert.doesNotMatch(r.stdout, /Expected/);
+  });
+
+  test('a Repro of several paragraphs is read whole, and a change in its second is ALTERED', () => {
+    const long = '1. Run `tool --case --list`.\n\nThe two cases it lists:\n\n2. It lists all 31 cases.';
+    assert.equal(checkBug(bugLanding(filled(long), { repro: long })).code, 0);
+    const r = checkBug(bugLanding(filled(long.replace('all 31', 'every')), { repro: long }));
+    assert.match(r.stdout, /ALTERED {5}Repro: /);
+    assert.match(r.stdout, /the report has: "1\. Run .* The two cases it lists: 2\. It lists every cases/);
+  });
+
+  test('a heading with its text on the same line is read; a repro step saying "Expected …" is not a heading', () => {
+    const repro = '1. Run `tool --case --list`.\n  Expected exit 2, got 0.';
+    const msg = `fix: x (B1)\n\nRepro, re-run:\n  1. Run \`tool --case --list\`.\n  Expected exit 2, got 0.\n  NOT OBSERVED to still break.\n\nExpected: It refuses with usage, as a bare \`--skill\` does not.\n  OBSERVED.\n`;
+    const r = checkBug(bugLanding(msg, { repro }));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /^ {2}ok {10}Repro: /m);
+    assert.match(r.stdout, /ALTERED {5}Expected: /);
+    assert.match(r.stdout, /the report has: "It refuses with usage, as a bare `--skill` does not\. OBSERVED\."/);
+  });
+
+  test('a section that runs on past its text is ALTERED, not a missing verdict', () => {
+    const r = checkBug(bugLanding(filled(REPRO.replace('31 cases.', '31 cases. Then it hangs.'))));
+    assert.match(r.stdout, /ALTERED {5}Repro: /);
+  });
+
+  test('with no headings, a reworded section is still ALTERED, read from the whole report', () => {
+    const r = checkBug(bugLanding(`fix: x (B1)\n\n1. Run \`tool --case --list\`. 2. It lists all thirty-one cases. NOT OBSERVED to still break.\nIt refuses with usage, as a bare \`--skill\` does. OBSERVED.\n`));
+    assert.match(r.stdout, /ALTERED {5}Repro: /);
+    assert.match(r.stdout, /^ {2}ok {10}Expected: /m);
+  });
+
+  test('a later commit that only shares words is not taken for the report', () => {
+    const dir = bugLanding(filled());
+    execSync('git checkout -q feat/b1-x', { cwd: dir });
+    commit(dir, 'fix: tool --case --list refuses with usage like a bare --skill does (review)');
+    execSync('git checkout -q main', { cwd: dir });
+    const r = checkBug(dir);
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /2 commit\(s\) read/);
+  });
+
+  test('a bug with no Repro has nothing to check against: exit 2', () => {
+    const r = checkBug(bugLanding(filled(), { repro: null }));
+    assert.equal(r.code, 2, out(r));
+    assert.match(r.stderr, /B1 on main has no Repro to check a report against/);
+  });
+
+  test('a newer re-verified report that rewords the Repro is not covered by the older one', () => {
+    const dir = bugLanding(filled());
+    execSync('git checkout -q feat/b1-x', { cwd: dir });
+    commit(dir, filled(REPRO.replace('all 31', 'all thirty-one')).replace('fix: x', 'chore: re-verified'));
+    execSync('git checkout -q main', { cwd: dir });
+    assert.match(checkBug(dir).stdout, /ALTERED {5}Repro: /);
   });
 });

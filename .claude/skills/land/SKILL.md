@@ -45,9 +45,10 @@ write a branch name into a git command (`<trunk>` below).
   code from before the resolution: mark each one *observed before conflict
   resolution* in the handshake.
   Then run `node scripts/close-report.mjs --check <ID> --branch <branch>`. It compares
-  the report with the entry's Accept on main. **It never stops a landing.** Exit 1:
-  put each warning it prints in the handshake, next to the criterion it names. Exit 2:
-  say in the handshake that the check did not run, and why.
+  the report with the entry's Accept on main (a bug: its Repro and Expected). **It
+  never stops a landing.** Exit 1: put each warning it prints in the handshake, next to
+  the criterion or section it names. Exit 2: say in the handshake that the check did not
+  run, and why.
 
 ## An ad-hoc branch (`adhoc/<slug>`)
 
