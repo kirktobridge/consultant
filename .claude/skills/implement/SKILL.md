@@ -163,8 +163,14 @@ run all of them.
 - Run the full check suite (tests, typecheck, lint). Wrap long runs with `time`.
 - **REVIEW** — the loop's one point where the diff is reviewed, before /verify so
   that /verify observes the reviewed code. `node scripts/review.mjs` decides it:
-  - **Exit 0 = required.** Run the harness's **/code-review** on the diff, and
-    **/security-review** too when it prints `security-review: warranted`. Fix each
+  - **Exit 0 = required.** Run the harness's **/code-review** on the diff. When it
+    prints `security-review: warranted`, run **/security-review** in a subagent
+    (Agent, `general-purpose`), never inline: that skill makes its report the whole
+    final reply of whoever runs it, and inline that ends the build. Give the agent
+    the worktree's absolute path and the base branch, and tell it to run
+    /security-review there on `git diff <base>...HEAD` only, and return the report.
+    The skill's own preloaded diff is against `origin`, which local main is usually
+    ahead of (A-6), so it carries merged work that is not this build's. Fix each
     finding that holds, then re-run the suite; one you leave, say why in the close
     report. A finding outside this entry's Scope is discovered work (step 3): a new
     entry, not a wider build.
