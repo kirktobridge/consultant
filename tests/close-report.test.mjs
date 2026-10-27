@@ -324,3 +324,45 @@ describe('--check on a bug grades its Repro and Expected (P56)', () => {
     assert.match(checkBug(dir).stdout, /ALTERED {5}Repro: /);
   });
 });
+
+// ── --clears (P60, D-7) ──────────────────────────────────────────────────────
+
+const clearsCheck = (dir, id = 'B1') => run('close-report.mjs', ['--clears', id], { cwd: dir });
+
+describe('--clears decides whether a bug\'s report clears it (P60)', () => {
+  test('the Repro not observed to still break and the Expected observed: it clears', () => {
+    const r = clearsCheck(bugLanding(filled()));
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /^clears: the report quotes the Repro, not observed to still break, and the Expected, observed/m);
+  });
+
+  test('the Repro still breaking does not clear, and says so', () => {
+    const r = clearsCheck(bugLanding(filled().replace('NOT OBSERVED to still break', 'OBSERVED to still break')));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /does not clear: its Repro is observed to still break, not "not observed"\. It stays in-progress: ask the owner/);
+  });
+
+  test('the Expected not observed does not clear', () => {
+    const r = clearsCheck(bugLanding(filled().replace('OBSERVED. Same usage', 'NOT OBSERVED. Same usage')));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /its Expected is not observed, not "observed"/);
+  });
+
+  test('a report --check would warn about does not clear, even with the right verdicts', () => {
+    const r = clearsCheck(bugLanding(filled(REPRO.replace('all 31', 'every'))));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /its Repro is ALTERED in the report/);
+  });
+
+  test('a bug with no Expected never clears: it goes to the owner', () => {
+    const r = clearsCheck(bugLanding(`fix: x (B1)\n\nRepro, re-run:\n  ${REPRO}\n  NOT OBSERVED to still break.\n`, { expected: null }));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /it has no Expected, so nothing in it says what working looks like/);
+  });
+
+  test('a feature is refused: its shipped is the owner\'s', () => {
+    const r = run('close-report.mjs', ['--clears', 'P1'], { cwd: landing(ACCEPT, QUOTED) });
+    assert.equal(r.code, 2, out(r));
+    assert.match(r.stderr, /--clears takes a bug \(B#\): P1 is a feature/);
+  });
+});
