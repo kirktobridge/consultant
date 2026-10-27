@@ -24,8 +24,8 @@
 //
 // --check reads the branch's report (the newest of its commits, trunk..branch, that
 // quotes a criterion or comes close to one) and grades each Accept criterion of the
-// trunk's entry, whitespace-normalized on both sides, so a rewrap or a re-indent is never
-// a difference:
+// trunk's entry (a bug: its Repro and Expected, below), whitespace-normalized on both
+// sides, so a rewrap or a re-indent is never a difference:
 //
 //   ok          quoted whole, between quote marks, and a verdict (observed / not
 //               observed / not exercised) starts right after the quote
@@ -33,11 +33,16 @@
 //   ALTERED     not quoted whole; a list item holds most of its words (the item is shown)
 //   MISSING     not quoted, and no item comes close
 //
-// It warns; /land relays the warnings and lands anyway (refusing is a later entry). Only
-// Accept is checked: a bug's Repro and Expected are not, and it says so.
+// A bug's report is graded the same way, section by section (P56). The skeleton prints
+// each section as an indented block under its own heading, not between quote marks, so a
+// section is quoted when the region under the report's heading for it holds the section's
+// whole text, and what follows that text is the verdict. Text running on past the
+// section is a change, so it is ALTERED. With no heading, the whole report is the region.
+//
+// It warns; /land relays the warnings and lands anyway (refusing is a later entry).
 //
 // Exit: 0 the skeleton is on stdout, or --check found nothing to warn about | 1 --check
-// warns (each criterion named) | 2 nothing to print or check: not a P#/B#, no entry on the
+// warns (each criterion or section named) | 2 nothing to print or check: not a P#/B#, no entry on the
 // trunk, an entry that does not parse, no criteria in it (a feature with no Accept, a bug
 // with no Repro), no trunk, or (--check) no branch or no commits on it
 //
@@ -98,6 +103,12 @@ const VERDICT = /^[\s*_.,:;—–-]*(not observed|not exercised|observed)\b/i;
 /** The words that carry a criterion's meaning, for telling ALTERED from MISSING. */
 const words = (s) => new Set((s.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []));
 const ALTERED_SHARE = 0.6;
+/** The share of `want`'s words that `text` holds. */
+const share = (text, want) => {
+  const mine = words(want);
+  const theirs = words(text);
+  return mine.size ? [...mine].filter((w) => theirs.has(w)).length / mine.size : 0;
+};
 
 /** Where `text` quotes `want` whole, between its own quote marks: the index after each closing mark. */
 const quotesOf = (text, want) => {
@@ -122,14 +133,9 @@ const itemsOf = (message) => criteriaOf(message.split('\n').map((l) => l.replace
  */
 export function checkReport(criteria, messages) {
   const wants = criteria.map(norm);
-  const near = (item, want) => {
-    const mine = words(want);
-    const theirs = words(item);
-    return mine.size ? [...mine].filter((w) => theirs.has(w)).length / mine.size : 0;
-  };
   const parsed = messages.map((m) => ({ text: norm(m), items: itemsOf(m).map(norm) }));
   const report = parsed.find(({ text, items }) => wants.some((w) => quotesOf(text, w).length
-    || items.some((i) => near(i, w) >= ALTERED_SHARE))) ?? parsed[0] ?? { text: '', items: [] };
+    || items.some((i) => share(i, w) >= ALTERED_SHARE))) ?? parsed[0] ?? { text: '', items: [] };
 
   return criteria.map((c, n) => {
     const want = wants[n];
@@ -139,12 +145,67 @@ export function checkReport(criteria, messages) {
     let best = null;
     for (const item of report.items) {
       if (wants.some((o) => quotesOf(item, o).length)) continue; // quotes another criterion whole
-      const share = near(item, want);
-      if (share >= ALTERED_SHARE && (!best || share > best.share)) best = { share, item };
+      const s = share(item, want);
+      if (s >= ALTERED_SHARE && (!best || s > best.share)) best = { share: s, item };
     }
     if (!best) return { criterion: c, grade: 'MISSING' };
     const shown = best.item.match(/^["“](.+?)["”](?=\s|$)/)?.[1] ?? best.item.slice(0, 160);
     return { criterion: c, grade: 'ALTERED', report: shown };
+  });
+}
+
+/**
+ * Grade a bug's report: its `## Repro` and `## Expected` (when it has one), each as the
+ * skeleton prints them, an indented block under its own heading (P56). The block has no
+ * quote marks to bound it, so the report's headings do: each section is looked for in
+ * the region under the report's heading for it (the heading line's own text included, up
+ * to the next section heading or a closing `review:`/`preflight:` line), or in the whole
+ * report when it has no such heading.
+ *
+ *   ok          the region holds the section's whole text, and a verdict follows it
+ *   NO VERDICT  it holds the whole text and nothing follows, or an unfilled `<…>` slot
+ *   ALTERED     the text is changed, cut, or runs on past the section; the region holds
+ *               most of its words (the region is shown)
+ *   MISSING     the region doesn't come close
+ *
+ * The report is the newest message holding a section heading or a section's text, so an
+ * unrelated later commit that happens to share words never stands in for it.
+ */
+export function checkBugReport(sections, messages) {
+  const wanted = [['Repro', textOf(sections.get('Repro'))], ['Expected', textOf(sections.get('Expected'))]]
+    .filter(([, t]) => t).map(([name, t]) => ({ name, text: t, want: norm(t) }));
+  // A heading starts its line, unindented (the skeleton indents everything under it), and
+  // ends at a colon soon after the name: `Repro, re-run:`, `**Expected:**`. A repro step
+  // reading "Expected exit 2, got 0." is indented, or has no such colon.
+  const HEADING = /^\**(Repro|Expected)\b[^:\n]{0,20}:\**\s*(.*)$/i;
+  const CLOSER = /^(review|preflight|security-review|suite)\b/i;
+  /** The report's region for each section name it heads, keyed by name. */
+  const regionsOf = (message) => {
+    const out = new Map();
+    let cur = null;
+    for (const line of message.split('\n')) {
+      const h = HEADING.exec(line);
+      if (h) { cur = []; out.set(h[1].toLowerCase(), cur); if (h[2]) cur.push(h[2]); continue; }
+      if (CLOSER.test(line)) cur = null;
+      else cur?.push(line);
+    }
+    return new Map([...out].map(([k, v]) => [k, norm(v.join('\n'))]));
+  };
+  const parsed = messages.map((m) => ({ text: norm(m), regions: regionsOf(m) }));
+  const report = parsed.find(({ text, regions }) => regions.size || wanted.some(({ want }) => text.includes(want)))
+    ?? parsed[0] ?? { text: '', regions: new Map() };
+
+  return wanted.map(({ name, text, want }) => {
+    const region = report.regions.get(name.toLowerCase()) || report.text;
+    const criterion = `${text.split('\n')[0]}${text.includes('\n') ? ' …' : ''}`;
+    const graded = (grade) => ({ criterion, section: name, grade });
+    const ends = [];
+    for (let at = region.indexOf(want); at >= 0; at = region.indexOf(want, at + 1)) ends.push(at + want.length);
+    if (ends.some((e) => VERDICT.test(region.slice(e)))) return graded('ok');
+    // Whole, then nothing but a slot: unfilled. Whole, then more text: it runs on.
+    if (ends.some((e) => /^\s*(<|$)/.test(region.slice(e)))) return graded('NO VERDICT');
+    if (share(region, want) < ALTERED_SHARE) return graded('MISSING');
+    return { ...graded('ALTERED'), report: region.slice(0, 160) };
   });
 }
 
@@ -208,23 +269,27 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const messages = log.split('\0').map((m) => m.trim()).filter(Boolean);
   if (!messages.length) stop(`${branch} has no commits beyond ${trunk}: run --check before the merge, on the rebased branch.`);
 
-  if (reg === BUGS) {
-    console.log(`close-report --check ${ID}: a bug's Repro and Expected are not checked, only a feature's Accept criteria. Nothing to warn about.`);
-    process.exit(0);
+  const bug = reg === BUGS;
+  let graded;
+  if (bug) {
+    if (!textOf(entry.sections.get('Repro'))) stop(`${ID} on ${trunk} has no Repro to check a report against.`);
+    graded = checkBugReport(entry.sections, messages);
+  } else {
+    const criteria = criteriaOf(entry.sections.get('Accept'));
+    if (!criteria.length) stop(`${ID} on ${trunk} has no Accept criteria to check a report against.`);
+    graded = checkReport(criteria, messages);
   }
-  const criteria = criteriaOf(entry.sections.get('Accept'));
-  if (!criteria.length) stop(`${ID} on ${trunk} has no Accept criteria to check a report against.`);
-
-  const graded = checkReport(criteria, messages);
   const warned = graded.filter((g) => g.grade !== 'ok');
-  const out = [`close-report --check ${ID}: ${branch} against ${trunk}'s Accept, ${messages.length} commit(s) read`];
+  const against = bug ? graded.map((g) => g.section).join(' and ') : 'Accept';
+  const out = [`close-report --check ${ID}: ${branch} against ${trunk}'s ${against}, ${messages.length} commit(s) read`];
   for (const g of graded) {
-    out.push(`  ${g.grade.padEnd(11)} "${g.criterion}"`);
+    out.push(`  ${g.grade.padEnd(11)} ${bug ? `${g.section}: ` : ''}"${g.criterion}"`);
     if (g.report) out.push(`  ${''.padEnd(11)} the report has: "${g.report}"`);
   }
+  const what = bug ? 'section' : 'criterion';
   out.push(warned.length
-    ? `warnings: ${warned.length} — a criterion the report does not quote word for word with a verdict. Relay each in the handshake; the landing goes on.`
-    : 'no warnings: every criterion is quoted word for word with a verdict.');
+    ? `warnings: ${warned.length} — a ${what} the report does not quote word for word with a verdict. Relay each in the handshake; the landing goes on.`
+    : `no warnings: every ${what} is quoted word for word with a verdict.`);
   console.log(out.join('\n'));
   process.exit(warned.length ? 1 : 0);
 }
