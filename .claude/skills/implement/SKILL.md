@@ -99,12 +99,15 @@ run all of them.
 - **CLEAN-TREE GATE:** `git status` must be clean before branching. Dirty tree =
   another task's live state — commit it with its own unit (or ask the user what it
   is); don't branch over it.
-- Flip the entry to `in-progress` **via /ship, committed on main before branching** —
-  a flip made on your branch is invisible to other sessions, which defeats the claim
-  gate. (/ship edits its files on main only.) Hold the land lock for the claim
-  commit: `node scripts/land.mjs lock take claim:<ID> --wait 600`, then release it
-  with `lock release claim:<ID>`. Another session may be landing in the same main
-  checkout.
+- Claim the entry **on main before branching**, from the main checkout:
+  `node scripts/ship.mjs claim <ID> [R#] --trailer "<your commit attribution line>"`.
+  A flip made on your branch is invisible to other sessions, which defeats the claim
+  gate. The script is /ship's pen for a claim: it holds the land lock as
+  `claim:<ID>` (another session may be landing in the same checkout), refuses a
+  claimed entry, an unmet dependency or a dirty tree, and commits only the
+  `status: in-progress` line. A `claim:<ID>` lock you already hold stays held.
+  **Exit 0** → claimed. **Exit 1** → refused: stop and report its message; don't
+  edit the entry by hand. **Exit 2** → it could not run: stop and report it.
 - Then, from the main checkout, `node scripts/worktree.mjs start <ID>`. It refuses
   an unclaimed entry, a claimed one whose `depends_on:` is unmet on main (the DEPENDS
   GATE, held in code), or a dirty tree (exit 1, says which), cuts `feat/p<#>-<slug>` off
