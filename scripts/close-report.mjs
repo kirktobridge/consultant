@@ -44,7 +44,8 @@
 // --clears B# decides D-7's question for /land and /ship: does the report clear the bug,
 // so /land may mark it `fixed` without asking the owner (P60)? Only when --check would
 // be quiet, the Repro is *not observed* to still break, and the Expected is *observed*
-// (clearsBug). A feature is refused: its `shipped` is the owner's verdict.
+// (clearsBug), and, when land.mjs's landing record shows a conflict resolved, a report
+// was committed after the rebase. A feature is refused: its `shipped` is the owner's verdict.
 //
 // Exit: 0 the skeleton is on stdout, --check found nothing to warn about, or --clears
 // clears | 1 --check warns (each criterion or section named), or --clears does not clear
@@ -56,9 +57,9 @@
 //        node scripts/close-report.mjs --check <P#|B#> [--branch <branch>] [--base <branch>]
 //        node scripts/close-report.mjs --clears <B#> [--branch <branch>] [--base <branch>]
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { BUGS, buildableRegister, parseEntry, criteriaOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { entryOfBranch } from './landing.mjs';
@@ -323,7 +324,18 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     graded = checkReport(criteria, messages);
   }
   if (clears) {
-    const { clears: ok, why } = clearsBug(graded);
+    const { why } = clearsBug(graded);
+    // A report written before a conflict resolution describes code that no longer
+    // exists, so it clears nothing until a fresh one is committed after the rebase
+    // (D-7). land.mjs's landing record holds both; no record means no landing through it.
+    const land = spawnSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'land.mjs'), 'report', branch, '--json', '--base', trunk], { encoding: 'utf8' });
+    let rec = null;
+    try { rec = land.status === 0 ? JSON.parse(land.stdout) : null; } catch { /* unreadable: as if none */ }
+    if (rec?.conflicts?.length) {
+      const fresh = rec.rebasedTip && git('rev-list', '--count', `${rec.rebasedTip}..${branch}`)?.trim();
+      if (!(Number(fresh) > 0)) why.push(`${rec.conflicts.length} conflict region(s) were resolved and no report was committed after the rebase`);
+    }
+    const ok = !why.length;
     const head = `close-report --clears ${ID}: ${branch} against ${trunk}, ${messages.length} commit(s) read`;
     console.log(ok
       ? `${head}\nclears: the report quotes the Repro, not observed to still break, and the Expected, observed. /land may mark it fixed (D-7).`

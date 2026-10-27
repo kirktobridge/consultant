@@ -155,6 +155,18 @@ describe('status.mjs names what is in flight, and what has landed awaiting accep
     assert.match(status(dir).stdout, /Waiting on you \(1\)\n\s+P1 .*\n\s+landed .*awaiting your acceptance/);
   });
 
+  test('a landed bug awaits the owner\'s word against its Repro and Expected, not Accept criteria', () => {
+    const { dir, checkout, commitAll, merge } = repo({ backlog: [P('P1')], nextUp: ['P1'], bugs: [B('B1', { status: 'in-progress' })] });
+    checkout('feat/b1-fix', true);
+    writeFileSync(join(dir, 'x.txt'), 'fixed');
+    commitAll('fix: x (B1)');
+    checkout('main');
+    merge('feat/b1-fix');
+    const s = status(dir).stdout;
+    assert.match(s, /its report did not clear it \(D-7\), so it awaits your word: is it fixed, against its Repro and Expected\?/);
+    assert.doesNotMatch(s, /B1[^\n]*\n[^\n]*Accept criteria/);
+  });
+
   test('a landed ad-hoc branch that shares the ID\'s prefix is not the entry landing', () => {
     const { dir, checkout, commitAll, merge } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
     setStatus(dir, 'P1', 'in-progress');

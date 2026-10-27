@@ -6,7 +6,7 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { P, B, project, gitInit, run, out, cleanupAll } from './helpers/fixture.mjs';
 
@@ -376,6 +376,34 @@ describe('--clears decides whether a bug\'s report clears it (P60)', () => {
     assert.equal(clearsCheck(bugLanding(msg)).code, 0);
     const flipped = `fix: x (B1)\n\n${REPRO} NOT OBSERVED to still break, on the first try.\n${REPRO} OBSERVED to still break, on a rerun.\n${EXPECTED} OBSERVED.\n`;
     assert.equal(clearsCheck(bugLanding(flipped)).code, 1);
+  });
+
+  test('a conflict resolved with no report after the rebase does not clear; a fresh report does', () => {
+    const dir = bugLanding(filled());
+    const tip = execSync('git rev-parse feat/b1-x', { cwd: dir, encoding: 'utf8' }).trim();
+    // The landing record land.mjs keeps for the branch, as its rebase leaves it.
+    const record = (rec) => {
+      mkdirSync(join(dir, '.git', 'loop-land'), { recursive: true });
+      writeFileSync(join(dir, '.git', 'loop-land', 'feat__b1-x.json'), JSON.stringify({ branch: 'feat/b1-x', conflicts: [], pending: null, ...rec }));
+    };
+    const region = { file: 'a.txt', main: ['m'], branch: ['b'], base: ['o'], resolved: ['mb'] };
+    record({ conflicts: [region], rebasedTip: tip });
+    let r = clearsCheck(dir);
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /1 conflict region\(s\) were resolved and no report was committed after the rebase/);
+
+    record({ conflicts: [region] }); // a record from before rebasedTip existed: no proof of a fresh report
+    assert.equal(clearsCheck(dir).code, 1);
+
+    record({ conflicts: [], rebasedTip: tip });
+    assert.equal(clearsCheck(dir).code, 0, 'no conflict, nothing to re-verify');
+
+    record({ conflicts: [region], rebasedTip: tip });
+    execSync('git checkout -q feat/b1-x', { cwd: dir });
+    commit(dir, filled().replace('fix: x', 'chore: re-verified after conflict resolution'));
+    execSync('git checkout -q main', { cwd: dir });
+    r = clearsCheck(dir);
+    assert.equal(r.code, 0, out(r));
   });
 
   test('a feature is refused: its shipped is the owner\'s', () => {

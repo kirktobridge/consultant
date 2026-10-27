@@ -270,6 +270,9 @@ function afterRebase(rec, result) {
   if (result !== null) {
     rec.pending = null;
     rec.newBase = git('rev-parse', '--short', BASE);
+    // Where the rebase left the branch: a commit after it is a report made after any
+    // conflict resolution, which close-report --clears needs to see (D-7).
+    rec.rebasedTip = git('rev-parse', 'HEAD');
     writeRecord(rec);
     const n = rec.conflicts.length;
     die(0, `${rec.branch} is rebased onto ${BASE} (${rec.newBase})${n ? `, with ${n} conflict region(s) resolved — run the suite, then re-verify (see /implement)` : ', no conflicts'}.`);

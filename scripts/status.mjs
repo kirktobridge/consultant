@@ -154,7 +154,10 @@ for (const e of open.filter((x) => isBuildable(x) && x.status === 'in-progress')
   if (landed) {
     report.waitingOnYou.push({
       kind: 'acceptance', id: e.id, title: e.title, since: landed,
-      why: `landed ${short(landed)} (${days(landed)}); awaiting your acceptance against its Accept criteria`,
+      // A bug is accepted against its Repro and Expected; it has no Accept criteria.
+      why: `landed ${short(landed)} (${days(landed)}); ${BUGS.idPattern.test(e.id)
+        ? 'its report did not clear it (D-7), so it awaits your word: is it fixed, against its Repro and Expected?'
+        : 'awaiting your acceptance against its Accept criteria'}`,
       see: `npm run history ${e.id}`,
     });
   } else {
