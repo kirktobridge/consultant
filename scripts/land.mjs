@@ -34,11 +34,12 @@
 // Exit: 0 done | 1 refused or failed (message says why) | 2 could not run |
 //       3 conflicts for the session to resolve | 4 stop for the user
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, mkdirSync, rmSync, readdirSync, renameSync, cpSync } from 'node:fs';
 import { join, resolve, basename } from 'node:path';
 import { buildableRegister, registerOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
+import { gitIn } from './git.mjs';
 
 const STALE_MINUTES = 30;
 
@@ -53,23 +54,11 @@ const pos = argv.filter((a, i) => !a.startsWith('--') && !['--wait', '--suite', 
 
 const die = (code, msg) => { (code === 0 ? console.log : console.error)(`land: ${msg}`); process.exit(code); };
 
-// Same git invocation as session-audit and worktree.mjs: no shell, WSL-safe.
-const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
-let lastError = '';
-const git = (...args) => {
-  try {
-    return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...args], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    }).replace(/\n$/, '');
-  } catch (e) {
-    lastError = String(e.stderr ?? e.message ?? '').trim();
-    return null;
-  }
-};
+const git = gitIn();
 const ok = (...args) => git(...args) !== null;
 
 const top = git('rev-parse', '--show-toplevel');
-if (top === null) die(2, `not a git repository, or git refused it.${lastError ? ` git: ${lastError.split('\n')[0]}` : ''}`);
+if (top === null) die(2, `not a git repository, or git refused it.${git.error() ? ` git: ${git.firstError()}` : ''}`);
 const gitDir = resolve(top, git('rev-parse', '--git-dir'));
 const common = resolve(top, git('rev-parse', '--git-common-dir'));
 const inLinkedWorktree = gitDir !== common;
@@ -286,7 +275,7 @@ function afterRebase(rec, result) {
     die(0, `${rec.branch} is rebased onto ${BASE} (${rec.newBase})${n ? `, with ${n} conflict region(s) resolved — run the suite, then re-verify (see /implement)` : ', no conflicts'}.`);
   }
   if (existsSync(join(gitDir, 'rebase-merge')) || existsSync(join(gitDir, 'rebase-apply'))) stopAtConflicts(rec);
-  die(1, `rebase failed: ${lastError.split('\n')[0]}`);
+  die(1, `rebase failed: ${git.firstError()}`);
 }
 
 function rebaseCmd() {
@@ -324,7 +313,7 @@ function continueCmd() {
   if (flags.length) {
     die(4, `the resolution drops one entry's work:\n  ${flags.join('\n  ')}\nStop and ask the user. The rebase is left in progress; fix the file and re-run continue, or \`git rebase --abort\`.`);
   }
-  for (const f of rec.pending.files) if (!ok('add', '--', f.file)) die(1, `git add ${f.file} failed: ${lastError.split('\n')[0]}`);
+  for (const f of rec.pending.files) if (!ok('add', '--', f.file)) die(1, `git add ${f.file} failed: ${git.firstError()}`);
   rec.conflicts.push(...settled);
   rec.pending = null;
   writeRecord(rec);
@@ -382,7 +371,7 @@ function mergeCmd(branch) {
   const msg = `Merge branch '${branch}'${rep ? `\n\n${rep}` : ''}${trailers ? `\n\n${trailers}` : ''}`;
   if (!ok('merge', '--no-ff', '-m', msg, branch)) {
     git('merge', '--abort');
-    die(1, `merge failed although ${branch} was rebased onto ${BASE} — something moved ${BASE} without the lock. ${lastError.split('\n')[0]}`);
+    die(1, `merge failed although ${branch} was rebased onto ${BASE} — something moved ${BASE} without the lock. ${git.firstError()}`);
   }
   const suite = opt('--suite') || 'npm test';
   let suiteOut;
@@ -484,8 +473,8 @@ function finishCmd(branch) {
   // teardown touches only this branch and its worktree, never BASE, so it needs no lock.
   unlinkSync(LOCK);
   const left = `The lock is already released; finish the cleanup by hand.`;
-  if (wt && !ok('worktree', 'remove', wt)) die(1, `could not remove ${wt}: ${lastError.split('\n')[0]}. ${left}`);
-  if (!ok('branch', '-d', branch)) die(1, `could not delete ${branch}: ${lastError.split('\n')[0]}. ${left}`);
+  if (wt && !ok('worktree', 'remove', wt)) die(1, `could not remove ${wt}: ${git.firstError()}. ${left}`);
+  if (!ok('branch', '-d', branch)) die(1, `could not delete ${branch}: ${git.firstError()}. ${left}`);
   rmSync(recordPath(branch), { force: true });
   die(0, `${branch} landed: lock released, worktree${wt ? '' : ' (none)'} and branch removed.${keptNote}`);
 }

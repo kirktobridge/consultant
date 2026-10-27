@@ -33,10 +33,10 @@
 // Usage: node scripts/worktree.mjs start <P#|B#> [--slug <slug>] [--base <branch>] [--json]
 //        node scripts/worktree.mjs start --adhoc <slug> [--base <branch>] [--json]
 
-import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet, newHomeOf } from './entries.mjs';
+import { buildableRegister, parseEntry, unmetDependencies, describeUnmet, dependencyAdvice } from './entries.mjs';
+import { gitIn } from './git.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 
 const argv = process.argv.slice(2);
@@ -59,20 +59,7 @@ const ID = ADHOC ? `adhoc/${adhocSlug}` : rawId.toUpperCase();
 const REG = ADHOC ? null : buildableRegister(ID);
 if (!ADHOC && !REG) { console.error(`worktree: "${rawId}" is not a buildable id (P# or B#).\n${usage}`); process.exit(2); }
 
-// Same git invocation as session-audit: no shell, and the WSL/Windows ownership and
-// filemode workarounds, for the same reasons given there.
-const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
-let lastError = '';
-const git = (...args) => {
-  try {
-    return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...args], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
-  } catch (e) {
-    lastError = String(e.stderr ?? e.message ?? '').trim();
-    return null;
-  }
-};
+const git = gitIn();
 
 const done = (code, action, msg, extra = {}) => {
   if (asJson) console.log(JSON.stringify({ id: ID, action, message: msg, ...extra }));
@@ -84,7 +71,7 @@ const done = (code, action, msg, extra = {}) => {
 };
 
 const top = git('rev-parse', '--show-toplevel');
-if (top === null) done(2, 'error', `not a git repository, or git refused it.${lastError ? ` git: ${lastError.split('\n')[0]}` : ''}`);
+if (top === null) done(2, 'error', `not a git repository, or git refused it.${git.error() ? ` git: ${git.firstError()}` : ''}`);
 
 const gitDir = resolve(top, git('rev-parse', '--git-dir'));
 const commonDir = resolve(top, git('rev-parse', '--git-common-dir'));
@@ -115,19 +102,19 @@ function provision(branch, exists) {
   if (exists) {
     if (worktrees.has(branch)) done(0, 'resumed', `${has}; resuming its worktree.`, { branch, path });
     if (existsSync(path)) done(1, 'refused', `${path} exists but is not ${branch}'s worktree. Move it aside, then re-run.`);
-    if (git('worktree', 'add', '-q', path, branch) === null) done(2, 'error', `git worktree add failed: ${lastError.split('\n')[0]}`);
+    if (git('worktree', 'add', '-q', path, branch) === null) done(2, 'error', `git worktree add failed: ${git.firstError()}`);
     done(0, 'resumed', `${has}; gave it a worktree again.`, { branch, path });
   }
   // A new branch. Same rule as /implement's clean-tree gate: a dirty main checkout is
   // another task's live state, and the integration step will refuse it later anyway.
   const dirty = git('status', '--porcelain');
-  if (dirty === null) done(2, 'error', `git status failed: ${lastError.split('\n')[0]}`);
+  if (dirty === null) done(2, 'error', `git status failed: ${git.firstError()}`);
   if (dirty) {
     done(1, 'refused', `the main checkout has uncommitted changes:\n${dirty.split('\n').map((l) => `  ${l}`).join('\n')}\nCommit them as their own unit (or ask whose they are) before starting ${ID}.`);
   }
   if (existsSync(path)) done(1, 'refused', `${path} already exists and is not a worktree of ${branch}. Move it aside, then re-run.`);
   if (git('worktree', 'add', '-q', '-b', branch, path, BASE) === null) {
-    done(2, 'error', `git worktree add failed: ${lastError.split('\n')[0]}`);
+    done(2, 'error', `git worktree add failed: ${git.firstError()}`);
   }
   done(0, 'created', `${what}, off local ${BASE} (${git('rev-parse', '--short', BASE)}).`, { branch, path });
 }
@@ -139,6 +126,9 @@ const text = git('show', `${BASE}:${REG.dir}/${ID}.md`);
 if (text === null) done(1, 'refused', `${ID} has no entry on ${BASE} — untriaged ideas go to /triage first.`);
 const entry = parseEntry(text, REG.keys);
 const status = entry.header.status;
+// Read untrimmed, so a header with a leading blank line or BOM doesn't parse: say so,
+// rather than call its status `undefined`.
+if (!status) done(1, 'refused', `${REG.dir}/${ID}.md on ${BASE} has no readable \`status:\` header. Run npm run check:docs for what is wrong with it.`);
 if (!REG.claimed.includes(status)) {
   done(1, 'refused', `${ID} is \`${status}\` on ${BASE}, not claimed. Claim it on ${BASE} first (via /ship), then start its worktree — a worktree cut before the claim commit cannot see the claim.`);
 }
@@ -150,20 +140,9 @@ if (!REG.claimed.includes(status)) {
 // dependencies only: the schema check walks the chains.
 // A moved assumption or a superseded decision is not settled but forwarded (B10): the
 // fix is to re-point the dependency, so the refusal names the new home.
-const deps = idsOf(entry, 'depends_on').map((id) => {
-  const reg = registerOf(id);
-  const dep = reg && git('show', `${BASE}:${reg.dir}/${id}.md`);
-  const parsed = dep ? parseEntry(dep, reg.keys) : null;
-  return { id, status: parsed?.header.status ?? null, to: newHomeOf(parsed) };
-}).filter((d) => !dependencyMet(d.id, d.status));
+const deps = unmetDependencies(entry, (id, reg) => git('show', `${BASE}:${reg.dir}/${id}.md`));
 if (deps.length) {
-  const forwarded = deps.filter((d) => d.to.length);
-  const fixes = [
-    forwarded.length < deps.length && 'settle what blocks it first — an open decision is the user\'s to take, an open assumption needs its Resolution',
-    forwarded.length && `re-point its \`depends_on:\` via /ship: ${forwarded.map((d) => `${d.id} → ${d.to.join(', ')}`).join(', ')}`,
-  ].filter(Boolean);
-  const say = fixes.join('; ');
-  done(1, 'refused', `${ID} is claimed but blocked on ${BASE}: it depends on ${deps.map((d) => `${d.id} (${d.status ? `\`${d.status}\`` : 'no entry'})`).join(', ')}. ${say[0].toUpperCase()}${say.slice(1)} — then re-run.`,
+  done(1, 'refused', `${ID} is claimed but blocked on ${BASE}: it depends on ${describeUnmet(deps)}. ${dependencyAdvice(deps)} — then re-run.`,
     { unmet: deps.map(({ id, status }) => ({ id, status })) });
 }
 

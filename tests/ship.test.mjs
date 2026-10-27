@@ -154,6 +154,24 @@ describe('ship.mjs claim refuses, names why, and leaves the tree as it was', () 
     assert.equal(statusOf(dir, 'docs/backlog/P1.md'), 'proposed');
   });
 
+  // A crash, not a refusal: the edit throws after the lock is taken. Root ignores the
+  // file mode, so there is no crash to cause there.
+  test('a crash after the lock is taken still releases it', { skip: process.getuid?.() === 0 }, () => {
+    const { dir } = repo();
+    const rel = join(dir, 'docs/backlog/P1.md');
+    chmodSync(rel, 0o444); // git tracks only the x bit: the tree stays clean
+    const r = ship(dir, 'claim', 'P1');
+    const j = ship(dir, 'claim', 'P1', '--json');
+    chmodSync(rel, 0o644);
+    assert.equal(r.code, 2, out(r));
+    assert.match(r.stderr, /crashed, and nothing was committed: Error: EACCES/);
+    assert.doesNotMatch(r.stderr, /Putting the entry back failed/, 'nothing was written, so nothing is put back');
+    assert.ok(!existsSync(lockFile(dir)), 'the lock is released');
+    assert.equal(statusOf(dir, 'docs/backlog/P1.md'), 'proposed');
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+    assert.equal(JSON.parse(j.stdout).action, 'error', 'a --json caller still gets its object');
+  });
+
   test('a checkout that is not on the trunk', () => {
     const { dir, checkout } = repo();
     checkout('feat/x', true);

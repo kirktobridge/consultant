@@ -280,6 +280,17 @@ const claimedOn = (dep) => P('P3', { status: 'in-progress', title: 'Make the wid
 const noBranches = (main) => assert.equal(git1(main, 'branch --list "feat/*"'), '');
 
 describe('worktree.mjs refuses a claimed entry whose dependencies are unmet (P32)', () => {
+  test('an entry whose header does not parse on main is named as unreadable, not as `undefined`', () => {
+    const { main, commitAll } = blockedRepo({ backlog: [claimedOn('A-1')], assumptions: [A('A-1')] });
+    const rel = join(main, 'docs/backlog/P3.md');
+    writeFileSync(rel, `﻿${readFileSync(rel, 'utf8')}`);
+    commitAll('a BOM');
+    const r = start(main, 'P3');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /P3\.md on main has no readable `status:` header\. Run npm run check:docs/);
+    assert.doesNotMatch(r.stderr, /undefined/);
+  });
+
   test('a claim resting on an open assumption is refused, naming it, and nothing is created', () => {
     const { main } = blockedRepo({ backlog: [claimedOn('A-1')], assumptions: [A('A-1')] });
     const r = start(main, 'P3');

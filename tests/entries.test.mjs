@@ -5,7 +5,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { dependencyMet, newHomeOf, percentOf } from '../scripts/entries.mjs';
+import { dependencyMet, newHomeOf, percentOf, unmetDependencies, describeUnmet, dependencyAdvice, parseEntry, BACKLOG } from '../scripts/entries.mjs';
 
 // A test's `bar:` and `effect:` (P45): one form, percent, so `1` can't mean 100%.
 describe('percentOf', () => {
@@ -47,5 +47,44 @@ describe('dependencyMet', () => {
     assert.equal(dependencyMet('A-1', 'verifed'), false);
     assert.equal(dependencyMet('D-1', 'deferred'), false);
     assert.equal(dependencyMet('A-1', null), false);
+  });
+});
+
+// The shared refusal: ship.mjs and worktree.mjs both read and word it from here.
+describe('unmetDependencies and dependencyAdvice', () => {
+  const entry = (deps) => parseEntry(`---\nid: P1\ntitle: t\nstatus: proposed\ndepends_on: ${deps}\n---\n`, BACKLOG.keys);
+  const files = {
+    P2: '---\nid: P2\nstatus: shipped\n---\n',
+    P3: '---\nid: P3\nstatus: partial\n---\n',
+    'D-1': '---\nid: D-1\nstatus: open\n---\n',
+    'A-1': '---\nid: A-1\nstatus: moved\nmoved_to: A-2\n---\n',
+    X1: '---\nid: X1\nstatus: answered\n---\n',
+    X2: '---\nid: X2\nstatus: active\n---\n',
+  };
+  const read = (id) => files[id] ?? null;
+
+  test('only what still holds the entry, each with its status and any new home', () => {
+    assert.deepEqual(unmetDependencies(entry('P2, P3, D-1, A-1, P9'), read), [
+      { id: 'P3', status: 'partial', to: [] },
+      { id: 'D-1', status: 'open', to: [] },
+      { id: 'A-1', status: 'moved', to: ['A-2'] },
+      { id: 'P9', status: null, to: [] },
+    ]);
+    assert.deepEqual(unmetDependencies(entry('P2'), read), []);
+  });
+
+  test('the advice fits each kind of blocker, and a missing entry is not told to be built', () => {
+    assert.equal(dependencyAdvice(unmetDependencies(entry('P3, D-1, A-1'), read)),
+      'Build what it depends on first; an open decision is the owner\'s to take; re-point its `depends_on:` via /ship: A-1 → A-2');
+    assert.equal(dependencyAdvice(unmetDependencies(entry('P9'), read)), 'A dependency with no entry has to be filed or dropped');
+  });
+
+  test('an experiment is read from its own register: a closed one is met, an open one waits', () => {
+    assert.deepEqual(unmetDependencies(entry('X1, X2'), read), [{ id: 'X2', status: 'active', to: [] }]);
+    assert.equal(dependencyAdvice(unmetDependencies(entry('X2'), read)), 'An experiment it waits on has to close');
+  });
+
+  test('describeUnmet lists each with its status, or that it has no entry', () => {
+    assert.equal(describeUnmet(unmetDependencies(entry('P3, P9'), read)), 'P3 (`partial`), P9 (no entry)');
   });
 });
