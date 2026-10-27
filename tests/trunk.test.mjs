@@ -27,6 +27,7 @@ const ARGS = {
   'next.mjs': [],
   'preflight.mjs': ['P1'],
   'session-audit.mjs': [],
+  'ship.mjs': ['claim', 'P1'],
   'status.mjs': [],
   'trunk.mjs': [],
   'worktree.mjs': ['start', 'P1'],
