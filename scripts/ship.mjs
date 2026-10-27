@@ -27,11 +27,12 @@
 //
 // Usage: node scripts/ship.mjs claim <P#|B#> [R#] [--wait <s>] [--trailer <line>] [--base <branch>] [--json]
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildableRegister, registerOf, parseEntry, idsOf, dependencyMet, newHomeOf } from './entries.mjs';
+import { buildableRegister, parseEntry, unmetDependencies, describeUnmet, dependencyAdvice } from './entries.mjs';
+import { gitIn } from './git.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,13 +46,22 @@ const ID = rawId?.toUpperCase() ?? null;
 // committed, then release the lock if this run took it.
 const cleanup = { edit: null, lock: null };
 let lockNote = '';
+// Each step on its own: a put-back that throws must not keep the lock held.
 const tidy = () => {
-  if (cleanup.edit) { cleanup.edit(); cleanup.edit = null; }
-  if (cleanup.lock) { lockNote = cleanup.lock(); cleanup.lock = null; }
+  const { edit, lock } = cleanup;
+  cleanup.edit = cleanup.lock = null;
+  const note = (s) => { lockNote = [lockNote, s].filter(Boolean).join('\n'); };
+  try { edit?.(); } catch (e) { note(`Putting the entry back failed (${e.message}): check it by hand.`); }
+  try { if (lock) note(lock()); } catch (e) { note(`Releasing the land lock failed (${e.message}).`); }
+  if (lockNote && !reported) console.error(`ship: ${lockNote}`); // done() never ran to print it
 };
+let reported = false;
 process.on('exit', tidy);
+// A crash is reported like any other failure, so a --json caller still gets its object.
+process.on('uncaughtException', (e) => done(2, 'error', `crashed, and nothing was committed: ${e.stack ?? e}`));
 
 const done = (code, action, msg, extra = {}) => {
+  reported = true;
   tidy();
   if (lockNote) msg += `\n${lockNote}`;
   if (asJson) console.log(JSON.stringify({ id: ID, action, message: msg, ...extra }));
@@ -77,26 +87,10 @@ const wait = opt('--wait', '600');
 if (!/^\d+$/.test(wait)) done(2, 'error', `--wait takes whole seconds, not "${wait}".`);
 const trailer = opt('--trailer');
 
-// Same git invocation as worktree.mjs and land.mjs: no shell, WSL-safe. Output is
-// untrimmed, as claims.mjs reads it: trim() would quietly repair a header with a
-// leading blank line or BOM, and the porcelain status's leading column.
-const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
-let lastError = '';
-const git = (...args) => {
-  try {
-    return execFileSync('git', ['-c', 'safe.directory=*', ...WIN, ...args], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    }).replace(/\n$/, '');
-  } catch (e) {
-    // A hook may report on either stream.
-    lastError = [e.stderr, e.stdout].map((s) => String(s ?? '').trim()).filter(Boolean).join('\n') || String(e.message);
-    return null;
-  }
-};
-const firstLine = () => lastError.split('\n')[0];
+const git = gitIn();
 
 const top = git('rev-parse', '--show-toplevel');
-if (top === null) done(2, 'error', `not a git repository, or git refused it.${lastError ? ` git: ${firstLine()}` : ''}`);
+if (top === null) done(2, 'error', `not a git repository, or git refused it.${git.error() ? ` git: ${git.firstError()}` : ''}`);
 const gitDir = resolve(top, git('rev-parse', '--git-dir'));
 if (gitDir !== resolve(top, git('rev-parse', '--git-common-dir'))) {
   done(1, 'refused', `this is a linked worktree (${top}). Claims are made in the main checkout, on the trunk, so every session sees them.`);
@@ -109,7 +103,7 @@ if (head !== BASE) done(1, 'refused', `the main checkout is on ${head ?? 'a deta
 
 const refuseIfDirty = () => {
   const d = git('status', '--porcelain');
-  if (d === null) done(2, 'error', `git status failed: ${firstLine()}`);
+  if (d === null) done(2, 'error', `git status failed: ${git.firstError()}`);
   if (d) done(1, 'refused', `the main checkout has uncommitted changes:\n${d.split('\n').map((l) => `  ${l}`).join('\n')}\nCommit them as their own unit (or ask whose they are) before claiming ${ID}.`);
 };
 refuseIfDirty();
@@ -147,25 +141,9 @@ if (!was) done(1, 'refused', `${rel} on ${BASE} has no readable \`status:\` head
 if (was === 'in-progress') done(1, 'refused', `${ID} is already claimed: it is \`in-progress\` on ${BASE}. A stale claim is cleared through /ship, never overridden.`);
 if (!REG.open.has(was)) done(1, 'refused', `${ID} is \`${was}\` on ${BASE}, which is closed. Reopening it is the owner's call, not a claim.`);
 
-// As worktree.mjs words it (B10): a moved assumption or a superseded decision is
-// forwarded, not settled, so the fix is to re-point the dependency.
-const unmet = idsOf(entry, 'depends_on').map((id) => {
-  const reg = registerOf(id);
-  const dep = reg && git('show', `${BASE}:${reg.dir}/${id}.md`);
-  const parsed = dep ? parseEntry(dep, reg.keys) : null;
-  return { id, status: parsed?.header.status ?? null, to: newHomeOf(parsed) };
-}).filter((d) => !dependencyMet(d.id, d.status));
+const unmet = unmetDependencies(entry, (id, reg) => git('show', `${BASE}:${reg.dir}/${id}.md`));
 if (unmet.length) {
-  const forwarded = unmet.filter((d) => d.to.length);
-  const open = unmet.filter((d) => !d.to.length);
-  const kind = (re) => open.some((d) => re.test(d.id));
-  const fixes = [
-    kind(/^[PB]\d/) && 'build what it depends on first',
-    kind(/^D-/) && 'an open decision is the owner\'s to take',
-    kind(/^A-/) && 'an open assumption needs its Resolution',
-    forwarded.length && `re-point its \`depends_on:\` via /ship: ${forwarded.map((d) => `${d.id} → ${d.to.join(', ')}`).join(', ')}`,
-  ].filter(Boolean).join('; ');
-  done(1, 'refused', `${ID} depends on ${unmet.map((d) => `${d.id} (${d.status ? `\`${d.status}\`` : 'no entry'})`).join(', ')} on ${BASE}. ${fixes[0].toUpperCase()}${fixes.slice(1)}.`,
+  done(1, 'refused', `${ID} depends on ${describeUnmet(unmet)} on ${BASE}. ${dependencyAdvice(unmet)}.`,
     { unmet: unmet.map(({ id, status: s }) => ({ id, status: s })) });
 }
 
@@ -178,8 +156,8 @@ const end = lines.indexOf('---', 1);
 const at = lines.findIndex((l, i) => i > 0 && i < end && /^status:/.test(l));
 if (lines[0] !== '---' || end < 0 || at < 0) done(1, 'refused', `${rel} has no \`status:\` line in its header to flip.`);
 lines[at] = 'status: in-progress';
+writeFileSync(path, lines.join(eol)); // a write that throws changed nothing to put back
 cleanup.edit = () => writeFileSync(path, before);
-writeFileSync(path, lines.join(eol));
 
 const check = spawnSync(process.execPath, [join(HERE, 'backlog-schema-check.mjs'), '--all'], {
   cwd: top, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: top },
@@ -191,7 +169,7 @@ if (check.status !== 0) {
 const what = MILESTONE ? `${ID} ${MILESTONE}` : ID;
 const message = `docs: claim ${what} (${ID})${trailer ? `\n\n${trailer}` : ''}`;
 if (git('commit', '-q', '-m', message, '--', rel) === null) {
-  done(1, 'refused', `the commit failed, so ${ID} is unclaimed and the file is put back. git: ${lastError}`);
+  done(1, 'refused', `the commit failed, so ${ID} is unclaimed and the file is put back. git: ${git.error()}`);
 }
 cleanup.edit = null;
 done(0, 'claimed', `${what} claimed on ${BASE} (${git('rev-parse', '--short', 'HEAD')}).${cleared ? ` The land lock: ${cleared.slice(1, -1)}.` : ''}`, { commit: git('rev-parse', 'HEAD') });

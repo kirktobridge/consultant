@@ -367,6 +367,47 @@ export const newHomeOf = (entry) => {
   return key ? idsOf(entry, key) : [];
 };
 
+/**
+ * An entry's direct dependencies that still hold it, each `{ id, status, to }` (`to`
+ * is newHomeOf's re-point targets). `read(id, reg)` returns the dependency's file text,
+ * or null when it has none. Shared by every script that refuses a blocked claim, so they
+ * agree on what blocks and on how to say it (describeUnmet, dependencyAdvice). An
+ * experiment is looked up too: registerOf covers only the build loop's registers.
+ */
+export function unmetDependencies(entry, read) {
+  return idsOf(entry, 'depends_on').map((id) => {
+    const reg = registerOf(id) ?? (EXPERIMENTS.idPattern.test(id) ? EXPERIMENTS : null);
+    const text = reg ? read(id, reg) : null;
+    const parsed = text ? parseEntry(text, reg.keys) : null;
+    return { id, status: parsed?.header.status ?? null, to: newHomeOf(parsed) };
+  }).filter((d) => !dependencyMet(d.id, d.status));
+}
+
+/** unmetDependencies' list as the refusals print it: `P2 (`proposed`), P9 (no entry)`. */
+export const describeUnmet = (unmet) =>
+  unmet.map((d) => `${d.id} (${d.status ? `\`${d.status}\`` : 'no entry'})`).join(', ');
+
+/**
+ * What to do about unmetDependencies' list, as one sentence with no full stop (the caller
+ * ends it): the fix fits what blocks.
+ * A moved assumption or superseded decision is forwarded, not settled, so its fix is a
+ * re-point to its new home (B10).
+ */
+export function dependencyAdvice(unmet) {
+  const open = unmet.filter((d) => !d.to.length);
+  const forwarded = unmet.filter((d) => d.to.length);
+  const kind = (re) => open.some((d) => d.status && re.test(d.id));
+  const s = [
+    kind(/^[PB]\d/) && 'build what it depends on first',
+    kind(/^D-/) && 'an open decision is the owner\'s to take',
+    kind(/^A-/) && 'an open assumption needs its Resolution',
+    kind(/^X\d/) && 'an experiment it waits on has to close',
+    open.some((d) => !d.status) && 'a dependency with no entry has to be filed or dropped',
+    forwarded.length && `re-point its \`depends_on:\` via /ship: ${forwarded.map((d) => `${d.id} → ${d.to.join(', ')}`).join(', ')}`,
+  ].filter(Boolean).join('; ');
+  return s && `${s[0].toUpperCase()}${s.slice(1)}`;
+}
+
 /** Whether a string is one ID in any register's namespace. */
 export const isId = (v) => ID.test(v);
 
