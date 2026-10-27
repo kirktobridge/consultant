@@ -74,8 +74,9 @@ write a branch name into a git command.
 | What shipped | Doc | Edit |
 |---|---|---|
 | Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
-| A bug fix landed | `docs/bugs/B#.md` | it stays `in-progress` (a bug has no milestones); `status: fixed` — **only on the user's word**, the same rule as `shipped` (below). A bug never enters `QUEUE.md`: every open bug is picked up before it (`scripts/next.mjs`). |
+| A bug fix landed | `docs/bugs/B#.md` | it stays `in-progress` (a bug has no milestones); `status: fixed` on the user's word, or from /land when its report clears it (D-7, below). A bug never enters `QUEUE.md`: every open bug is picked up before it (`scripts/next.mjs`). |
 | The user rejected a landing | `docs/backlog/P#.md` / `docs/bugs/B#.md` | stays `in-progress`; append today's date to `rejected:` (add the key if absent) and a one-line note on what failed (below). |
+| The user reopened a bug /land marked fixed | `docs/bugs/B#.md` | back to `in-progress`; append today's date to `rejected:` and a one-line note on what is still broken, as for a rejection (below). |
 | A spike landed (`resolves: A-n`) | `docs/assumptions/A-n.md` | write the assumption's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | An assumption was misfiled (a choice, our own code's behavior, a quantity) | `docs/assumptions/A-n.md` | `status: moved`, add `resolved:` and `moved_to:` (its new home, filed first), and a one-line `## Resolution` saying why it moved. Repoint the `depends_on:` of every open entry that named it. |
 | The user took a decision | `docs/decisions/D-n.md` | `status: decided`, add `decided: YYYY-MM-DD` and `leads_to:` (the `P#` that carries it, or `—`) to the header, and add `## Decided` (the choice), `## Why` and `## Reopen if`; drop `waiting_on:`. **Only on the user's word**, as with `shipped`: recording a choice they didn't make is the one edit here that invents product direction. |
@@ -111,8 +112,7 @@ write a branch name into a git command.
 
 Every other edit here is bookkeeping; `shipped` is a verdict — *this is what I asked
 for* — and only the product owner can give it, because `Accept:` is their definition
-of done. A bug's `fixed` is the same verdict against its `Repro` and `Expected`, under
-the same rule. So flip an entry to `shipped` only when **the user says so in this
+of done. So flip an entry to `shipped` only when **the user says so in this
 conversation**, after seeing the per-criterion report ("mark P4 shipped", "yes, ship
 it"). None of these is the user saying so: /land handing you a merged branch, a green
 suite, every criterion observed, a commit message. Invoked from /land, or
@@ -133,6 +133,23 @@ what failed, in one commit on main. Append, never replace: a second rejection th
 day must still change the value. That commit is what tells
 `scripts/landing.mjs` the earlier landing no longer counts, so `next.mjs` and
 `status.mjs` read the entry as being built again rather than awaiting acceptance.
+
+## A bug's `fixed`: the user's word, or a report that clears it (D-7)
+
+A bug's contract is its `Repro` and `Expected`, which a report settles without
+judgment, so the user decided (D-7) that their word is not the only way to `fixed`.
+/land may hand you the flip, and you write it only when **code** says the report
+clears the bug, never on /land's say-so: run `node scripts/close-report.mjs --clears
+<B#> --branch <branch>` yourself, before /land's `finish` removes the branch. Exit 0
+→ flip it to `fixed`, with the note `Fixed YYYY-MM-DD by /land under D-7: the report
+clears it (Repro not observed to still break, Expected observed); merge <sha>.` Exit 1
+or 2 → leave it `in-progress`, awaiting the user, and report /land's request as a
+fault in the hand-off. A feature never takes this path: `shipped` stays the user's.
+
+On the user's word, `fixed` follows the `shipped` rule above. When they say a bug
+/land marked fixed is not fixed, reopen it: back to `in-progress`, with today's date
+appended to `rejected:` and what is still broken, as for a rejection. That is D-7's
+reopen condition, so tell them it was met.
 
 ## When the schema check goes red
 
