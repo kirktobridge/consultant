@@ -97,6 +97,18 @@ describe('claims that no longer match reality', () => {
     assert.match(r.stdout, /`shipped` is their flip, never yours/);
   });
 
+  test('a bug whose branch merged was left for the user: ask them, unless --clears says it clears (P60)', () => {
+    const { dir, g } = repo({ bugs: [B('B1', { status: 'in-progress' })] });
+    g.checkout('feat/b1-fix', true);
+    g.commitAll('work');
+    g.checkout('main');
+    g.merge('feat/b1-fix');
+    const r = audit(dir);
+    assert.match(r.stdout, /B1 is `in-progress` but its branch is already merged into main/);
+    assert.match(r.stdout, /its report did not clear it \(D-7\)/);
+    assert.match(r.stdout, /Unless `close-report\.mjs --clears` exits 0, `fixed` is their word, not yours/);
+  });
+
   test('in-progress with no branch anywhere → an abandoned claim', () => {
     const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' })] });
     const r = audit(dir);
@@ -110,7 +122,7 @@ describe('claims that no longer match reality', () => {
     const r = audit(dir);
     assert.match(r.stdout, /B1 is `in-progress` but no branch names it/);
     assert.match(r.stdout, /clear it back to `open`/);
-    assert.match(r.stdout, /`fixed` is their flip/);
+    assert.match(r.stdout, /\/land left it for the user \(its report did not clear it, D-7: ask them whether it is fixed\)/);
   });
 
   test('a bug\'s feat/b<#>- branch counts as its claim being in flight (P5 R1)', () => {

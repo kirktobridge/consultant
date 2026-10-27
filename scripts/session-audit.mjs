@@ -157,11 +157,11 @@ for (const e of buildable.filter((x) => x.status === 'in-progress')) {
   if (onUnmerged) continue; // legitimately in flight
   if (onMerged) {
     add('warn', `${e.id} is \`in-progress\` but its branch is already merged into ${BASE}.`, bug
-      ? `It awaits the user's acceptance: show them /land's per-criterion report and ask. \`fixed\` is their flip, never yours.`
+      ? `/land left it for the user, so its report did not clear it (D-7): show them /land's per-criterion report and ask whether it is fixed. Unless \`close-report.mjs --clears\` exits 0, \`fixed\` is their word, not yours.`
       : `If milestones remain, its \`partial\` flip was missed — run /ship on ${BASE}. If that was the last one, it awaits the user's acceptance: show them /land's per-criterion report and ask. \`shipped\` is their flip, never yours.`);
   } else {
     add('warn', `${e.id} is \`in-progress\` but no branch names it.`, bug
-      ? 'Either the fix merged and awaits the user\'s acceptance (`fixed` is their flip — ask them), or this is an abandoned claim blocking another session from picking the bug up: clear it back to `open` via /ship. Resolve it — a stale claim is worse than no claim.'
+      ? 'Either the fix merged and /land left it for the user (its report did not clear it, D-7: ask them whether it is fixed), or this is an abandoned claim blocking another session from picking the bug up: clear it back to `open` via /ship. Resolve it — a stale claim is worse than no claim.'
       : 'Either the work merged and its flip is owed (`partial` via /ship, or `shipped` once the user accepts it — ask them), or this is an abandoned claim blocking another session from picking the entry up: clear it back to `proposed` via /ship. Resolve it — a stale claim is worse than no claim.');
   }
 }
