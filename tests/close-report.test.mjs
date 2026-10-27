@@ -360,6 +360,24 @@ describe('--clears decides whether a bug\'s report clears it (P60)', () => {
     assert.match(r.stdout, /it has no Expected, so nothing in it says what working looks like/);
   });
 
+  test('after the merge, where /land\'s step 3 and /ship run it, it reads what the merge brought in', () => {
+    const dir = bugLanding(filled());
+    writeFileSync(join(dir, 'later.txt'), 'other work on main');
+    execSync('git add -A && git commit -q -m "feat: other (P9)"', { cwd: dir });
+    execSync('git merge -q --no-ff feat/b1-x -m "Merge branch feat/b1-x"', { cwd: dir });
+    const r = clearsCheck(dir);
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /feat\/b1-x against main, 1 commit\(s\) read/);
+    assert.equal(checkBug(dir).code, 0, 'and --check too');
+  });
+
+  test('the last verdict on a section quoted twice is the one that counts', () => {
+    const msg = `fix: x (B1)\n\n${REPRO} OBSERVED to still break, before the fix.\n${REPRO} NOT OBSERVED to still break, after it.\n${EXPECTED} OBSERVED.\n`;
+    assert.equal(clearsCheck(bugLanding(msg)).code, 0);
+    const flipped = `fix: x (B1)\n\n${REPRO} NOT OBSERVED to still break, on the first try.\n${REPRO} OBSERVED to still break, on a rerun.\n${EXPECTED} OBSERVED.\n`;
+    assert.equal(clearsCheck(bugLanding(flipped)).code, 1);
+  });
+
   test('a feature is refused: its shipped is the owner\'s', () => {
     const r = run('close-report.mjs', ['--clears', 'P1'], { cwd: landing(ACCEPT, QUOTED) });
     assert.equal(r.code, 2, out(r));

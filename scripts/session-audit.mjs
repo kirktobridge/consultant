@@ -157,7 +157,7 @@ for (const e of buildable.filter((x) => x.status === 'in-progress')) {
   if (onUnmerged) continue; // legitimately in flight
   if (onMerged) {
     add('warn', `${e.id} is \`in-progress\` but its branch is already merged into ${BASE}.`, bug
-      ? `/land left it for the user, so its report did not clear it (D-7): show them /land's per-criterion report and ask whether it is fixed. Unless \`close-report.mjs --clears\` exits 0, \`fixed\` is their word, not yours.`
+      ? `/land left it for the user, so its report did not clear it (D-7): show them /land's per-criterion report and ask whether it is fixed. Only /land marks a bug fixed without them; from here, \`fixed\` is their word, not yours.`
       : `If milestones remain, its \`partial\` flip was missed — run /ship on ${BASE}. If that was the last one, it awaits the user's acceptance: show them /land's per-criterion report and ask. \`shipped\` is their flip, never yours.`);
   } else {
     add('warn', `${e.id} is \`in-progress\` but no branch names it.`, bug

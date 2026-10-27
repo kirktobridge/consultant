@@ -668,8 +668,12 @@ describe('next.mjs names each claimed bug with its state (P60)', () => {
     // What /ship does on a reopen: back to in-progress, the date appended to rejected:.
     writeFileSync(f, `${readFileSync(f, 'utf8').replace('status: fixed', 'status: in-progress\nrejected: 2026-10-27')}\nReopened: still breaks.\n`);
     r.commitAll('docs: B1 reopened (B1)');
-    for (const args of [[], ['--count', '2']]) assert.match(claimedLine(r.dir, ...args) ?? '', /another session is building it/);
-    const j = JSON.parse(next(r.dir, '--json').stdout);
-    assert.deepEqual(j.claimedBugs, [{ id: 'B1', why: 'claimed (in-progress): another session is building it' }]);
+    // No branch yet: claimed to be built again, and not passed off as someone's build.
+    for (const args of [[], ['--count', '2']]) assert.equal(claimedLine(r.dir, ...args), 'reopened 2026-10-27: claimed to be built again, no branch yet');
+    assert.deepEqual(JSON.parse(next(r.dir, '--json').stdout).claimedBugs,
+      [{ id: 'B1', why: 'reopened 2026-10-27: claimed to be built again, no branch yet' }]);
+    // A session takes it up: its branch is a build in flight.
+    r.sh('git branch feat/b1-again');
+    assert.match(claimedLine(r.dir) ?? '', /another session is building it/);
   });
 });

@@ -99,9 +99,15 @@ const held = open.map((b) => ({ id: b.id, severity: b.header.severity ?? null, o
 const bug = open.find((b) => !held.some((h) => h.id === b.id));
 // A claimed bug is never picked, but it is named with its state, as a skipped queue entry
 // is: being built, landed and awaiting the owner, or reopened and being built again (P60).
+// A claim with no landing and no branch is not "being built" by anyone: say what it is.
 const claimedBugs = loaded.get(BUGS).filter((b) => b.status === 'in-progress').map((b) => {
   const { why, landed } = claimed(b.id);
-  return { id: b.id, why, ...(landed && { landed }) };
+  if (landed) return { id: b.id, why, landed };
+  if (branches.some((br) => br.toLowerCase().startsWith(`feat/${b.id.toLowerCase()}-`))) return { id: b.id, why };
+  const last = String(b.header.rejected ?? '').split(/,\s*/).filter(Boolean).at(-1);
+  return { id: b.id, why: last
+    ? `reopened ${last}: claimed to be built again, no branch yet`
+    : 'claimed (in-progress), but no branch builds it: an abandoned claim, or one about to start' };
 });
 
 // ── Then the queue ───────────────────────────────────────────────────────────

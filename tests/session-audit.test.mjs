@@ -106,7 +106,7 @@ describe('claims that no longer match reality', () => {
     const r = audit(dir);
     assert.match(r.stdout, /B1 is `in-progress` but its branch is already merged into main/);
     assert.match(r.stdout, /its report did not clear it \(D-7\)/);
-    assert.match(r.stdout, /Unless `close-report\.mjs --clears` exits 0, `fixed` is their word, not yours/);
+    assert.match(r.stdout, /Only \/land marks a bug fixed without them; from here, `fixed` is their word, not yours/);
   });
 
   test('in-progress with no branch anywhere → an abandoned claim', () => {

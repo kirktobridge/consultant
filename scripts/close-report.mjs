@@ -208,7 +208,8 @@ export function checkBugReport(sections, messages) {
     const graded = (grade) => ({ criterion, section: name, grade });
     const ends = [];
     for (let at = region.indexOf(want); at >= 0; at = region.indexOf(want, at + 1)) ends.push(at + want.length);
-    const verdict = ends.map((e) => VERDICT.exec(region.slice(e))).find(Boolean);
+    // The last quote's verdict is the report's final word, when it quotes a section twice.
+    const verdict = ends.map((e) => VERDICT.exec(region.slice(e))).filter(Boolean).at(-1);
     if (verdict) return { ...graded('ok'), verdict: verdict[1].toLowerCase() };
     // Whole, then nothing but a slot: unfilled. Whole, then more text: it runs on.
     if (ends.some((e) => /^\s*(<|$)/.test(region.slice(e)))) return graded('NO VERDICT');
@@ -220,8 +221,9 @@ export function checkBugReport(sections, messages) {
 /**
  * Whether checkBugReport's grades clear the bug (D-7, P60): the report quotes its Repro
  * and Expected word for word, the Repro *not observed* to still break, the Expected
- * *observed*. Read here, by code, so the session that wrote the report is not the one
- * deciding it clears. A bug with no Expected never clears: nothing in it says what
+ * *observed*. Code reads the verdicts, so no session judges whether its own report
+ * clears; the verdicts themselves are still the report's, written by the build. A bug
+ * with no Expected never clears: nothing in it says what
  * working looks like, so it goes to the owner. `{ clears, why }`, `why` empty on a clear.
  */
 export function clearsBug(graded) {
@@ -293,11 +295,22 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     [branch] = mine;
   }
   if (!branches.includes(branch)) stop(`--branch ${branch} is not a local branch.`);
+  // The branch's own commits: trunk..branch before the merge. After it (where /land's
+  // step 3 and /ship run --clears) that range is empty, so read what the merge brought
+  // in: the first-parent merge whose second parent is the branch tip, from its first
+  // parent to the tip.
+  let range = `${trunk}..${branch}`;
+  const tip = git('rev-parse', branch)?.trim();
+  if (git('merge-base', '--is-ancestor', branch, trunk) !== null) {
+    const merges = (git('rev-list', '--first-parent', '--merges', '--parents', trunk) ?? '').split('\n').map((l) => l.split(' '));
+    const merge = merges.find((p) => p.slice(2).includes(tip));
+    if (merge) range = `${merge[1]}..${branch}`;
+  }
   // NUL-separated: a message may hold any text, a line of dashes included.
-  const log = git('log', '--format=%B%x00', `${trunk}..${branch}`);
-  if (log === null) stop(`could not read ${trunk}..${branch}. git: ${lastError.split('\n')[0]}`);
+  const log = git('log', '--format=%B%x00', range);
+  if (log === null) stop(`could not read ${range}. git: ${lastError.split('\n')[0]}`);
   const messages = log.split('\0').map((m) => m.trim()).filter(Boolean);
-  if (!messages.length) stop(`${branch} has no commits beyond ${trunk}: run --check before the merge, on the rebased branch.`);
+  if (!messages.length) stop(`${branch} has no commits beyond ${trunk}, and no merge into ${trunk} brought it in: there is no report to read.`);
 
   const bug = reg === BUGS;
   let graded;
