@@ -93,9 +93,9 @@ landing, whatever the size of the change.
    not the call. A bug (`B#`, branch `feat/b<#>-…`) has no milestones and no
    `partial`. Its `fixed` is code's call when the report settles it (D-7): run
    `node scripts/close-report.mjs --clears <ID> --branch <branch>` (after the merge it
-   reads what the merge brought in). Hand /ship a `fixed` flip only when it exits 0 and
-   the preconditions found no conflict resolved without a fresh report after it (step
-   1's merge already refused a red suite). Any other result: the bug stays
+   reads what the merge brought in, and refuses when a conflict was resolved and no
+   report was committed after the rebase). Hand /ship a `fixed` flip only when it exits
+   0; step 1's merge already refused a red suite. Any other result: the bug stays
    `in-progress` and the handshake asks the user, as for a feature. If the branch was a **spike** (`resolves: A-n`), /ship also
    writes the assumption's `Resolution:` and flips its status — the answer landing in the code
    without landing in the register is the exact failure the pairing check exists for.

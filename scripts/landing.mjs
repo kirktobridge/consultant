@@ -12,9 +12,24 @@
 // specs at once (status.mjs batches them through one cat-file); without it, each is a
 // `git show`.
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { REGISTERS, BACKLOG, BUGS, parseEntry } from './entries.mjs';
 
 const lines = (s) => (s || '').split('\n').filter(Boolean);
+
+/**
+ * The record land.mjs keeps while a branch lands (its rebase's conflicts and where the
+ * rebase left it), in the git common dir every worktree shares. land.mjs writes it and
+ * removes it at `finish`; close-report --clears reads it (D-7).
+ */
+export const landingRecordPath = (commonDir, branch) =>
+  join(commonDir, 'loop-land', `${branch.replace(/[^A-Za-z0-9._-]/g, '__')}.json`);
+/** The record, or null when there is none. Throws when it exists but can't be read. */
+export const readLandingRecord = (commonDir, branch) => {
+  const p = landingRecordPath(commonDir, branch);
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
+};
 
 // The files /ship writes on main. A commit touching nothing else is bookkeeping, never a
 // build landing, whatever its subject says.

@@ -6,7 +6,7 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { P, B, project, gitInit, run, out, cleanupAll } from './helpers/fixture.mjs';
 
@@ -327,7 +327,16 @@ describe('--check on a bug grades its Repro and Expected (P56)', () => {
 
 // ── --clears (P60, D-7) ──────────────────────────────────────────────────────
 
-const clearsCheck = (dir, id = 'B1') => run('close-report.mjs', ['--clears', id], { cwd: dir });
+/** The landing record land.mjs keeps for feat/b1-x, as its rebase leaves it. */
+const record = (dir, rec) => {
+  mkdirSync(join(dir, '.git', 'loop-land'), { recursive: true });
+  writeFileSync(join(dir, '.git', 'loop-land', 'feat__b1-x.json'), JSON.stringify({ branch: 'feat/b1-x', conflicts: [], pending: null, ...rec }));
+};
+/** --clears as /land runs it: during a landing, so with a record (a clean one unless set). */
+const clearsCheck = (dir, id = 'B1') => {
+  if (!existsSync(join(dir, '.git', 'loop-land', 'feat__b1-x.json'))) record(dir, {});
+  return run('close-report.mjs', ['--clears', id], { cwd: dir });
+};
 
 describe('--clears decides whether a bug\'s report clears it (P60)', () => {
   test('the Repro not observed to still break and the Expected observed: it clears', () => {
@@ -376,6 +385,51 @@ describe('--clears decides whether a bug\'s report clears it (P60)', () => {
     assert.equal(clearsCheck(bugLanding(msg)).code, 0);
     const flipped = `fix: x (B1)\n\n${REPRO} NOT OBSERVED to still break, on the first try.\n${REPRO} OBSERVED to still break, on a rerun.\n${EXPECTED} OBSERVED.\n`;
     assert.equal(clearsCheck(bugLanding(flipped)).code, 1);
+  });
+
+  test('after a conflict resolution only a report committed after the rebase counts', () => {
+    const dir = bugLanding(filled());
+    const tip = execSync('git rev-parse feat/b1-x', { cwd: dir, encoding: 'utf8' }).trim();
+    const onBranch = (message) => {
+      execSync('git checkout -q feat/b1-x', { cwd: dir });
+      commit(dir, message);
+      execSync('git checkout -q main', { cwd: dir });
+    };
+    const region = { file: 'a.txt', main: ['m'], branch: ['b'], base: ['o'], resolved: ['mb'] };
+
+    record(dir, { conflicts: [region], rebasedTip: tip });
+    let r = clearsCheck(dir);
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /0 commit\(s\) read, only those after the rebase \(1 conflict region\(s\) were resolved\)/);
+    assert.match(r.stdout, /its Repro is MISSING in the report/);
+
+    // A commit after the rebase that is no report does not let the stale one clear it.
+    onBranch('chore: fix lint (B1)');
+    r = clearsCheck(dir);
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /its Repro is MISSING in the report/);
+
+    // A record from before rebasedTip existed proves nothing about when the report was written.
+    record(dir, { conflicts: [region] });
+    assert.match(clearsCheck(dir).stdout, /the record does not say where the rebase left the branch/);
+
+    record(dir, { conflicts: [region], rebasedTip: tip });
+    onBranch(filled().replace('fix: x', 'chore: re-verified after conflict resolution'));
+    r = clearsCheck(dir);
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /2 commit\(s\) read, only those after the rebase/);
+  });
+
+  test('without a readable landing record nothing clears: it fails closed', () => {
+    const dir = bugLanding(filled());
+    let r = run('close-report.mjs', ['--clears', 'B1'], { cwd: dir });
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /there is no landing record for its branch: --clears runs during \/land, before `land\.mjs finish`/);
+    mkdirSync(join(dir, '.git', 'loop-land'), { recursive: true });
+    writeFileSync(join(dir, '.git', 'loop-land', 'feat__b1-x.json'), '{ not json');
+    r = run('close-report.mjs', ['--clears', 'B1'], { cwd: dir });
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /its landing record could not be read/);
   });
 
   test('a feature is refused: its shipped is the owner\'s', () => {
