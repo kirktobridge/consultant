@@ -91,7 +91,8 @@ Each subagent's final report is its entry's landing report. As each arrives:
 
 - Relay it: the entry, what landed, and every `Accept:` criterion with its verdict
   exactly as /land gave it. Don't round a *not observed* up, and don't merge reports.
-- Then one **"ship it?"** for that entry. On the user's word, run /ship for that
+- Then one **"ship it?"** for that entry, unless it is a bug /land already marked
+  `fixed` (D-7): relay that instead, and that the user can reopen it. On the user's word, run /ship for that
   entry (`shipped` for a feature, `fixed` for a bug); a pass /ship makes on main
   takes the land lock first, as a claim does (`node scripts/land.mjs lock take
   ship:<ID> --wait 600`, then `node scripts/land.mjs lock release ship:<ID>`), because the subagents may be landing in the same checkout. No word,

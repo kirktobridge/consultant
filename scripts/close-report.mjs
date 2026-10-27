@@ -41,13 +41,20 @@
 //
 // It warns; /land relays the warnings and lands anyway (refusing is a later entry).
 //
-// Exit: 0 the skeleton is on stdout, or --check found nothing to warn about | 1 --check
-// warns (each criterion or section named) | 2 nothing to print or check: not a P#/B#, no entry on the
-// trunk, an entry that does not parse, no criteria in it (a feature with no Accept, a bug
-// with no Repro), no trunk, or (--check) no branch or no commits on it
+// --clears B# decides D-7's question for /land and /ship: does the report clear the bug,
+// so /land may mark it `fixed` without asking the owner (P60)? Only when --check would
+// be quiet, the Repro is *not observed* to still break, and the Expected is *observed*
+// (clearsBug). A feature is refused: its `shipped` is the owner's verdict.
+//
+// Exit: 0 the skeleton is on stdout, --check found nothing to warn about, or --clears
+// clears | 1 --check warns (each criterion or section named), or --clears does not clear
+// (saying why) | 2 nothing to print or check: not a P#/B#, no entry on the trunk, an entry
+// that does not parse, no criteria in it (a feature with no Accept, a bug with no Repro),
+// no trunk, (--check, --clears) no branch or no commits on it, or --clears given a feature
 //
 // Usage: node scripts/close-report.mjs <P#|B#> [--base <branch>]
 //        node scripts/close-report.mjs --check <P#|B#> [--branch <branch>] [--base <branch>]
+//        node scripts/close-report.mjs --clears <B#> [--branch <branch>] [--base <branch>]
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -201,7 +208,9 @@ export function checkBugReport(sections, messages) {
     const graded = (grade) => ({ criterion, section: name, grade });
     const ends = [];
     for (let at = region.indexOf(want); at >= 0; at = region.indexOf(want, at + 1)) ends.push(at + want.length);
-    if (ends.some((e) => VERDICT.test(region.slice(e)))) return graded('ok');
+    // The last quote's verdict is the report's final word, when it quotes a section twice.
+    const verdict = ends.map((e) => VERDICT.exec(region.slice(e))).filter(Boolean).at(-1);
+    if (verdict) return { ...graded('ok'), verdict: verdict[1].toLowerCase() };
     // Whole, then nothing but a slot: unfilled. Whole, then more text: it runs on.
     if (ends.some((e) => /^\s*(<|$)/.test(region.slice(e)))) return graded('NO VERDICT');
     if (share(region, want) < ALTERED_SHARE) return graded('MISSING');
@@ -209,13 +218,34 @@ export function checkBugReport(sections, messages) {
   });
 }
 
+/**
+ * Whether checkBugReport's grades clear the bug (D-7, P60): the report quotes its Repro
+ * and Expected word for word, the Repro *not observed* to still break, the Expected
+ * *observed*. Code reads the verdicts, so no session judges whether its own report
+ * clears; the verdicts themselves are still the report's, written by the build. A bug
+ * with no Expected never clears: nothing in it says what
+ * working looks like, so it goes to the owner. `{ clears, why }`, `why` empty on a clear.
+ */
+export function clearsBug(graded) {
+  const of = (name) => graded.find((g) => g.section === name);
+  const why = [];
+  for (const g of graded) if (g.grade !== 'ok') why.push(`its ${g.section} is ${g.grade} in the report`);
+  const repro = of('Repro');
+  const expected = of('Expected');
+  if (repro?.grade === 'ok' && repro.verdict !== 'not observed') why.push(`its Repro is ${repro.verdict} to still break, not "not observed"`);
+  if (!expected) why.push('it has no Expected, so nothing in it says what working looks like');
+  else if (expected.grade === 'ok' && expected.verdict !== 'observed') why.push(`its Expected is ${expected.verdict}, not "observed"`);
+  return { clears: !why.length, why };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2);
-  const check = argv.includes('--check');
+  const clears = argv.includes('--clears');
+  const check = clears || argv.includes('--check');
   const [ID] = argv.filter((a, i) => !a.startsWith('--') && !['--base', '--branch'].includes(argv[i - 1]));
-  const usage = 'usage: node scripts/close-report.mjs [--check] <P#|B#> [--branch <branch>] [--base <branch>]';
+  const usage = 'usage: node scripts/close-report.mjs [--check] <P#|B#> [--branch <branch>] [--base <branch>]\n       node scripts/close-report.mjs --clears <B#> [--branch <branch>] [--base <branch>]';
   const stop = (msg) => { console.error(`close-report: ${msg}`); process.exit(2); };
 
   // Same git invocation as claims, for the reasons given in session-audit.
@@ -234,6 +264,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 
   const reg = ID ? buildableRegister(ID) : null;
   if (!reg) stop(`"${ID ?? ''}" is not a buildable id (P# or B#).\n${usage}`);
+  // D-7 covers bugs only: a feature's `shipped` is the owner's verdict, never code's.
+  if (clears && reg !== BUGS) stop(`--clears takes a bug (B#): ${ID} is a feature, and whether it shipped is the owner's call (D-7).`);
   if (git('rev-parse', '--git-dir') === null) stop(`not a git repository, or git refused it.${lastError ? ` git: ${lastError.split('\n')[0]}` : ''}`);
   const branches = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads') || '').split('\n').filter(Boolean);
   const { trunk, error } = trunkFromArgv(argv, branches);
@@ -263,11 +295,22 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     [branch] = mine;
   }
   if (!branches.includes(branch)) stop(`--branch ${branch} is not a local branch.`);
+  // The branch's own commits: trunk..branch before the merge. After it (where /land's
+  // step 3 and /ship run --clears) that range is empty, so read what the merge brought
+  // in: the first-parent merge whose second parent is the branch tip, from its first
+  // parent to the tip.
+  let range = `${trunk}..${branch}`;
+  const tip = git('rev-parse', branch)?.trim();
+  if (git('merge-base', '--is-ancestor', branch, trunk) !== null) {
+    const merges = (git('rev-list', '--first-parent', '--merges', '--parents', trunk) ?? '').split('\n').map((l) => l.split(' '));
+    const merge = merges.find((p) => p.slice(2).includes(tip));
+    if (merge) range = `${merge[1]}..${branch}`;
+  }
   // NUL-separated: a message may hold any text, a line of dashes included.
-  const log = git('log', '--format=%B%x00', `${trunk}..${branch}`);
-  if (log === null) stop(`could not read ${trunk}..${branch}. git: ${lastError.split('\n')[0]}`);
+  const log = git('log', '--format=%B%x00', range);
+  if (log === null) stop(`could not read ${range}. git: ${lastError.split('\n')[0]}`);
   const messages = log.split('\0').map((m) => m.trim()).filter(Boolean);
-  if (!messages.length) stop(`${branch} has no commits beyond ${trunk}: run --check before the merge, on the rebased branch.`);
+  if (!messages.length) stop(`${branch} has no commits beyond ${trunk}, and no merge into ${trunk} brought it in: there is no report to read.`);
 
   const bug = reg === BUGS;
   let graded;
@@ -278,6 +321,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const criteria = criteriaOf(entry.sections.get('Accept'));
     if (!criteria.length) stop(`${ID} on ${trunk} has no Accept criteria to check a report against.`);
     graded = checkReport(criteria, messages);
+  }
+  if (clears) {
+    const { clears: ok, why } = clearsBug(graded);
+    const head = `close-report --clears ${ID}: ${branch} against ${trunk}, ${messages.length} commit(s) read`;
+    console.log(ok
+      ? `${head}\nclears: the report quotes the Repro, not observed to still break, and the Expected, observed. /land may mark it fixed (D-7).`
+      : `${head}\ndoes not clear: ${why.join('; ')}. It stays in-progress: ask the owner whether it is fixed.`);
+    process.exit(ok ? 0 : 1);
   }
   const warned = graded.filter((g) => g.grade !== 'ok');
   const against = bug ? graded.map((g) => g.section).join(' and ') : 'Accept';

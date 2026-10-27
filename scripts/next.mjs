@@ -10,7 +10,9 @@
 // it: a dependency that is an unshipped `P#`, an unfixed `B#`, or an `open` `A-n` /
 // `D-n` holds the bug back, and this prints it as held with what holds it. A claimed
 // entry (`in-progress`) is skipped too: someone else's build, or one that has landed and
-// waits on the owner's acceptance — the reason says which (landing.mjs).
+// waits on the owner's acceptance — the reason says which (landing.mjs). Every claimed
+// bug gets a `claimed:` line saying which, so a bug the owner reopened reads as being
+// built again (P60).
 //
 // Everything is read from the integration branch, never the checked-out copy, for the
 // claim gate's reason: a worktree's files are as old as its branch.
@@ -95,6 +97,18 @@ const open = loaded.get(BUGS).filter((b) => b.status === 'open')
     || Number(a.id.slice(1)) - Number(b.id.slice(1)));
 const held = open.map((b) => ({ id: b.id, severity: b.header.severity ?? null, on: holding(b) })).filter((h) => h.on.length);
 const bug = open.find((b) => !held.some((h) => h.id === b.id));
+// A claimed bug is never picked, but it is named with its state, as a skipped queue entry
+// is: being built, landed and awaiting the owner, or reopened and being built again (P60).
+// A claim with no landing and no branch is not "being built" by anyone: say what it is.
+const claimedBugs = loaded.get(BUGS).filter((b) => b.status === 'in-progress').map((b) => {
+  const { why, landed } = claimed(b.id);
+  if (landed) return { id: b.id, why, landed };
+  if (branches.some((br) => br.toLowerCase().startsWith(`feat/${b.id.toLowerCase()}-`))) return { id: b.id, why };
+  const last = String(b.header.rejected ?? '').split(/,\s*/).filter(Boolean).at(-1);
+  return { id: b.id, why: last
+    ? `reopened ${last}: claimed to be built again, no branch yet`
+    : 'claimed (in-progress), but no branch builds it: an abandoned claim, or one about to start' };
+});
 
 // ── Then the queue ───────────────────────────────────────────────────────────
 
@@ -128,13 +142,14 @@ if (COUNT !== null) {
     picked.push(id);
   }
   if (asJson) {
-    console.log(JSON.stringify({ base: BASE, asked: COUNT, picked, skipped, readyBug: bug?.id ?? null, held, queued }));
+    console.log(JSON.stringify({ base: BASE, asked: COUNT, picked, skipped, readyBug: bug?.id ?? null, held, claimedBugs, queued }));
   } else {
     console.log(`batch: ${picked.length} of ${COUNT} asked, from ${BACKLOG.queue} on ${BASE}`);
     for (const id of picked) console.log(`  picked: ${id}`);
     for (const s of skipped) console.log(`  skipped: ${s.id} — ${s.why}`);
     if (bug) console.log(`  note: ${bug.id} (${bug.header.severity} bug) is ready and goes before the queue; a batch picks from the queue only, so /implement ${bug.id} takes it on its own`);
     for (const h of held) console.log(`  held: ${h.id} (${h.severity} bug) waits on ${h.on.join(', ')}`);
+    for (const c of claimedBugs) console.log(`  claimed: ${c.id} (bug) — ${c.why}`);
   }
   process.exit(picked.length ? 0 : 1);
 }
@@ -147,10 +162,11 @@ if (bug) {
 }
 
 if (asJson) {
-  console.log(JSON.stringify({ base: BASE, next: pick, held, openBugs: open.length, queued }));
+  console.log(JSON.stringify({ base: BASE, next: pick, held, claimedBugs, openBugs: open.length, queued }));
 } else {
   if (pick) console.log(`next: ${pick.id}\n  ${pick.why}`);
   else console.log(`next: nothing ready — ${open.length} open bug(s), ${queued.length} queued ID(s) on ${BASE}, none buildable now.`);
   for (const h of held) console.log(`  held: ${h.id} (${h.severity} bug) waits on ${h.on.join(', ')}`);
+  for (const c of claimedBugs) console.log(`  claimed: ${c.id} (bug) — ${c.why}`);
 }
 process.exit(pick ? 0 : 1);
