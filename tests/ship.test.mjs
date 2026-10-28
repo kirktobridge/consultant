@@ -572,3 +572,110 @@ describe('ship.mjs decide: the owner\'s decision in one commit (P55 R2)', () => 
     assert.equal(sh(dir, 'git status --porcelain'), '');
   });
 });
+
+// ── Intake (P55 R3) ──────────────────────────────────────────────────────────
+
+// A body a re-typer would "tidy": odd spacing, a fenced `## ` line, a trailing space.
+const P_BODY = '## Value\n\nA user can do it.\n\n## Scope\n\nin: it.  out: the rest.\n\n```\n## not a heading\n```\n\n## Accept\n\n- it is visible , as typed.\n- doing it twice is idempotent. \n';
+const P_DRAFT = `---\ntitle: A new thing\nplan: no\ndepends_on: —\n---\n\n${P_BODY}`;
+const B_BODY = '## Repro\n\n1. run it  twice.\n2. it breaks.\n\n## Expected\n\nIt does not break.\n';
+
+describe('ship.mjs file: an approved draft becomes an entry in one commit (P55 R3)', () => {
+  test('a feature takes the next free ID; the header is written here, the body copied verbatim; queue and entry land together', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P4', { status: 'shipped', shipped: '2026-08-02' })] });
+    const before = commits(dir);
+    const r = ship(dir, 'file', 'P', '--owner', 'approved in chat', '--from', fromFile(P_DRAFT), '--trailer', 'Co-Authored-By: X <x@example.com>', '--json');
+    assert.equal(r.code, 0, out(r));
+    const res = JSON.parse(r.stdout);
+    assert.equal(res.id, 'P5', 'one past the highest, not the count');
+    assert.equal(res.action, 'filed');
+    assert.equal(commits(dir), before + 1);
+    assert.equal(readFileSync(join(dir, 'docs/backlog/P5.md'), 'utf8'),
+      `---\nid: P5\ntitle: A new thing\nstatus: proposed\ndrafted: ${today}\nplan: no\ndepends_on: —\n---\n\n${P_BODY}`);
+    assert.deepEqual(filesOf(dir), ['docs/backlog/P5.md', 'docs/backlog/QUEUE.md']);
+    assert.match(readFileSync(join(dir, 'docs/backlog/QUEUE.md'), 'utf8'), /P5/);
+    assert.equal(sh(dir, 'git log -1 --format=%B'), 'docs: file P5 (P5)\n\nA new thing\n\nFiled on the owner\'s approval: approved in chat\n\nCo-Authored-By: X <x@example.com>');
+    assert.equal(run('backlog-schema-check.mjs', ['--all'], { cwd: dir }).code, 0);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+    noLock(dir);
+  });
+
+  test('a bug is filed open, dated reported, its Repro as written', () => {
+    const { dir } = repo({ bugs: [B('B2')] });
+    const r = ship(dir, 'file', 'b', '--owner', 'yes', '--from', fromFile(`---\ntitle: It breaks\nseverity: minor\ndepends_on: —\n---\n\n${B_BODY}`));
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /B3 filed on main/);
+    assert.equal(readFileSync(join(dir, 'docs/bugs/B3.md'), 'utf8'),
+      `---\nid: B3\ntitle: It breaks\nstatus: open\nseverity: minor\nreported: ${today}\ndepends_on: —\n---\n\n${B_BODY}`);
+  });
+
+  test('an assumption and a decision are filed open, dated raised', () => {
+    const { dir } = repo({ assumptions: [A('A-1')], decisions: [D('D-9')] });
+    const a = ship(dir, 'file', 'A', '--owner', 'ok', '--from', fromFile('---\ntitle: Does it hold?\n---\n\n## Assumption\n\nIt holds.\n\n## Why it matters\n\nP1 rests on it.\n\n## How to verify\n\nRun the probe.\n'));
+    assert.equal(a.code, 0, out(a));
+    assert.equal(headerOf(dir, 'docs/assumptions/A-2.md', 'raised'), today);
+    assert.equal(statusOf(dir, 'docs/assumptions/A-2.md'), 'open');
+    const d = ship(dir, 'file', 'D-', '--owner', 'ok', '--from', fromFile('---\ntitle: Which way?\nwaiting_on: user\n---\n\n## Options\n\n(a) one. (b) the other.\n'));
+    assert.equal(d.code, 0, out(d));
+    assert.match(d.stdout, /D-10 filed/);
+    assert.equal(headerOf(dir, 'docs/decisions/D-10.md', 'waiting_on'), 'user');
+  });
+
+  test('a feature resting on an open assumption is filed into the pool, not the queue', () => {
+    const { dir } = repo({ assumptions: [A('A-1')] });
+    const r = ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(P_DRAFT.replace('depends_on: —', 'depends_on: A-1')));
+    assert.equal(r.code, 0, out(r));
+    assert.doesNotMatch(readFileSync(join(dir, 'docs/backlog/QUEUE.md'), 'utf8'), /P2/);
+  });
+
+  test('a draft the check would fail is refused, and the new file is taken away again', () => {
+    const { dir } = repo();
+    refusedFlip(dir, ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(P_DRAFT.replace('- doing it twice is idempotent. \n', ''))), /schema check is red with P2 filed/);
+    assert.ok(!existsSync(join(dir, 'docs/backlog/P2.md')));
+  });
+
+  test('without the owner\'s approval it is refused before anything is touched', () => {
+    const { dir } = repo();
+    refusedFlip(dir, ship(dir, 'file', 'P', '--from', fromFile(P_DRAFT)), /filed once the owner approves it/);
+  });
+
+  test('a draft that is not a draft is refused, naming why', () => {
+    const { dir } = repo();
+    const cases = [
+      [P_BODY, /no `---` header/],
+      [P_DRAFT.replace('title: A new thing\n', ''), /no `title:`/],
+      [P_DRAFT.replace('plan: no', 'id: P9'), /sets `id:`, which a P draft does not carry/],
+      [P_DRAFT.replace('plan: no', 'drafted: 2026-01-01'), /sets `drafted:`/],
+      [P_DRAFT.replace('plan: no', 'severity: minor'), /sets `severity:`/],
+      [P_DRAFT.replace('plan: no', 'plan:'), /empty `plan:`/],
+      [P_DRAFT.replace('---\n\n## Value', '---\n\nA stray line.\n\n## Value'), /text before its first `## ` section/],
+      ['---\ntitle: x\n---\n', /no sections/],
+    ];
+    for (const [text, why] of cases) refusedFlip(dir, ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(text)), why);
+  });
+
+  test('a register the project has not adopted is refused', () => {
+    const { dir } = repo();
+    refusedFlip(dir, ship(dir, 'file', 'D', '--owner', 'ok', '--from', fromFile('---\ntitle: x\nwaiting_on: user\n---\n\n## Options\n\n(a). (b).\n')), /not adopted/);
+  });
+
+  test('a wrong register, a third word, or a flag file does not take cannot run', () => {
+    const { dir } = repo();
+    const draft = fromFile(P_DRAFT);
+    for (const [reg, ...rest] of [['X'], ['X1'], ['P', 'R1'], ['P', '--clears'], ['P', '--branch', 'b'], ['P', '--leads-to', '—']]) {
+      const r = ship(dir, 'file', reg, '--owner', 'ok', '--from', draft, ...rest);
+      assert.equal(r.code, 2, `${reg} ${rest.join(' ')}: ${out(r)}`);
+    }
+    assert.equal(ship(dir, 'file', 'P', '--owner', 'ok').code, 2, 'no --from');
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+  });
+
+  test('the lock is held under a name of its own, so another intake waits rather than shares it', () => {
+    const { dir } = repo();
+    assert.equal(land(dir, 'lock', 'take', 'ship:file-P-1').code, 0);
+    const r = ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(P_DRAFT), '--wait', '0');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /could not take the land lock/);
+    assert.ok(!existsSync(join(dir, 'docs/backlog/P2.md')));
+  });
+});
