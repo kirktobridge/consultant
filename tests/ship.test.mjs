@@ -8,6 +8,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { P, B, A, D, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles } from './helpers/fixture.mjs';
+import { today as localToday } from '../scripts/entries.mjs';
 
 after(cleanupAll);
 
@@ -213,7 +214,7 @@ describe('ship.mjs claim refuses, names why, and leaves the tree as it was', () 
 
 // ── Terminal flips (P55 R1) ──────────────────────────────────────────────────
 
-const today = new Date().toISOString().slice(0, 10);
+const today = localToday();
 const headerOf = (dir, rel, key) => new RegExp(`^${key}: (.*)$`, 'm').exec(readFileSync(join(dir, rel), 'utf8'))?.[1] ?? null;
 const filesOf = (dir) => sh(dir, 'git show --name-only --format= HEAD').split('\n').sort();
 const noLock = (dir) => assert.ok(!existsSync(lockFile(dir)), 'the lock is released');
@@ -340,6 +341,21 @@ describe('ship.mjs fixed: on the owner\'s word, or when the report clears it (P5
     assert.equal(ship(dir, 'shipped', 'P1', '--owner').code, 2);
     assert.equal(sh(dir, 'git status --porcelain'), '');
   });
+});
+
+describe('ship.mjs dates a flip by the local calendar, not UTC (B13)', () => {
+  // UTC+14 and UTC-12 never share a date with UTC at the same time of day, so at any
+  // hour one of these two runs would write UTC's date if ship.mjs still did.
+  for (const tz of ['Etc/GMT-14', 'Etc/GMT+12']) {
+    test(`in ${tz}, shipped and the schema check both read that zone's date`, () => {
+      const local = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+      const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')] });
+      const r = run('ship.mjs', ['shipped', 'P1', '--owner', 'ok'], { cwd: dir, env: { TZ: tz } });
+      assert.equal(r.code, 0, out(r));
+      assert.equal(headerOf(dir, 'docs/backlog/P1.md', 'shipped'), local);
+      assert.equal(run('backlog-schema-check.mjs', ['--all'], { cwd: dir, env: { TZ: tz } }).code, 0);
+    });
+  }
 });
 
 describe('ship.mjs reject: the owner rejects a landing (P55 R1)', () => {

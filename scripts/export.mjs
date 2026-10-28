@@ -17,6 +17,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, copyFileSync, statSync, chmodSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { classify, trackedFiles, problems } from './manifest.mjs';
+import { today as localToday } from './entries.mjs';
 
 const TEMPLATE = 'template/';
 
@@ -35,7 +36,7 @@ const bad = problems(files);
 // would be guessing. Refuse, and let the manifest check name it.
 if (bad.length) die(`the manifest is incomplete, so the export can't tell suite from instance:\n  ${bad.join('\n  ')}`);
 
-const today = new Date().toISOString().slice(0, 10);
+const today = localToday();
 
 const write = (rel, from, fill) => {
   const dest = join(out, rel);

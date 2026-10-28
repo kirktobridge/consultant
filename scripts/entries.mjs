@@ -52,6 +52,16 @@ export function percentOf(v) {
 /** A header count (`80`) as a number; null unless a whole number above 0. */
 export const countOf = (v) => (/^[1-9]\d*$/.test(v ?? '') ? Number(v) : null);
 
+/**
+ * The local date as YYYY-MM-DD: what a person dating an entry by hand writes. Not
+ * `toISOString()`, which is UTC and so tomorrow in the local evening west of Greenwich
+ * (B13). Every script that writes or compares a date takes it from here, so they agree.
+ */
+export function today(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 // Value types. Each returns an error message, or null when the value is good.
 const TYPES = {
   id: (v) => (ID.test(v) ? null : `not an ID: "${v}"`),

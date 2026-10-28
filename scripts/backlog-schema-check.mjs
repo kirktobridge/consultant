@@ -51,6 +51,7 @@ import { checkoutOf } from '../.claude/edit-guard.mjs';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, EXPERIMENTS, RUNS, FINDINGS, RESEARCH_FRAMEWORK,
   loadRegister, parseQueue, parseManualOrder, idsOf, newHomeOf, dependencyGraph, criteriaOf, percentOf, countOf,
+  today as localToday,
 } from './entries.mjs';
 import { generateQueue, queueMismatch } from './queue.mjs';
 import { minDetectable } from './stats.mjs';
@@ -388,7 +389,7 @@ if (queueReg) {
   }
 }
 
-const today = new Date().toISOString().slice(0, 10);
+const today = localToday();
 // The hook speaks only through violations and never prints a notice, so it skips the
 // git read rather than walk the trunk's history on every edit.
 const adhoc = hookMode ? { unread: 'hook mode' } : adhocMerges();

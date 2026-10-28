@@ -5,7 +5,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { dependencyMet, newHomeOf, percentOf, unmetDependencies, describeUnmet, dependencyAdvice, parseEntry, BACKLOG } from '../scripts/entries.mjs';
+import { dependencyMet, newHomeOf, percentOf, unmetDependencies, describeUnmet, dependencyAdvice, parseEntry, today, BACKLOG } from '../scripts/entries.mjs';
 
 // A test's `bar:` and `effect:` (P45): one form, percent, so `1` can't mean 100%.
 describe('percentOf', () => {
@@ -13,6 +13,13 @@ describe('percentOf', () => {
     assert.equal(percentOf('70'), 0.7);
     assert.equal(percentOf('62.5%'), 0.625);
     for (const bad of ['0', '0.7', '100', '150', '0.7.1', '-5', '70 %', '', null]) assert.equal(percentOf(bad), null, String(bad));
+  });
+});
+
+describe('today', () => {
+  test('is the local calendar date, late in the evening too (B13)', () => {
+    assert.equal(today(new Date(2026, 9, 27, 23, 30)), '2026-10-27');
+    assert.equal(today(new Date(2026, 0, 5, 0, 0)), '2026-01-05');
   });
 });
 

@@ -15,7 +15,7 @@ import { spawnSync, execSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { REGISTERS, EXPERIMENTS, parseEntry } from '../../scripts/entries.mjs';
+import { REGISTERS, EXPERIMENTS, parseEntry, today } from '../../scripts/entries.mjs';
 import { generateQueue, renderQueue } from '../../scripts/queue.mjs';
 
 // Git exports repo-locating variables to the hooks it runs — under `git commit -a`,
@@ -43,8 +43,13 @@ export function cleanupAll() {
 // to be expressed relative to today. Hardcoded dates in a date-sensitive test are a
 // slow fuse: they pass until the wall clock walks past them.
 
-export const daysAgo = (n) =>
-  new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+// Local calendar days, as the scripts date things (B13): UTC would be tomorrow here in
+// the local evening, and stepping by 24 hours would slip a day across a DST change.
+export const daysAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return today(d);
+};
 export const daysAhead = (n) => daysAgo(-n);
 
 // ── Entry construction ───────────────────────────────────────────────────────
