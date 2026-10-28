@@ -221,7 +221,8 @@ const find = (lines, from, seq) => {
   for (let at = from; at + seq.length <= lines.length; at++) if (seqAt(lines, at, seq)) return at;
   return -1;
 };
-const norm = (ls) => ls.map((l) => l.replace(/\s+$/, '')).join('\n').trim();
+// Trailing whitespace and blank edge lines don't count; indentation does (B14).
+const norm = (ls) => ls.map((l) => l.replace(/\s+$/, '')).join('\n').replace(/^\n+|\n+$/g, '');
 
 /** What each recorded region became in the resolved file; null where it can't be found. */
 function resolvedRegions(text, regions) {
