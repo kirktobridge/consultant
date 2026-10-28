@@ -315,6 +315,47 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
     assert.equal(x.code, 4, out(x));
     assert.match(x.stderr, /f\.txt/);
   });
+
+  test('a commit equal to a landed one except for whitespace is replayed, not dropped (B15)', () => {
+    const r = repo();
+    // patch-id ignores whitespace, so a plain git rebase skips this commit as already upstream.
+    editLine(r.wts['p1-one'], 5, '        line 5', 'indent line 5 by eight');
+    otherLands(r, 'p2-two', 5, '    line 5');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    const x = land(r.wts['p1-one'], 'rebase');
+    assert.equal(x.code, 3, out(x));
+    assert.match(x.stdout, /indent line 5 by eight/);
+  });
+
+  test('a commit a resolution empties without the user\'s yes stops, named, with the way back (B15)', () => {
+    const r = repo();
+    const wt = r.wts['p1-one'];
+    editLine(wt, 5, '        line 5', 'indent line 5 by eight');
+    otherLands(r, 'p2-two', 5, '    line 5');
+    const tip = git1(wt, 'rev-parse HEAD');
+    land(wt, 'lock', 'take', 'feat/p1-one');
+    assert.equal(land(wt, 'rebase').code, 3);
+    // The took-one-side check ignores indentation (B14), so this passes it as a blend.
+    resolveTo(wt, replaceConflict(['    line 5']));
+    const c = land(wt, 'continue');
+    assert.equal(c.code, 4, out(c));
+    assert.match(c.stderr, /dropped 1 of its commit\(s\):\n\s+\w{7} indent line 5 by eight/);
+    assert.match(c.stderr, new RegExp(`git reset --hard ${tip}`));
+  });
+
+  test('a commit already on main in full is kept on the branch, not dropped (B15)', () => {
+    const r = repo();
+    editLine(r.wts['p1-one'], 5, 'five, the same fix', 'the same fix on this branch');
+    otherLands(r, 'p2-two', 5, 'five, the same fix');
+    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+    const x = land(r.wts['p1-one'], 'rebase');
+    assert.equal(x.code, 0, out(x));
+    assert.match(x.stderr + x.stdout, /no conflicts\./);
+    const wt = r.wts['p1-one'];
+    assert.equal(git1(wt, 'log -1 --format=%s'), 'the same fix on this branch');
+    assert.equal(git1(wt, 'rev-parse HEAD^'), git1(wt, 'rev-parse main'));
+    assert.equal(git1(wt, 'diff HEAD^ HEAD'), '');
+  });
 });
 
 // ── A one-sided resolution is a yes/no question (P39, D-4) ───────────────────
@@ -339,6 +380,8 @@ describe('a one-sided resolution stops with the builder\'s case, for a yes or a 
     assert.equal(land(wt, 'continue', '--why', whyFile(CASE)).code, 4);
     const c = land(wt, 'continue', '--owner', 'yes, same fix');
     assert.equal(c.code, 0, out(c));
+    // Keeping main's side emptied the branch's one commit; the yes covers that drop (B15).
+    assert.match(c.stderr + c.stdout, /dropped, emptied by the user's yes to main's side: \w{7} edit line 5/);
     r.sh('git merge-base --is-ancestor main feat/p1-one');
     const [rec] = JSON.parse(land(r.main, 'report', 'feat/p1-one', '--json').stdout).conflicts;
     assert.equal(rec.kept, 'main');
