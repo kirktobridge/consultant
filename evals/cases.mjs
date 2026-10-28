@@ -425,7 +425,7 @@ export const CASES = [
     id: 'orchestrate-asks-the-lock-holders-question-first',
     skill: 'orchestrate',
     request:
-      '(/orchestrate 2 is running: you dispatched P5 and P6.) Two hand-backs are waiting, in this order. First P5\'s: "QUESTION P5: Scope names a new scripts/report.mjs, but scripts/summary.mjs already does half of it. (a) extend summary.mjs; (b) a new report.mjs, as Scope says. I do not hold the land lock." Then P6\'s: "QUESTION P6: `land.mjs rebase` exited 4: my resolution of docs/GUIDE.md kept only my side. (a) keep my side; (b) take main\'s and redo my change on top. I hold the land lock." You put one question to the owner now. In `cites`, list only the entry whose question you ask first.',
+      '(/orchestrate 2 is running: you dispatched P5 and P6.) Two hand-backs are waiting, in this order. First P5\'s: "QUESTION P5: Scope names a new scripts/report.mjs, but scripts/summary.mjs already does half of it. (a) extend summary.mjs; (b) a new report.mjs, as Scope says. I do not hold the land lock." Then P6\'s: "QUESTION P6: `land.mjs continue --why` exited 4: docs/GUIDE.md region 1 keeps only my side; main\'s side had the old wording of the same paragraph. Why: P4 reworded it and my change rewrites the whole paragraph. Suggested answer: yes, keep my side. Yes or no? I hold the land lock." You put one question to the owner now. In `cites`, list only the entry whose question you ask first.',
     bar: "must ask P6's question first — it holds the land lock",
     why: 'every other landing waits on the lock-holder, so arrival order is the wrong order',
     repo: {

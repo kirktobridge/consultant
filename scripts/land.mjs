@@ -318,7 +318,11 @@ function readCases(path) {
   const cases = new Map();
   let at = null;
   let field = null;
+  let fenced = false;
   for (const line of text.split('\n')) {
+    // A case often quotes the conflicted lines; inside a fence, a `## ` line is text.
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    if (fenced || /^\s*(```|~~~)/.test(line)) { if (at && field) cases.get(at)[field] += `\n${line}`; continue; }
     const h = /^##\s+(.+?)\s*$/.exec(line);
     if (h) {
       if (cases.has(h[1])) die(1, `--why: ${path} has \`## ${h[1]}\` twice.`);
@@ -334,6 +338,7 @@ function readCases(path) {
 }
 
 const show = (ls, pad = '      ') => (ls.length ? ls.map((l) => `${pad}${l}`).join('\n') : `${pad}(nothing)`);
+const KEPT = { main: 'the main side; this branch\'s change there is dropped', branch: 'this branch\'s side; the other entry\'s change there is dropped' };
 
 function continueCmd() {
   if (!inLinkedWorktree) die(1, 'continue runs in the branch\'s own worktree.');
@@ -346,6 +351,8 @@ function continueCmd() {
   if (argv.includes('--why') && !whyPath) die(2, '--why needs the file holding the case for each one-sided region.');
   if (argv.includes('--owner') && !owner) die(2, '--owner needs the user\'s words.');
   if (whyPath && owner) die(2, '--why makes the case and stops for the user; --owner is their yes, given after that stop. Not both at once.');
+  // Their words go into the merge commit's message: a line break could forge a trailer.
+  if (owner && /[\r\n]/.test(owner)) die(2, '--owner takes the user\'s words on one line; a line break would change the merge commit\'s trailers.');
   const lost = [];
   const oneSided = [];
   const settled = [];
@@ -374,13 +381,17 @@ function continueCmd() {
     // The yes covers exactly what the stop showed: the same regions, resolved the same way.
     const asked = rec.pending.asked ?? [];
     const sameAs = (o) => asked.find((a) => a.where === o.where && norm(a.resolved) === norm(o.resolved));
-    const changed = oneSided.filter((o) => !sameAs(o)).map((o) => o.where);
-    if (!asked.length || changed.length || asked.length !== oneSided.length) {
-      die(1, `${asked.length ? `the resolution is not what the user was shown${changed.length ? ` (${changed.join(', ')})` : ''}` : 'the user was never shown this resolution'}, so their yes can't cover it. Run continue --why <file> to stop for them again.`);
+    // Every region that differs from the stop, either way: changed or new since, or shown
+    // then and no longer one-sided.
+    const differs = [...oneSided.filter((o) => !sameAs(o)).map((o) => o.where),
+      ...asked.filter((a) => !oneSided.some((o) => o.where === a.where)).map((a) => a.where)];
+    if (!asked.length) die(1, 'the user was never shown this resolution, so their yes can\'t cover it. Run continue --why <file> to stop for them.');
+    if (differs.length) {
+      die(1, `the resolution is not what the user was shown (${[...new Set(differs)].join(', ')}), so their yes can't cover it. Run continue --why <file> with a case for each region still one-sided, to stop for them again.`);
     }
-    for (const o of oneSided) {
-      const a = sameAs(o);
-      settled.push({ file: o.file, commit: o.commit, main: o.main, branch: o.branch, base: o.base, resolved: o.resolved, others: o.others, kept: o.kept, why: a.why, suggest: a.suggest, owner });
+    for (const { where, ...o } of oneSided) {
+      const a = sameAs({ where, ...o });
+      settled.push({ ...o, why: a.why, suggest: a.suggest, owner });
     }
   } else if (oneSided.length) {
     const cases = whyPath ? readCases(whyPath) : new Map();
@@ -388,26 +399,25 @@ function continueCmd() {
     const missing = oneSided.filter((o) => !cases.get(o.where)?.why || !cases.get(o.where)?.suggest).map((o) => o.where);
     const stray = [...cases.keys()].filter((k) => !wanted.has(k));
     if (missing.length || stray.length) {
-      const kept = (o) => `${o.where}: kept only ${o.kept === 'main' ? 'the main side — this branch\'s change there is gone' : 'this branch\'s side — the other entry\'s change there is gone'}`;
       die(1, [
-        missing.length && `a one-sided resolution needs the case for it before it stops for the user:\n  ${oneSided.filter((o) => missing.includes(o.where)).map(kept).join('\n  ')}`,
+        missing.length && `a one-sided resolution needs the case for it before it stops for the user:\n  ${oneSided.filter((o) => missing.includes(o.where)).map((o) => `${o.where}: kept only ${KEPT[o.kept]}`).join('\n  ')}`,
         stray.length && `--why has a case for ${stray.join(', ')}, which ${stray.length > 1 ? 'are not regions' : 'is not a region'} resolved to one side here`,
         `Write a \`## <file> region <n>\` section for each, with \`Why:\` (why dropping that side is right) and \`Suggest:\` (the answer you recommend), then: node scripts/land.mjs continue --why <file>`,
       ].filter(Boolean).join('\n'));
     }
     rec.pending.asked = oneSided.map((o) => ({ where: o.where, resolved: o.resolved, kept: o.kept, ...cases.get(o.where) }));
     writeRecord(rec);
-    const out = [`the resolution keeps only one side in ${oneSided.length} region(s). Answer yes or no for each (D-4).`];
+    const out = [`the resolution keeps only one side in ${oneSided.length} region(s). This stops for the user (D-4): one yes covers every region below; a no names the regions it is for.`];
     for (const o of oneSided) {
       const c = cases.get(o.where);
       const other = o.others.map((x) => x.id || x.merge).join(', ') || BASE;
       out.push('', `  ${o.where} (replaying ${o.commit}; other side: ${other})`,
         '    main (the other entry) has:', show(o.main), '    this branch has:', show(o.branch),
-        `    kept: ${o.kept === 'main' ? 'the main side; this branch\'s change there is dropped' : 'this branch\'s side; the other entry\'s change there is dropped'}`,
+        `    kept: ${KEPT[o.kept]}`,
         '    why:', show(c.why.split('\n')), '    suggested answer:', show(c.suggest.split('\n')));
     }
     out.push('', 'Yes → node scripts/land.mjs continue --owner "<their words>"',
-      'No  → resolve those regions again (Edit), then node scripts/land.mjs continue',
+      'No  → resolve the regions they named again (Edit), then node scripts/land.mjs continue (with --why, if any region is still one-sided)',
       'The rebase is left in progress; `git rebase --abort` undoes it.');
     die(4, out.join('\n'));
   }

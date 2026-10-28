@@ -231,9 +231,8 @@ run all of them.
      - **Exit 4 = stop and ask the user.** Keep the lock. After `--why`, ask yes or
        no for what it printed: each region, both sides, the side kept, your case.
        **Yes** → `node scripts/land.mjs continue --owner "<their words>"`. **No** →
-       resolve those regions again and run `continue`. An exit 4 without a case
-       (a delete, a rename, a binary file, or a region the check can't find)
-       has nothing to say yes to: show them what it printed and ask what to do.
+       resolve the regions they named again and run `continue`. Any other exit 4
+       has no case to say yes to: show them what it printed and ask what to do.
   3. If anything was resolved, run the full suite in the worktree. If it's red,
      `lock release <branch>` and stop for the user. If it's green, the close report
      now describes code from before the resolution: re-run /verify and commit its
