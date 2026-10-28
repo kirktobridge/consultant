@@ -35,7 +35,10 @@
 //                        verbatim (Accept and Repro are the owner's and the reporter's
 //                        words). Refused without --owner: a draft is filed once approved.
 //                        One draft per call: a draft naming another new entry waits for
-//                        its real ID. Experiments are /research's.
+//                        its real ID. Experiments are /research's, and so a decision
+//                        waiting on one (its `feeds:` must change too) is refused.
+//                        The register's prefix, opening status and draft keys are in
+//                        entries.mjs.
 //
 // --from is a Markdown file holding exactly the sections named, each with a body, so
 // a several-line answer goes in whole. For `file` it is the whole draft: a `---` header
@@ -91,7 +94,7 @@ const [cmd, rawId, third, ...surplus] = argv.filter((a, i) => !a.startsWith('--'
 const milestone = cmd === 'resolve' ? undefined : third;
 // `file` names a register; its entry's ID is allocated once the lock is held.
 const INTAKE = { P: BACKLOG, B: BUGS, A: ASSUMPTIONS, D: DECISIONS };
-const LETTER = cmd === 'file' ? rawId?.toUpperCase().replace(/-$/, '') ?? null : null;
+const LETTER = cmd === 'file' ? rawId?.toUpperCase().replace(/^([AD])-$/, '$1') ?? null : null;
 let ID = cmd === 'file' ? null : rawId?.toUpperCase() ?? null;
 // What a message calls the entry before it has an ID.
 const NAME = () => ID ?? `a new ${LETTER}`;
@@ -121,7 +124,8 @@ const done = (code, action, msg, extra = {}) => {
   reported = true;
   tidy();
   if (lockNote) msg += `\n${lockNote}`;
-  if (asJson) console.log(JSON.stringify({ id: ID, action, message: msg, ...extra }));
+  // A filing that failed took no ID: one reported here could be cited, then handed out again.
+  if (asJson) console.log(JSON.stringify({ id: cmd === 'file' && code !== 0 ? null : ID, action, message: msg, ...extra }));
   else (code === 0 ? console.log : console.error)(`ship: ${msg}`);
   process.exit(code);
 };
@@ -230,16 +234,12 @@ const readFrom = () => {
   try { return readFileSync(fromPath, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n'); } catch (e) { return done(2, 'error', `--from: cannot read ${fromArg} (${e.code ?? e.message}).`); }
 };
 
-// The header keys a draft may carry: what the drafter chooses. `id:`, the opening
-// status and the date are the script's to write; the closing keys come with a flip.
-const DRAFT_KEYS = new Map([[BACKLOG, ['title', 'epic', 'plan', 'depends_on', 'resolves']], [BUGS, ['title', 'severity', 'depends_on']],
-  [ASSUMPTIONS, ['title']], [DECISIONS, ['title', 'waiting_on']]]);
 const draft = { header: new Map(), body: null };
 if (fromPath && cmd === 'file') {
   const lines = readFrom().split('\n');
   const close = lines.indexOf('---', 1);
   if (lines[0] !== '---' || close < 0) done(1, 'refused', `--from: ${fromArg} has no \`---\` header; a draft opens with one holding its title and the keys its drafter chose.`);
-  const allowed = DRAFT_KEYS.get(REG);
+  const allowed = REG.drafts;
   for (const line of lines.slice(1, close)) {
     if (!line.trim()) continue;
     const m = /^([a-z_]+):\s*(.*?)\s*$/.exec(line);
@@ -252,6 +252,12 @@ if (fromPath && cmd === 'file') {
     draft.header.set(m[1], m[2]);
   }
   if (!draft.header.has('title')) done(1, 'refused', `--from: ${fromArg} has no \`title:\`.`);
+  // The schema check wants the experiment's `feeds:` to name the new D-n in the same
+  // commit, and only /research writes an experiment.
+  const experiments = (draft.header.get('waiting_on') ?? '').split(/,\s*/).filter((w) => /^X\d+$/i.test(w));
+  if (experiments.length) {
+    done(1, 'refused', `--from: ${fromArg} waits on ${experiments.join(', ')}; its \`feeds:\` must name the new decision in the same commit, which file does not write. File it by hand through /ship, with /research's edit to the experiment.`);
+  }
   const body = lines.slice(close + 1);
   while (body.length && !body[0].trim()) body.shift();
   while (body.length && !body[body.length - 1].trim()) body.pop();
@@ -346,14 +352,16 @@ let was;
 if (cmd === 'file') {
   // The next free ID: one past the highest the register holds on the trunk, read under
   // the lock so no other intake can take the same number.
-  if (git('cat-file', '-e', `${BASE}:${REG.readme}`) === null) {
+  const names = (git('ls-tree', '--name-only', `${BASE}:${REG.dir}`) ?? '').split('\n');
+  if (!names.includes(REG.readme.slice(REG.dir.length + 1))) {
     done(1, 'refused', `${REG.dir} is not adopted on ${BASE} (no ${REG.readme}), so there is no register to file into.`);
   }
-  const names = (git('ls-tree', '--name-only', `${BASE}:${REG.dir}`) ?? '').split('\n');
-  const prefix = LETTER === 'A' || LETTER === 'D' ? `${LETTER}-` : LETTER;
-  const taken = names.map((n) => n.replace(/\.md$/, '')).filter((n) => REG.idPattern.test(n)).map((n) => Number(n.slice(prefix.length)));
-  ID = `${prefix}${Math.max(0, ...taken) + 1}`;
+  const taken = names.map((n) => n.replace(/\.md$/, '')).filter((n) => REG.idPattern.test(n)).map((n) => Number(n.slice(REG.prefix.length)));
+  ID = `${REG.prefix}${Math.max(0, ...taken) + 1}`;
   rel = `${REG.dir}/${ID}.md`;
+  // Only a writer that takes the lock is held off by it; one that did not may have
+  // written this number already. Never write over it.
+  if (existsSync(join(top, rel))) done(1, 'refused', `${rel} already exists in the checkout, though ${BASE} does not have it: another writer took ${ID} without the lock. Nothing was filed.`);
 } else {
   // The entry, read from the trunk — never a stale copy.
   rel = `${REG.dir}/${ID}.md`;
@@ -379,8 +387,7 @@ const mergeOf = () => {
 let plan;
 if (cmd === 'file') {
   // The header in the register's own key order; the body exactly as drafted.
-  const opening = REG === BACKLOG ? 'proposed' : 'open';
-  const own = { id: ID, status: opening, [REG.dated]: today };
+  const own = { id: ID, status: REG.opening, [REG.dated]: today };
   const header = Object.keys(REG.keys).filter((k) => k in own || draft.header.has(k)).map((k) => `${k}: ${own[k] ?? draft.header.get(k)}`);
   plan = {
     text: ['---', ...header, '---', '', draft.body].join('\n'),
@@ -531,7 +538,8 @@ const check = spawnSync(process.execPath, [join(HERE, 'backlog-schema-check.mjs'
   cwd: top, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: top },
 });
 if (check.status !== 0) {
-  done(1, 'refused', `the schema check is red with ${plan.said}, so nothing was committed:\n${`${check.stdout}\n${check.stderr}`.trim()}`);
+  const what = cmd === 'file' ? `the draft written as ${ID}` : plan.said;
+  done(1, 'refused', `the schema check is red with ${what}, so nothing was committed${cmd === 'file' ? ` and ${ID} is not taken` : ''}:\n${`${check.stdout}\n${check.stderr}`.trim()}`);
 }
 
 const message = [plan.subject, plan.note, plan.body, trailer].filter(Boolean).join('\n\n');

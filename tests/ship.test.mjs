@@ -630,8 +630,19 @@ describe('ship.mjs file: an approved draft becomes an entry in one commit (P55 R
 
   test('a draft the check would fail is refused, and the new file is taken away again', () => {
     const { dir } = repo();
-    refusedFlip(dir, ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(P_DRAFT.replace('- doing it twice is idempotent. \n', ''))), /schema check is red with P2 filed/);
+    const r = ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(P_DRAFT.replace('- doing it twice is idempotent. \n', '')), '--json');
+    assert.equal(r.code, 1, out(r));
+    const res = JSON.parse(r.stdout);
+    assert.equal(res.id, null, 'a failed filing reports no ID, since none was taken');
+    assert.match(res.message, /red with the draft written as P2, so nothing was committed and P2 is not taken/);
     assert.ok(!existsSync(join(dir, 'docs/backlog/P2.md')));
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+    noLock(dir);
+  });
+
+  test('a decision waiting on an experiment is refused: the experiment\'s feeds: must change with it', () => {
+    const { dir } = repo({ decisions: [D('D-1')] });
+    refusedFlip(dir, ship(dir, 'file', 'D', '--owner', 'ok', '--from', fromFile('---\ntitle: x\nwaiting_on: user, X3\n---\n\n## Options\n\n(a). (b).\n')), /waits on X3; its `feeds:`/);
   });
 
   test('without the owner\'s approval it is refused before anything is touched', () => {
@@ -662,7 +673,7 @@ describe('ship.mjs file: an approved draft becomes an entry in one commit (P55 R
   test('a wrong register, a third word, or a flag file does not take cannot run', () => {
     const { dir } = repo();
     const draft = fromFile(P_DRAFT);
-    for (const [reg, ...rest] of [['X'], ['X1'], ['P', 'R1'], ['P', '--clears'], ['P', '--branch', 'b'], ['P', '--leads-to', '—']]) {
+    for (const [reg, ...rest] of [['X'], ['X1'], ['P-'], ['P', 'R1'], ['P', '--clears'], ['P', '--branch', 'b'], ['P', '--leads-to', '—']]) {
       const r = ship(dir, 'file', reg, '--owner', 'ok', '--from', draft, ...rest);
       assert.equal(r.code, 2, `${reg} ${rest.join(' ')}: ${out(r)}`);
     }
@@ -671,8 +682,10 @@ describe('ship.mjs file: an approved draft becomes an entry in one commit (P55 R
   });
 
   test('the lock is held under a name of its own, so another intake waits rather than shares it', () => {
+    // Held under the bare register name: a run that used that name would read the
+    // lock as its own and file on top of the other intake.
     const { dir } = repo();
-    assert.equal(land(dir, 'lock', 'take', 'ship:file-P-1').code, 0);
+    assert.equal(land(dir, 'lock', 'take', 'ship:file-P').code, 0);
     const r = ship(dir, 'file', 'P', '--owner', 'ok', '--from', fromFile(P_DRAFT), '--wait', '0');
     assert.equal(r.code, 1, out(r));
     assert.match(r.stderr, /could not take the land lock/);
