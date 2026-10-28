@@ -27,9 +27,22 @@
 //                        the owner took a decision (R2): `decided:` today, `leads_to:`,
 //                        `waiting_on:` dropped, and the file's `## Decided`, `## Why` and
 //                        `## Reopen if`. Refused without --owner: only they decide.
+//   file <P|B|A|D> --owner "<their approval>" --from <draft>
+//                        file an approved /triage draft as a new entry (R3). The script
+//                        takes the next free ID in that register, under the lock, and
+//                        writes `id:`, the opening status and today's date; the draft
+//                        gives the rest of the header and the body, which is copied
+//                        verbatim (Accept and Repro are the owner's and the reporter's
+//                        words). Refused without --owner: a draft is filed once approved.
+//                        One draft per call: a draft naming another new entry waits for
+//                        its real ID. Experiments are /research's, and so a decision
+//                        waiting on one (its `feeds:` must change too) is refused.
+//                        The register's prefix, opening status and draft keys are in
+//                        entries.mjs.
 //
 // --from is a Markdown file holding exactly the sections named, each with a body, so
-// a several-line answer goes in whole. `moved` and `superseded` stay hand edits: each
+// a several-line answer goes in whole. For `file` it is the whole draft: a `---` header
+// of the keys the drafter chose, then the sections. `moved` and `superseded` stay hand edits: each
 // also changes other entries. After a resolution or a decision, the sweep
 // (groom.mjs --for) prints the entries that depend on it.
 //
@@ -79,7 +92,12 @@ const asJson = argv.includes('--json');
 // The third word is a claim's milestone, or a resolution's verdict.
 const [cmd, rawId, third, ...surplus] = argv.filter((a, i) => !a.startsWith('--') && !VALUED.includes(argv[i - 1]));
 const milestone = cmd === 'resolve' ? undefined : third;
-const ID = rawId?.toUpperCase() ?? null;
+// `file` names a register; its entry's ID is allocated once the lock is held.
+const INTAKE = { P: BACKLOG, B: BUGS, A: ASSUMPTIONS, D: DECISIONS };
+const LETTER = cmd === 'file' ? rawId?.toUpperCase().replace(/^([AD])-$/, '$1') ?? null : null;
+let ID = cmd === 'file' ? null : rawId?.toUpperCase() ?? null;
+// What a message calls the entry before it has an ID.
+const NAME = () => ID ?? `a new ${LETTER}`;
 
 // Cleanup runs on every exit, a crash included: put the edits back unless they were
 // committed, then release the lock if this run took it.
@@ -106,7 +124,8 @@ const done = (code, action, msg, extra = {}) => {
   reported = true;
   tidy();
   if (lockNote) msg += `\n${lockNote}`;
-  if (asJson) console.log(JSON.stringify({ id: ID, action, message: msg, ...extra }));
+  // A filing that failed took no ID: one reported here could be cited, then handed out again.
+  if (asJson) console.log(JSON.stringify({ id: cmd === 'file' && code !== 0 ? null : ID, action, message: msg, ...extra }));
   else (code === 0 ? console.log : console.error)(`ship: ${msg}`);
   process.exit(code);
 };
@@ -119,11 +138,17 @@ const usage = [
   `       node scripts/ship.mjs reject <P#|B#> --owner "<what failed>" ${COMMON}`,
   `       node scripts/ship.mjs resolve <A-n> verified|refuted|moot --from <file> ${COMMON}`,
   `       node scripts/ship.mjs decide <D-n> --owner "<their word>" --leads-to <P#|—> --from <file> ${COMMON}`,
+  `       node scripts/ship.mjs file <P|B|A|D> --owner "<their approval>" --from <draft> ${COMMON}`,
 ].join('\n');
-if (!['claim', 'shipped', 'fixed', 'reject', 'resolve', 'decide'].includes(cmd) || !ID || surplus.length) done(2, 'error', usage);
+if (!['claim', 'shipped', 'fixed', 'reject', 'resolve', 'decide', 'file'].includes(cmd) || !rawId || surplus.length) done(2, 'error', usage);
 const SETTLES = { resolve: ASSUMPTIONS, decide: DECISIONS }[cmd];
-const REG = SETTLES ? (SETTLES.idPattern.test(ID) ? SETTLES : null) : buildableRegister(ID);
-if (!REG) done(2, 'error', `"${rawId}" is not ${SETTLES ? `an ${SETTLES === ASSUMPTIONS ? 'assumption (A-n)' : 'decision (D-n)'}` : 'a buildable id (P# or B#)'}.\n${usage}`);
+const REG = cmd === 'file' ? INTAKE[LETTER] ?? null
+  : SETTLES ? (SETTLES.idPattern.test(ID) ? SETTLES : null) : buildableRegister(ID);
+if (!REG) {
+  done(2, 'error', cmd === 'file'
+    ? `file takes the register to file into, P, B, A or D; got "${rawId}". (An experiment is filed by /research.)\n${usage}`
+    : `"${rawId}" is not ${SETTLES ? `an ${SETTLES === ASSUMPTIONS ? 'assumption (A-n)' : 'decision (D-n)'}` : 'a buildable id (P# or B#)'}.\n${usage}`);
+}
 const VERDICTS = ['verified', 'refuted', 'moot'];
 const verdict = cmd === 'resolve' ? third?.toLowerCase() : null;
 if (cmd === 'resolve' && !VERDICTS.includes(verdict)) {
@@ -131,6 +156,7 @@ if (cmd === 'resolve' && !VERDICTS.includes(verdict)) {
 }
 const MILESTONE = milestone?.toUpperCase() ?? null;
 if (MILESTONE && cmd === 'decide') done(2, 'error', `decide takes no third word; the feature that carries the decision goes in --leads-to.\n${usage}`);
+if (MILESTONE && cmd === 'file') done(2, 'error', `file takes no third word: the ID is allocated, and the draft holds the rest.\n${usage}`);
 if (MILESTONE && cmd !== 'claim') done(2, 'error', `only a claim takes a milestone, not ${cmd}.\n${usage}`);
 if (MILESTONE && !/^R\d+$/.test(MILESTONE)) done(2, 'error', `"${milestone}" is not a milestone (R#).\n${usage}`);
 // A valued flag with nothing after it is an error, never its default (as with --base, B1).
@@ -155,7 +181,12 @@ const leadsTo = opt('--leads-to')?.trim().toUpperCase() ?? null;
 
 // What each command may be given, checked before anything is read or locked.
 if (cmd === 'claim' && (owner !== null || clears || branchArg)) done(2, 'error', `a claim takes no --owner, --clears or --branch.\n${usage}`);
-if (!SETTLES && (fromArg !== null || leadsTo !== null)) done(2, 'error', `only resolve and decide take --from or --leads-to.\n${usage}`);
+if (!SETTLES && cmd !== 'file' && (fromArg !== null || leadsTo !== null)) done(2, 'error', `only resolve, decide and file take --from, and only decide --leads-to.\n${usage}`);
+if (cmd === 'file' && (clears || branchArg || leadsTo !== null)) done(2, 'error', `file takes no --clears, --branch or --leads-to: the draft holds the header.\n${usage}`);
+if (cmd === 'file' && fromArg === null) done(2, 'error', `file needs --from <draft>: the approved draft, header and sections.\n${usage}`);
+if (cmd === 'file' && owner === null) {
+  done(1, 'refused', `a draft is filed once the owner approves it: pass their approval as --owner "<their words>".`);
+}
 if (cmd === 'resolve' && (owner !== null || clears || leadsTo !== null || branchArg)) {
   done(2, 'error', `resolve takes no --owner, --clears, --leads-to or --branch: anyone who settles an assumption records it.\n${usage}`);
 }
@@ -199,10 +230,42 @@ const headingsOf = (lines) => {
 const WANTS = { resolve: ['Resolution'], decide: ['Decided', 'Why', 'Reopen if'] }[cmd] ?? [];
 const sections = new Map();
 const fromPath = fromArg === null ? null : resolve(fromArg);
-if (fromPath) {
-  let src;
-  try { src = readFileSync(fromPath, 'utf8'); } catch (e) { done(2, 'error', `--from: cannot read ${fromArg} (${e.code ?? e.message}).`); }
-  const lines = src.replace(/^﻿/, '').replace(/\r\n/g, '\n').split('\n');
+const readFrom = () => {
+  try { return readFileSync(fromPath, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n'); } catch (e) { return done(2, 'error', `--from: cannot read ${fromArg} (${e.code ?? e.message}).`); }
+};
+
+const draft = { header: new Map(), body: null };
+if (fromPath && cmd === 'file') {
+  const lines = readFrom().split('\n');
+  const close = lines.indexOf('---', 1);
+  if (lines[0] !== '---' || close < 0) done(1, 'refused', `--from: ${fromArg} has no \`---\` header; a draft opens with one holding its title and the keys its drafter chose.`);
+  const allowed = REG.drafts;
+  for (const line of lines.slice(1, close)) {
+    if (!line.trim()) continue;
+    const m = /^([a-z_]+):\s*(.*?)\s*$/.exec(line);
+    if (!m) done(1, 'refused', `--from: ${fromArg} has a header line that is not \`key: value\`: "${line}".`);
+    if (!allowed.includes(m[1])) {
+      done(1, 'refused', `--from: ${fromArg} sets \`${m[1]}:\`, which a ${LETTER} draft does not carry (it may carry ${allowed.join(', ')}); \`id:\`, the status and the date are written here.`);
+    }
+    if (draft.header.has(m[1])) done(1, 'refused', `--from: ${fromArg} sets \`${m[1]}:\` twice.`);
+    if (!m[2]) done(1, 'refused', `--from: ${fromArg} has an empty \`${m[1]}:\`.`);
+    draft.header.set(m[1], m[2]);
+  }
+  if (!draft.header.has('title')) done(1, 'refused', `--from: ${fromArg} has no \`title:\`.`);
+  // The schema check wants the experiment's `feeds:` to name the new D-n in the same
+  // commit, and only /research writes an experiment.
+  const experiments = (draft.header.get('waiting_on') ?? '').split(/,\s*/).filter((w) => /^X\d+$/i.test(w));
+  if (experiments.length) {
+    done(1, 'refused', `--from: ${fromArg} waits on ${experiments.join(', ')}; its \`feeds:\` must name the new decision in the same commit, which file does not write. File it by hand through /ship, with /research's edit to the experiment.`);
+  }
+  const body = lines.slice(close + 1);
+  while (body.length && !body[0].trim()) body.shift();
+  while (body.length && !body[body.length - 1].trim()) body.pop();
+  const heads = headingsOf(body);
+  if (!heads[0]) done(1, 'refused', `--from: ${fromArg} has ${body.length ? 'text before its first `## ` section' : 'no sections'}; the body is the draft's sections, copied as written.`);
+  draft.body = `${body.join('\n')}\n`;
+} else if (fromPath) {
+  const lines = readFrom().split('\n');
   const heads = headingsOf(lines);
   let current = null;
   for (const [i, line] of lines.entries()) {
@@ -242,23 +305,25 @@ if (fromPath && fromRel !== '..' && !fromRel.startsWith(`..${sep}`) && !isAbsolu
   done(1, 'refused', `--from: ${fromArg} is uncommitted work in the main checkout; write it outside (a scratch directory).`);
 }
 
-const verb = { claim: 'claiming', shipped: 'shipping', fixed: 'fixing', reject: 'rejecting', resolve: 'resolving', decide: 'deciding' }[cmd];
+const verb = { claim: 'claiming', shipped: 'shipping', fixed: 'fixing', reject: 'rejecting', resolve: 'resolving', decide: 'deciding', file: 'filing' }[cmd];
 const refuseIfDirty = () => {
   const d = git('status', '--porcelain');
   if (d === null) done(2, 'error', `git status failed: ${git.firstError()}`);
-  if (d) done(1, 'refused', `the main checkout has uncommitted changes:\n${d.split('\n').map((l) => `  ${l}`).join('\n')}\nCommit them as their own unit (or ask whose they are) before ${verb} ${ID}.`);
+  if (d) done(1, 'refused', `the main checkout has uncommitted changes:\n${d.split('\n').map((l) => `  ${l}`).join('\n')}\nCommit them as their own unit (or ask whose they are) before ${verb} ${NAME()}.`);
 };
 refuseIfDirty();
 
 // The lock, through land.mjs: one implementation of who holds it and when it is stale.
+// An intake has no ID yet, and two sessions filing into one register must not share an
+// owner name: the second would read the first's lock as its own.
 const land = (...args) => spawnSync(process.execPath, [join(HERE, 'land.mjs'), ...args, '--base', BASE], { cwd: top, encoding: 'utf8' });
-const OWNER = `${cmd === 'claim' ? 'claim' : 'ship'}:${ID}`;
+const OWNER = cmd === 'file' ? `ship:file-${LETTER}-${process.pid}` : `${cmd === 'claim' ? 'claim' : 'ship'}:${ID}`;
 const status = land('lock', 'status', '--json');
 let holder = null;
 try { holder = status.status === 0 ? JSON.parse(status.stdout || 'null')?.owner ?? null : null; } catch { /* unreadable: take it below */ }
 // /land runs a terminal flip while the entry's own branch holds the lock, between
 // `merge` and `finish`: that landing's lock covers this write, so it is not taken again.
-const underLanding = cmd !== 'claim' && !!holder && (holder === branchArg || entryOfBranch(holder) === ID);
+const underLanding = cmd !== 'claim' && cmd !== 'file' && !!holder && (holder === branchArg || entryOfBranch(holder) === ID);
 const heldBefore = holder === OWNER || underLanding;
 let cleared = '';
 if (!underLanding) {
@@ -280,15 +345,32 @@ if (!heldBefore) {
 // Another session may have committed while this one waited for the lock.
 refuseIfDirty();
 
-// The entry, read from the trunk — never a stale copy.
-const rel = `${REG.dir}/${ID}.md`;
-const text = git('show', `${BASE}:${rel}`);
-if (text === null) done(1, 'refused', `${ID} has no entry on ${BASE} — untriaged ideas go to /triage first.`);
-const entry = parseEntry(text, REG.keys);
-const was = entry.header.status;
-if (!was) done(1, 'refused', `${rel} on ${BASE} has no readable \`status:\` header. Run npm run check:docs for what is wrong with it.`);
-
 const today = localToday();
+let rel;
+let entry;
+let was;
+if (cmd === 'file') {
+  // The next free ID: one past the highest the register holds on the trunk, read under
+  // the lock so no other intake can take the same number.
+  const names = (git('ls-tree', '--name-only', `${BASE}:${REG.dir}`) ?? '').split('\n');
+  if (!names.includes(REG.readme.slice(REG.dir.length + 1))) {
+    done(1, 'refused', `${REG.dir} is not adopted on ${BASE} (no ${REG.readme}), so there is no register to file into.`);
+  }
+  const taken = names.map((n) => n.replace(/\.md$/, '')).filter((n) => REG.idPattern.test(n)).map((n) => Number(n.slice(REG.prefix.length)));
+  ID = `${REG.prefix}${Math.max(0, ...taken) + 1}`;
+  rel = `${REG.dir}/${ID}.md`;
+  // Only a writer that takes the lock is held off by it; one that did not may have
+  // written this number already. Never write over it.
+  if (existsSync(join(top, rel))) done(1, 'refused', `${rel} already exists in the checkout, though ${BASE} does not have it: another writer took ${ID} without the lock. Nothing was filed.`);
+} else {
+  // The entry, read from the trunk — never a stale copy.
+  rel = `${REG.dir}/${ID}.md`;
+  const text = git('show', `${BASE}:${rel}`);
+  if (text === null) done(1, 'refused', `${ID} has no entry on ${BASE} — untriaged ideas go to /triage first.`);
+  entry = parseEntry(text, REG.keys);
+  was = entry.header.status;
+  if (!was) done(1, 'refused', `${rel} on ${BASE} has no readable \`status:\` header. Run npm run check:docs for what is wrong with it.`);
+}
 // The merge that landed the entry's branch on the trunk, for the note: the newest one.
 const mergeOf = () => {
   const log = git('log', '--first-parent', '--merges', '--format=%h%x09%s', BASE, '--') ?? '';
@@ -303,7 +385,16 @@ const mergeOf = () => {
 // ── What each command writes ────────────────────────────────────────────────
 // `plan` is the header lines to set, the note for the body, and the commit's words.
 let plan;
-if (cmd === 'claim') {
+if (cmd === 'file') {
+  // The header in the register's own key order; the body exactly as drafted.
+  const own = { id: ID, status: REG.opening, [REG.dated]: today };
+  const header = Object.keys(REG.keys).filter((k) => k in own || draft.header.has(k)).map((k) => `${k}: ${own[k] ?? draft.header.get(k)}`);
+  plan = {
+    text: ['---', ...header, '---', '', draft.body].join('\n'),
+    subject: `docs: file ${ID} (${ID})`, body: `${draft.header.get('title')}\n\nFiled on the owner's approval: ${owner.trim()}`,
+    said: `${ID} filed`, action: 'filed',
+  };
+} else if (cmd === 'claim') {
   if (was === 'in-progress') done(1, 'refused', `${ID} is already claimed: it is \`in-progress\` on ${BASE}. A stale claim is cleared through /ship, never overridden.`);
   if (!REG.open.has(was)) done(1, 'refused', `${ID} is \`${was}\` on ${BASE}, which is closed. Reopening it is the owner's call, not a claim.`);
   const unmet = unmetDependencies(entry, (id, reg) => git('show', `${BASE}:${reg.dir}/${id}.md`));
@@ -416,7 +507,7 @@ function edited(source, { set, drop = [], sections = [], note = null, keyAt = 's
   return lines.join(eol);
 }
 
-write(rel, edited(readFileSync(join(top, rel), 'utf8'), plan));
+write(rel, plan.text ?? edited(readFileSync(join(top, rel), 'utf8'), plan));
 
 if (plan.terminal && REG === BACKLOG) {
   // A terminal entry leaves the owner's recorded order; the rest keep their order.
@@ -447,7 +538,8 @@ const check = spawnSync(process.execPath, [join(HERE, 'backlog-schema-check.mjs'
   cwd: top, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: top },
 });
 if (check.status !== 0) {
-  done(1, 'refused', `the schema check is red with ${plan.said}, so nothing was committed:\n${`${check.stdout}\n${check.stderr}`.trim()}`);
+  const what = cmd === 'file' ? `the draft written as ${ID}` : plan.said;
+  done(1, 'refused', `the schema check is red with ${what}, so nothing was committed${cmd === 'file' ? ` and ${ID} is not taken` : ''}:\n${`${check.stdout}\n${check.stderr}`.trim()}`);
 }
 
 const message = [plan.subject, plan.note, plan.body, trailer].filter(Boolean).join('\n\n');
@@ -456,7 +548,7 @@ const message = [plan.subject, plan.note, plan.body, trailer].filter(Boolean).jo
 if (git('add', '--', ...written) === null) done(2, 'error', `git add failed, so nothing was committed: ${git.firstError()}`);
 cleanup.edits.push(() => git('reset', '-q', '--', ...written));
 if (git('commit', '-q', '-m', message, '--', ...written) === null) {
-  done(1, 'refused', `the commit failed, so ${cmd === 'claim' ? `${ID} is unclaimed` : `${ID} is unchanged`} and the files are put back. git: ${git.error()}`);
+  done(1, 'refused', `the commit failed, so ${{ claim: `${ID} is unclaimed`, file: 'nothing was filed' }[cmd] ?? `${ID} is unchanged`} and the files are put back. git: ${git.error()}`);
 }
 cleanup.edits = [];
 

@@ -97,6 +97,12 @@ export const BACKLOG = {
   // entries first (P24). Absent means no recorded order.
   manualOrder: 'docs/backlog/MANUAL-ORDER.md',
   idPattern: /^P\d+$/,
+  // Intake (ship.mjs file, P55 R3): the ID's prefix, the status an entry opens in, and
+  // the header keys its drafter chooses. `id:`, the status and the `dated` key are the
+  // script's; the closing keys come with a flip.
+  prefix: 'P',
+  opening: 'proposed',
+  drafts: ['title', 'epic', 'plan', 'depends_on', 'resolves'],
   // The statuses a build may start or resume from: a feature mid-milestone sits
   // `partial` between claims.
   claimed: ['in-progress', 'partial'],
@@ -125,6 +131,9 @@ export const ASSUMPTIONS = {
   dir: 'docs/assumptions',
   readme: 'docs/assumptions/README.md',
   idPattern: /^A-\d+$/,
+  prefix: 'A-',
+  opening: 'open',
+  drafts: ['title'],
   open: new Set(['open']),
   terminal: new Set(['verified', 'refuted', 'moot', 'moved']),
   dated: 'raised',
@@ -144,6 +153,10 @@ export const DECISIONS = {
   dir: 'docs/decisions',
   readme: 'docs/decisions/README.md',
   idPattern: /^D-\d+$/,
+  prefix: 'D-',
+  opening: 'open',
+  // A decision answered on the spot is filed open, then decided (owner, 2026-10-27).
+  drafts: ['title', 'waiting_on'],
   open: new Set(['open']),
   terminal: new Set(['decided', 'superseded']),
   dated: 'raised',
@@ -167,6 +180,9 @@ export const BUGS = {
   dir: 'docs/bugs',
   readme: 'docs/bugs/README.md',
   idPattern: /^B\d+$/,
+  prefix: 'B',
+  opening: 'open',
+  drafts: ['title', 'severity', 'depends_on'],
   claimed: ['in-progress'],
   // Most urgent first. Every open bug is picked up before the queue, in this order,
   // rather than being ranked into it (P5 R1) — so it lives in code, not in QUEUE.md.
