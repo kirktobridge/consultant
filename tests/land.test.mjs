@@ -272,6 +272,22 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
     assert.match(c.stderr, /f\.txt region 1: kept only this branch's side/);
   });
 
+  test('sides that differ only in indentation are still one-sided when one is kept (B14)', () => {
+    const r = repo();
+    const wt = r.wts['p1-one'];
+    // Line 1 too, so keeping main's side doesn't empty the commit (that stop is B15's).
+    resolveTo(wt, (ls) => ls.map((l, i) => (i === 0 ? 'line one, renamed' : i === 4 ? '            go()' : l)));
+    execSync('git commit -qam "rename line 1, re-indent line 5"', { cwd: wt, stdio: 'ignore' });
+    otherLands(r, 'p2-two', 5, '    go()');
+    land(wt, 'lock', 'take', 'feat/p1-one');
+    assert.equal(land(wt, 'rebase').code, 3);
+    resolveTo(wt, replaceConflict(['    go()']));
+    const c = land(wt, 'continue');
+    assert.equal(c.code, 1, out(c));
+    assert.match(c.stderr, /f\.txt region 1: kept only the main side/);
+    assert.ok(rebasing(wt), 'the rebase is left in progress');
+  });
+
   test('conflict markers left in the file are refused, not committed', () => {
     const r = repo();
     editLine(r.wts['p1-one'], 5, 'five, by this branch');
@@ -330,16 +346,16 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
   test('a commit a resolution empties without the user\'s yes stops, named, with the way back (B15)', () => {
     const r = repo();
     const wt = r.wts['p1-one'];
-    editLine(wt, 5, '        line 5', 'indent line 5 by eight');
+    editLine(wt, 5, '    line 5   ', 'pad line 5');
     otherLands(r, 'p2-two', 5, '    line 5');
     const tip = git1(wt, 'rev-parse HEAD');
     land(wt, 'lock', 'take', 'feat/p1-one');
     assert.equal(land(wt, 'rebase').code, 3);
-    // The took-one-side check ignores indentation (B14), so this passes it as a blend.
+    // The took-one-side check ignores trailing whitespace, so this passes it as a blend.
     resolveTo(wt, replaceConflict(['    line 5']));
     const c = land(wt, 'continue');
     assert.equal(c.code, 4, out(c));
-    assert.match(c.stderr, /dropped 1 of its commit\(s\):\n\s+\w{7} indent line 5 by eight/);
+    assert.match(c.stderr, /dropped 1 of its commit\(s\):\n\s+\w{7} pad line 5/);
     assert.match(c.stderr, new RegExp(`git reset --hard ${tip}`));
   });
 
