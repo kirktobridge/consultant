@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { P, B, A, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles } from './helpers/fixture.mjs';
+import { P, B, A, D, run, out, tempDir, cleanupAll, gitInit, renderFiles, writeFiles } from './helpers/fixture.mjs';
 
 after(cleanupAll);
 
@@ -386,5 +386,173 @@ describe('ship.mjs reject: the owner rejects a landing (P55 R1)', () => {
     const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')] });
     refusedFlip(dir, ship(dir, 'reject', 'P1'), /a rejection is the owner's verdict/);
     refusedFlip(dir, ship(dir, 'reject', 'P2', '--owner', 'x'), /P2 is `proposed` on main: only a landing awaiting acceptance/);
+  });
+});
+
+// ── Resolutions and decisions (P55 R2) ───────────────────────────────────────
+
+const RESOLUTION = '## Resolution\n\nThe probe ran on 2026-10-27:\n\n- it held twice.\n';
+const DECISION = '## Decided\n\n(b).\n\n## Why\n\nThe owner chose it.\n\n## Reopen if\n\nIt stops paying.\n';
+/** A --from file outside the repo, as a caller writes it in a scratch directory. */
+const fromFile = (text) => {
+  const p = join(tempDir(), 'sections.md');
+  writeFileSync(p, text);
+  return p;
+};
+
+describe('ship.mjs resolve: an assumption is settled in one commit (P55 R2)', () => {
+  test('the header, the Resolution and the queue land together, green; a re-read dependent owes no sweep', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['A-1'], drafted: today })], assumptions: [A('A-1')] });
+    const before = commits(dir);
+    const r = ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(RESOLUTION), '--trailer', 'Co-Authored-By: X <x@example.com>');
+    assert.equal(r.code, 0, out(r));
+    assert.equal(commits(dir), before + 1);
+    const text = readFileSync(join(dir, 'docs/assumptions/A-1.md'), 'utf8');
+    assert.equal(statusOf(dir, 'docs/assumptions/A-1.md'), 'verified');
+    assert.match(text, new RegExp(`^raised: 2026-08-01\\nresolved: ${today}\\n---$`, 'm'), 'the new key closes the header');
+    assert.match(text, /\n\n## Resolution\n\nThe probe ran on 2026-10-27:\n\n- it held twice\.\n$/);
+    assert.deepEqual(filesOf(dir), ['docs/assumptions/A-1.md', 'docs/backlog/QUEUE.md']);
+    assert.match(readFileSync(join(dir, 'docs/backlog/QUEUE.md'), 'utf8'), /P2/, 'the unblocked entry reaches the queue');
+    assert.equal(sh(dir, 'git log -1 --format=%B'), 'docs: A-1 verified (A-1)\n\nCo-Authored-By: X <x@example.com>');
+    assert.match(r.stdout, /Sweep: no entry still owes it a sweep\./);
+    assert.equal(run('backlog-schema-check.mjs', ['--all'], { cwd: dir }).code, 0);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+    noLock(dir);
+  });
+
+  test('a refutation names what already shipped on it, which may be void', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'shipped', shipped: '2026-08-02', dependsOn: ['A-1'] }), P('P2')], assumptions: [A('A-1')] });
+    const r = ship(dir, 'resolve', 'A-1', 'refuted', '--from', fromFile(RESOLUTION), '--json');
+    assert.equal(r.code, 0, out(r));
+    const j = JSON.parse(r.stdout);
+    assert.equal(j.action, 'refuted');
+    assert.match(j.message, /may now be void/);
+    assert.deepEqual(j.sweep.dependents.map((d) => d.id), ['P1']);
+  });
+
+  test('with no dependents the sweep says so', () => {
+    const { dir } = repo({ assumptions: [A('A-1')] });
+    const r = ship(dir, 'resolve', 'A-1', 'moot', '--from', fromFile(RESOLUTION));
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /Sweep: no entry still owes it a sweep\./);
+  });
+
+  test('a dependent left presumptively stale turns the check red: every file is put back', () => {
+    const { dir } = repo({ backlog: [P('P1', { dependsOn: ['A-1'], drafted: '2026-08-01' })], assumptions: [A('A-1')] });
+    refusedFlip(dir, ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(RESOLUTION)), /schema check is red with A-1 verified, so nothing was committed[\s\S]*P1/);
+    assert.equal(statusOf(dir, 'docs/assumptions/A-1.md'), 'open');
+  });
+
+  test('one an open spike settles is refused by the check: the spike\'s shipped flip must come with it', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress', resolves: 'A-1' }), P('P2')], assumptions: [A('A-1')] });
+    refusedFlip(dir, ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(RESOLUTION)), /open P1 resolves A-1, but A-1 is already `verified`/);
+    assert.equal(statusOf(dir, 'docs/assumptions/A-1.md'), 'open');
+  });
+
+  test('a fenced `## ` line is text, in the --from file and in the entry; a BOM is not text', () => {
+    const fenced = '﻿## Resolution\n\nIt held. The template:\n\n```\n## Accept\n## Resolution\n```\n';
+    const { dir } = repo({ assumptions: [A('A-1', { howToVerify: 'quote it:\n\n```\n## Resolution\n```' })] });
+    const r = ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(fenced));
+    assert.equal(r.code, 0, out(r));
+    assert.match(readFileSync(join(dir, 'docs/assumptions/A-1.md'), 'utf8'), /\n## Resolution\n\nIt held\. The template:\n\n```\n## Accept\n## Resolution\n```\n$/);
+  });
+
+  test('a settled assumption is refused', () => {
+    const { dir } = repo({ assumptions: [A('A-1', { status: 'verified', resolved: '2026-08-02', resolution: 'held.' })] });
+    refusedFlip(dir, ship(dir, 'resolve', 'A-1', 'refuted', '--from', fromFile(RESOLUTION)), /A-1 is `verified` on main, not `open`/);
+  });
+
+  test('a --from file that is not exactly the sections is refused before anything is touched', () => {
+    const { dir } = repo({ assumptions: [A('A-1')] });
+    for (const [text, why] of [
+      ['## Resolution\n\n', /missing or empty: Resolution/],
+      ['## Resolution\n\nok\n\n## Accept\n\n- x\n', /not written by resolve: Accept/],
+      ['found it\n\n## Resolution\n\nok\n', /text before its first heading/],
+      ['## Resolution\n\na\n\n## Resolution\n\nb\n', /`## Resolution` twice/],
+    ]) refusedFlip(dir, ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(text)), why);
+    assert.equal(statusOf(dir, 'docs/assumptions/A-1.md'), 'open');
+  });
+
+  test('an uncommitted --from file in the checkout is named as that; an ignored one is fine', () => {
+    const { dir, commitAll } = repo({ assumptions: [A('A-1')] });
+    writeFileSync(join(dir, '.gitignore'), 'scratch/\n');
+    commitAll('ignore scratch');
+    writeFileSync(join(dir, 'res.md'), RESOLUTION);
+    const r = ship(dir, 'resolve', 'A-1', 'verified', '--from', join(dir, 'res.md'));
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stderr, /res\.md is uncommitted work in the main checkout/);
+    sh(dir, 'rm res.md');
+    mkdirSync(join(dir, 'scratch'));
+    writeFileSync(join(dir, 'scratch', 'res.md'), RESOLUTION);
+    assert.equal(ship(dir, 'resolve', 'A-1', 'verified', '--from', join(dir, 'scratch', 'res.md')).code, 0);
+  });
+
+  test('a bad verdict, a wrong id, or a missing --from cannot run', () => {
+    const { dir } = repo({ assumptions: [A('A-1')], decisions: [D('D-1')] });
+    assert.equal(ship(dir, 'resolve', 'A-1', 'moved', '--from', fromFile(RESOLUTION)).code, 2);
+    assert.equal(ship(dir, 'resolve', 'A-1', '--from', fromFile(RESOLUTION)).code, 2);
+    assert.equal(ship(dir, 'resolve', 'D-1', 'verified', '--from', fromFile(RESOLUTION)).code, 2);
+    assert.equal(ship(dir, 'resolve', 'A-1', 'verified').code, 2);
+    assert.equal(ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(RESOLUTION), '--owner', 'x').code, 2);
+    assert.equal(ship(dir, 'resolve', 'A-1', 'verified', '--from', fromFile(RESOLUTION), '--branch', 'feat/p1-x').code, 2);
+    assert.equal(ship(dir, 'claim', 'P1', '--from', fromFile(RESOLUTION)).code, 2);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
+  });
+});
+
+describe('ship.mjs decide: the owner\'s decision in one commit (P55 R2)', () => {
+  test('the header, the three sections and the queue land together, green; the commit carries their word', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['D-1'], drafted: today })], decisions: [D('D-1')] });
+    const r = ship(dir, 'decide', 'D-1', '--owner', 'go with (b)', '--leads-to', 'P2', '--from', fromFile(DECISION));
+    assert.equal(r.code, 0, out(r));
+    const text = readFileSync(join(dir, 'docs/decisions/D-1.md'), 'utf8');
+    assert.equal(statusOf(dir, 'docs/decisions/D-1.md'), 'decided');
+    assert.doesNotMatch(text, /^waiting_on:/m);
+    assert.match(text, new RegExp(`^decided: ${today}\\nleads_to: P2\\n---$`, 'm'));
+    assert.match(text, /\n## Decided\n\n\(b\)\.\n\n## Why\n\nThe owner chose it\.\n\n## Reopen if\n\nIt stops paying\.\n$/);
+    assert.deepEqual(filesOf(dir), ['docs/backlog/QUEUE.md', 'docs/decisions/D-1.md']);
+    assert.equal(sh(dir, 'git log -1 --format=%B'), 'docs: D-1 decided (D-1)\n\nOn the owner\'s word: go with (b)');
+    assert.match(r.stdout, /Sweep: no entry still owes it a sweep\./);
+    assert.equal(run('backlog-schema-check.mjs', ['--all'], { cwd: dir }).code, 0);
+    noLock(dir);
+  });
+
+  test('— for a decision no change follows', () => {
+    const { dir } = repo({ decisions: [D('D-1')] });
+    const r = ship(dir, 'decide', 'D-1', '--owner', 'keep it', '--leads-to', '—', '--from', fromFile(DECISION));
+    assert.equal(r.code, 0, out(r));
+    assert.equal(headerOf(dir, 'docs/decisions/D-1.md', 'leads_to'), '—');
+  });
+
+  test('--leads-to is read in any case, as every id here is', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2')], decisions: [D('D-1')] });
+    assert.equal(ship(dir, 'decide', 'd-1', '--owner', 'x', '--leads-to', 'p2', '--from', fromFile(DECISION)).code, 0);
+    assert.equal(headerOf(dir, 'docs/decisions/D-1.md', 'leads_to'), 'P2');
+  });
+
+  test('a stray third word points at --leads-to, not at milestones', () => {
+    const r = ship(repo({ decisions: [D('D-1')] }).dir, 'decide', 'D-1', 'P2', '--owner', 'x', '--from', fromFile(DECISION));
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /goes in --leads-to/);
+  });
+
+  test('without the owner\'s word it is refused before anything is touched', () => {
+    const { dir } = repo({ decisions: [D('D-1')] });
+    refusedFlip(dir, ship(dir, 'decide', 'D-1', '--leads-to', '—', '--from', fromFile(DECISION)), /decided on the owner's word only/);
+    assert.equal(statusOf(dir, 'docs/decisions/D-1.md'), 'open');
+  });
+
+  test('a decided decision is refused', () => {
+    const { dir } = repo({ decisions: [D('D-1', { status: 'decided', decided: '2026-08-02', leadsTo: '—', waitingOn: null, choice: 'a', why: 'b', reopenIf: 'c' })] });
+    refusedFlip(dir, ship(dir, 'decide', 'D-1', '--owner', 'x', '--leads-to', '—', '--from', fromFile(DECISION)), /D-1 is `decided` on main, not `open`/);
+  });
+
+  test('missing sections, or a bad or missing --leads-to, cannot be written', () => {
+    const { dir } = repo({ decisions: [D('D-1')] });
+    refusedFlip(dir, ship(dir, 'decide', 'D-1', '--owner', 'x', '--leads-to', '—', '--from', fromFile('## Decided\n\n(b).\n')), /missing or empty: Why, Reopen if/);
+    assert.equal(ship(dir, 'decide', 'D-1', '--owner', 'x', '--from', fromFile(DECISION)).code, 2);
+    assert.equal(ship(dir, 'decide', 'D-1', '--owner', 'x', '--leads-to', 'soon', '--from', fromFile(DECISION)).code, 2);
+    assert.equal(ship(dir, 'decide', 'D-1', '--owner', 'x', '--leads-to', '—', '--branch', 'b', '--from', fromFile(DECISION)).code, 2);
+    assert.equal(sh(dir, 'git status --porcelain'), '');
   });
 });
