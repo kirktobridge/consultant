@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync
 import { join, relative } from 'node:path';
 import { REPO, run, out, tempDir, cleanupAll, gitInit, schema } from './helpers/fixture.mjs';
 import { classify, trackedFiles } from '../scripts/manifest.mjs';
+import { today as localToday } from '../scripts/entries.mjs';
 
 after(cleanupAll);
 
@@ -82,7 +83,7 @@ describe('the export', () => {
   });
 
   test("every suite file is exported, and every instance file is template/'s, not this repo's", () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const suite = trackedFiles(REPO).filter((f) => classify(f) === 'suite');
     assert.deepEqual(suite.filter((f) => !files.includes(f)), [], 'suite files missing from the export');
     const leaked = [];

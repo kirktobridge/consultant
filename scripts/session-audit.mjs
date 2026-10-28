@@ -29,7 +29,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf, parseQueue } from './entries.mjs';
+import { BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, loadRegister, idsOf, parseQueue, today as localToday } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { trunkGraph, graphIndex } from './trunk-graph.mjs';
 import { settledDependents, sweepAdvice, isRecent, branchNames } from './sweep.mjs';
@@ -97,7 +97,7 @@ const buildable = [...backlog, ...loadRegister(ROOT, BUGS).entries];
 const assumptions = loadRegister(ROOT, ASSUMPTIONS).entries;
 const aById = new Map(assumptions.map((d) => [d.id, d]));
 const decisions = loadRegister(ROOT, DECISIONS).entries;
-const today = new Date().toISOString().slice(0, 10);
+const today = localToday();
 
 // ── 1. Working tree ──────────────────────────────────────────────────────────
 

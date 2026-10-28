@@ -65,6 +65,7 @@ import { join, resolve, relative, isAbsolute, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, buildableRegister, parseEntry, unmetDependencies, describeUnmet, dependencyAdvice, parseManualOrder,
+  today as localToday,
 } from './entries.mjs';
 import { gitIn } from './git.mjs';
 import { trunkFromArgv } from './trunk.mjs';
@@ -287,7 +288,7 @@ const entry = parseEntry(text, REG.keys);
 const was = entry.header.status;
 if (!was) done(1, 'refused', `${rel} on ${BASE} has no readable \`status:\` header. Run npm run check:docs for what is wrong with it.`);
 
-const today = new Date().toISOString().slice(0, 10);
+const today = localToday();
 // The merge that landed the entry's branch on the trunk, for the note: the newest one.
 const mergeOf = () => {
   const log = git('log', '--first-parent', '--merges', '--format=%h%x09%s', BASE, '--') ?? '';
