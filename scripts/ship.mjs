@@ -18,6 +18,20 @@
 //                        the owner rejected a landing (R1): it stays `in-progress`, with
 //                        today appended to `rejected:` and their note. A bug /land marked
 //                        `fixed` is reopened the same way.
+//   resolve <A-n> verified|refuted|moot --from <file>
+//                        an assumption is settled (R2): `resolved:` today and the file's
+//                        `## Resolution`. Anyone who hits it settles it, so no --owner.
+//                        Not one a spike settles: the schema check wants the spike's
+//                        `shipped` and the Resolution in one commit, which stays by hand.
+//   decide <D-n> --owner "<their word>" --leads-to <P#|—> --from <file>
+//                        the owner took a decision (R2): `decided:` today, `leads_to:`,
+//                        `waiting_on:` dropped, and the file's `## Decided`, `## Why` and
+//                        `## Reopen if`. Refused without --owner: only they decide.
+//
+// --from is a Markdown file holding exactly the sections named, each with a body, so
+// a several-line answer goes in whole. `moved` and `superseded` stay hand edits: each
+// also changes other entries. After a resolution or a decision, the sweep
+// (groom.mjs --for) prints the entries that depend on it.
 //
 // The terminal commands land beside the old /ship, as claim did: callers switch to
 // them after 2 clean real uses.
@@ -33,8 +47,9 @@
 //     claim also refuses a direct dependency unmet; chains are left to the schema check.
 //   - edits the entry. A terminal flip (`shipped`, `fixed`) also takes the ID off
 //     MANUAL-ORDER.md. Every command but claim regenerates QUEUE.md, so the entry and
-//     the queue land in one commit; a claim never changes the queue (an `in-progress`
-//     entry stays a queue candidate).
+//     the queue land in one commit (a resolution or a decision can unblock a queued
+//     entry); a claim never changes the queue (an `in-progress` entry stays a queue
+//     candidate).
 //   - runs the schema check on the edited tree, and commits only when it is green: a
 //     flip that leaves a dependent presumptively stale is refused, naming it, because
 //     its `drafted:` moves only after a real re-read. The commit runs the repo's hooks.
@@ -46,10 +61,10 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, relative, isAbsolute, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BACKLOG, BUGS, buildableRegister, parseEntry, unmetDependencies, describeUnmet, dependencyAdvice, parseManualOrder,
+  BACKLOG, BUGS, ASSUMPTIONS, DECISIONS, buildableRegister, parseEntry, unmetDependencies, describeUnmet, dependencyAdvice, parseManualOrder,
 } from './entries.mjs';
 import { gitIn } from './git.mjs';
 import { trunkFromArgv } from './trunk.mjs';
@@ -58,9 +73,11 @@ import { entryOfBranch, mergedBranch } from './landing.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
-const VALUED = ['--wait', '--trailer', '--base', '--owner', '--branch'];
+const VALUED = ['--wait', '--trailer', '--base', '--owner', '--branch', '--from', '--leads-to'];
 const asJson = argv.includes('--json');
-const [cmd, rawId, milestone, ...surplus] = argv.filter((a, i) => !a.startsWith('--') && !VALUED.includes(argv[i - 1]));
+// The third word is a claim's milestone, or a resolution's verdict.
+const [cmd, rawId, third, ...surplus] = argv.filter((a, i) => !a.startsWith('--') && !VALUED.includes(argv[i - 1]));
+const milestone = cmd === 'resolve' ? undefined : third;
 const ID = rawId?.toUpperCase() ?? null;
 
 // Cleanup runs on every exit, a crash included: put the edits back unless they were
@@ -99,11 +116,20 @@ const usage = [
   `       node scripts/ship.mjs shipped <P#> --owner "<note>" ${COMMON}`,
   `       node scripts/ship.mjs fixed <B#> (--owner "<note>" | --clears [--branch <branch>]) ${COMMON}`,
   `       node scripts/ship.mjs reject <P#|B#> --owner "<what failed>" ${COMMON}`,
+  `       node scripts/ship.mjs resolve <A-n> verified|refuted|moot --from <file> ${COMMON}`,
+  `       node scripts/ship.mjs decide <D-n> --owner "<their word>" --leads-to <P#|—> --from <file> ${COMMON}`,
 ].join('\n');
-if (!['claim', 'shipped', 'fixed', 'reject'].includes(cmd) || !ID || surplus.length) done(2, 'error', usage);
-const REG = buildableRegister(ID);
-if (!REG) done(2, 'error', `"${rawId}" is not a buildable id (P# or B#).\n${usage}`);
+if (!['claim', 'shipped', 'fixed', 'reject', 'resolve', 'decide'].includes(cmd) || !ID || surplus.length) done(2, 'error', usage);
+const SETTLES = { resolve: ASSUMPTIONS, decide: DECISIONS }[cmd];
+const REG = SETTLES ? (SETTLES.idPattern.test(ID) ? SETTLES : null) : buildableRegister(ID);
+if (!REG) done(2, 'error', `"${rawId}" is not ${SETTLES ? `an ${SETTLES === ASSUMPTIONS ? 'assumption (A-n)' : 'decision (D-n)'}` : 'a buildable id (P# or B#)'}.\n${usage}`);
+const VERDICTS = ['verified', 'refuted', 'moot'];
+const verdict = cmd === 'resolve' ? third?.toLowerCase() : null;
+if (cmd === 'resolve' && !VERDICTS.includes(verdict)) {
+  done(2, 'error', `resolve needs the verdict, ${VERDICTS.join(', ')}; got ${third ?? 'nothing'}. (\`moved\` stays a hand edit: it repoints other entries.)\n${usage}`);
+}
 const MILESTONE = milestone?.toUpperCase() ?? null;
+if (MILESTONE && cmd === 'decide') done(2, 'error', `decide takes no third word; the feature that carries the decision goes in --leads-to.\n${usage}`);
 if (MILESTONE && cmd !== 'claim') done(2, 'error', `only a claim takes a milestone, not ${cmd}.\n${usage}`);
 if (MILESTONE && !/^R\d+$/.test(MILESTONE)) done(2, 'error', `"${milestone}" is not a milestone (R#).\n${usage}`);
 // A valued flag with nothing after it is an error, never its default (as with --base, B1).
@@ -123,13 +149,30 @@ if (owner !== null && !owner.trim()) done(2, 'error', '--owner needs the owner\'
 if (owner !== null && /[\r\n]/.test(owner)) done(2, 'error', '--owner takes a one-line note; a line break would change the entry\'s sections.');
 const clears = argv.includes('--clears');
 const branchArg = opt('--branch');
+const fromArg = opt('--from');
+const leadsTo = opt('--leads-to')?.trim().toUpperCase() ?? null;
 
 // What each command may be given, checked before anything is read or locked.
 if (cmd === 'claim' && (owner !== null || clears || branchArg)) done(2, 'error', `a claim takes no --owner, --clears or --branch.\n${usage}`);
+if (!SETTLES && (fromArg !== null || leadsTo !== null)) done(2, 'error', `only resolve and decide take --from or --leads-to.\n${usage}`);
+if (cmd === 'resolve' && (owner !== null || clears || leadsTo !== null || branchArg)) {
+  done(2, 'error', `resolve takes no --owner, --clears, --leads-to or --branch: anyone who settles an assumption records it.\n${usage}`);
+}
+if (cmd === 'decide' && (clears || branchArg)) done(2, 'error', `decide takes no --clears or --branch.\n${usage}`);
+if (SETTLES && fromArg === null) done(2, 'error', `${cmd} needs --from <file> holding the sections it writes.\n${usage}`);
+// `—` is "no change follows"; anything else is the features that carry the decision.
+if (cmd === 'decide' && leadsTo !== null && !/^(—|P\d+(, ?P\d+)*)$/.test(leadsTo)) {
+  done(2, 'error', `--leads-to takes the P# that carries the decision, or — for none; got "${leadsTo}".`);
+}
+if (cmd === 'decide' && owner === null) {
+  done(1, 'refused', `${ID} is decided on the owner's word only: recording a choice they did not make invents product direction. Pass it as --owner "<their words>".`);
+}
+if (cmd === 'decide' && leadsTo === null) done(2, 'error', `decide needs --leads-to <P#|—>: the decision's consequence gets an owner, or none.\n${usage}`);
 if (cmd === 'shipped' && REG !== BACKLOG) done(2, 'error', `only a feature is shipped; a bug is \`fixed\`.\n${usage}`);
 if (cmd === 'fixed' && REG !== BUGS) done(2, 'error', `only a bug is fixed; a feature is \`shipped\`.\n${usage}`);
 if (cmd === 'fixed' && owner !== null && clears) done(2, 'error', `fixed takes --owner or --clears, not both: say whose word it is.\n${usage}`);
-if (cmd !== 'fixed' && (clears || branchArg)) done(2, 'error', `only fixed takes --clears or --branch.\n${usage}`);
+if (cmd !== 'fixed' && clears) done(2, 'error', `only fixed takes --clears.\n${usage}`);
+if (cmd !== 'fixed' && branchArg) done(2, 'error', `only fixed takes --branch.\n${usage}`);
 if (cmd === 'shipped' && owner === null) {
   done(1, 'refused', `${ID} is not shipped without the owner's word: \`shipped\` is their verdict on the Accept criteria. Pass it as --owner "<which criteria they accepted, on what>".`);
 }
@@ -138,6 +181,43 @@ if (cmd === 'fixed' && owner === null && !clears) {
 }
 if (cmd === 'reject' && owner === null) {
   done(1, 'refused', `a rejection is the owner's verdict: pass what failed, in their words, as --owner "<what failed>".`);
+}
+
+// A `## ` line inside a code fence is text, not a heading, as parseEntry reads it.
+const headingsOf = (lines) => {
+  let fenced = false;
+  return lines.map((l) => {
+    if (/^\s*(```|~~~)/.test(l)) fenced = !fenced;
+    return fenced ? null : /^##\s+(.+?)\s*$/.exec(l)?.[1] ?? null;
+  });
+};
+
+// The sections --from holds, read before anything is locked: exactly the ones this
+// command writes, each with a body, and nothing before the first. A stray heading
+// would land in the entry as a section nobody checked.
+const WANTS = { resolve: ['Resolution'], decide: ['Decided', 'Why', 'Reopen if'] }[cmd] ?? [];
+const sections = new Map();
+const fromPath = fromArg === null ? null : resolve(fromArg);
+if (fromPath) {
+  let src;
+  try { src = readFileSync(fromPath, 'utf8'); } catch (e) { done(2, 'error', `--from: cannot read ${fromArg} (${e.code ?? e.message}).`); }
+  const lines = src.replace(/^﻿/, '').replace(/\r\n/g, '\n').split('\n');
+  const heads = headingsOf(lines);
+  let current = null;
+  for (const [i, line] of lines.entries()) {
+    if (heads[i]) {
+      current = heads[i];
+      if (sections.has(current)) done(1, 'refused', `--from: ${fromArg} has \`## ${current}\` twice.`);
+      sections.set(current, []);
+    } else if (current) sections.get(current).push(line);
+    else if (line.trim()) done(1, 'refused', `--from: ${fromArg} has text before its first heading; it holds only ${WANTS.map((w) => `\`## ${w}\``).join(', ')}.`);
+  }
+  for (const [name, body] of sections) sections.set(name, body.join('\n').trim());
+  const extra = [...sections.keys()].filter((s) => !WANTS.includes(s));
+  const missing = WANTS.filter((w) => !sections.get(w));
+  if (extra.length || missing.length) {
+    done(1, 'refused', `--from: ${fromArg} must hold ${WANTS.map((w) => `\`## ${w}\``).join(', ')}, each with a body${missing.length ? `; missing or empty: ${missing.join(', ')}` : ''}${extra.length ? `; not written by ${cmd}: ${extra.join(', ')}` : ''}.`);
+  }
 }
 
 const git = gitIn();
@@ -154,7 +234,14 @@ if (baseError) done(2, 'error', baseError);
 const head = git('symbolic-ref', '--quiet', '--short', 'HEAD');
 if (head !== BASE) done(1, 'refused', `the main checkout is on ${head ?? 'a detached HEAD'}, not ${BASE}. A write made off the trunk is invisible to other sessions.`);
 
-const verb = { claim: 'claiming', shipped: 'shipping', fixed: 'fixing', reject: 'rejecting' }[cmd];
+// A --from file the checkout sees as a change would read as another task's state below;
+// say what it is instead. An ignored or committed file is fine.
+const fromRel = fromPath && relative(top, fromPath);
+if (fromPath && fromRel !== '..' && !fromRel.startsWith(`..${sep}`) && !isAbsolute(fromRel) && git('status', '--porcelain', '--', fromRel)) {
+  done(1, 'refused', `--from: ${fromArg} is uncommitted work in the main checkout; write it outside (a scratch directory).`);
+}
+
+const verb = { claim: 'claiming', shipped: 'shipping', fixed: 'fixing', reject: 'rejecting', resolve: 'resolving', decide: 'deciding' }[cmd];
 const refuseIfDirty = () => {
   const d = git('status', '--porcelain');
   if (d === null) done(2, 'error', `git status failed: ${git.firstError()}`);
@@ -245,6 +332,19 @@ if (cmd === 'claim') {
   }
   const set = { status: word, ...(word === 'shipped' ? { shipped: today } : {}) };
   plan = { set, note, terminal: true, subject: `docs: ${ID} ${word} (${ID})`, said: `${ID} ${word}`, action: word };
+} else if (SETTLES) {
+  if (was !== 'open') {
+    done(1, 'refused', `${ID} is \`${was}\` on ${BASE}, not \`open\`: it was settled already. Reopening or replacing it is a hand edit through /ship.`);
+  }
+  const header = cmd === 'resolve'
+    ? { status: verdict, resolved: today }
+    : { status: 'decided', decided: today, leads_to: leadsTo };
+  const said = cmd === 'resolve' ? `${ID} ${verdict}` : `${ID} decided`;
+  plan = {
+    set: header, keyAt: 'end', drop: cmd === 'decide' ? ['waiting_on'] : [], sections: WANTS.map((w) => [w, sections.get(w)]),
+    subject: `docs: ${said} (${ID})`, said, action: cmd === 'resolve' ? verdict : 'decided',
+    body: cmd === 'decide' ? `On the owner's word: ${owner.trim()}` : null,
+  };
 } else {
   const reopen = REG === BUGS && was === 'fixed';
   if (was !== 'in-progress' && !reopen) {
@@ -271,18 +371,32 @@ const write = (relPath, next) => {
   written.push(relPath);
 };
 
-/** The entry's text with `set` applied to its header and `note` added to its Notes. */
-function edited(source, set, note) {
+/**
+ * The entry's text with `set` applied to its header, `drop` taken out of it, `sections`
+ * appended, and `note` added to its Notes. A new key goes beside `status:`
+ * (`keyAt: 'status'`, the backlog and bugs) or closes the header (`'end'`, the
+ * assumptions and decisions, as their templates write it).
+ */
+function edited(source, { set, drop = [], sections = [], note = null, keyAt = 'status' }) {
   const eol = source.includes('\r\n') ? '\r\n' : '\n';
   const lines = source.split(eol);
-  const end = lines.indexOf('---', 1);
-  const statusAt = lines.findIndex((l, i) => i > 0 && i < end && /^status:/.test(l));
-  if (lines[0] !== '---' || end < 0 || statusAt < 0) done(1, 'refused', `${rel} has no \`status:\` line in its header to flip.`);
-  let after = statusAt;
+  const end = () => lines.indexOf('---', 1);
+  const inHeader = (key) => lines.findIndex((l, i) => i > 0 && i < end() && l.startsWith(`${key}:`));
+  if (lines[0] !== '---' || end() < 0 || inHeader('status') < 0) done(1, 'refused', `${rel} has no \`status:\` line in its header to flip.`);
+  for (const key of drop) { const at = inHeader(key); if (at >= 0) lines.splice(at, 1); }
+  let after = inHeader('status');
   for (const [key, value] of Object.entries(set)) {
-    const at = lines.findIndex((l, i) => i > 0 && i < lines.indexOf('---', 1) && l.startsWith(`${key}:`));
+    const at = inHeader(key);
     if (at >= 0) lines[at] = `${key}: ${value}`;
-    else lines.splice(++after, 0, `${key}: ${value}`); // a new key goes beside `status:`
+    else lines.splice(keyAt === 'end' ? end() : ++after, 0, `${key}: ${value}`);
+  }
+  if (sections.length) {
+    const heads = headingsOf(lines);
+    const taken = sections.filter(([name]) => heads.includes(name)).map(([name]) => name);
+    if (taken.length) done(1, 'refused', `${rel} already has ${taken.map((n) => `\`## ${n}\``).join(', ')}; edit it by hand rather than write a second.`);
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    for (const [name, body] of sections) lines.push('', `## ${name}`, '', ...body.split('\n'));
+    lines.push('');
   }
   if (!note) return lines.join(eol);
   // The note closes the Notes section: before the next heading after it, or at the end.
@@ -301,7 +415,7 @@ function edited(source, set, note) {
   return lines.join(eol);
 }
 
-write(rel, edited(readFileSync(join(top, rel), 'utf8'), plan.set, plan.note));
+write(rel, edited(readFileSync(join(top, rel), 'utf8'), plan));
 
 if (plan.terminal && REG === BACKLOG) {
   // A terminal entry leaves the owner's recorded order; the rest keep their order.
@@ -335,7 +449,7 @@ if (check.status !== 0) {
   done(1, 'refused', `the schema check is red with ${plan.said}, so nothing was committed:\n${`${check.stdout}\n${check.stderr}`.trim()}`);
 }
 
-const message = `${plan.subject}${plan.note ? `\n\n${plan.note}` : ''}${trailer ? `\n\n${trailer}` : ''}`;
+const message = [plan.subject, plan.note, plan.body, trailer].filter(Boolean).join('\n\n');
 // Staged first, so a file this run created can be committed; unstaged again on failure,
 // before the put-backs run (they run last-pushed first).
 if (git('add', '--', ...written) === null) done(2, 'error', `git add failed, so nothing was committed: ${git.firstError()}`);
@@ -344,4 +458,25 @@ if (git('commit', '-q', '-m', message, '--', ...written) === null) {
   done(1, 'refused', `the commit failed, so ${cmd === 'claim' ? `${ID} is unclaimed` : `${ID} is unchanged`} and the files are put back. git: ${git.error()}`);
 }
 cleanup.edits = [];
-done(0, plan.action, `${plan.said} on ${BASE} (${git('rev-parse', '--short', 'HEAD')}).${written.length > 1 ? ` Also wrote ${written.slice(1).join(', ')}.` : ''}${cleared ? ` The land lock: ${cleared.slice(1, -1)}.` : ''}`, { commit: git('rev-parse', 'HEAD'), files: written });
+
+// The sweep, after the commit. An open dependent drafted before today was refused
+// above as stale, so what it can still name is a shipped entry resting on a refuted
+// assumption. It only reports; a failed sweep never undoes the commit.
+let sweep = '';
+let sweepJson;
+if (SETTLES) {
+  const g = spawnSync(process.execPath, [join(HERE, 'groom.mjs'), '--for', ID, '--json', '--base', BASE], {
+    cwd: top, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: top },
+  });
+  try { sweepJson = g.status === 2 ? null : JSON.parse(g.stdout); } catch { sweepJson = null; }
+  if (sweepJson === null || sweepJson === undefined) {
+    sweep = `\nThe sweep never ran (groom.mjs --for ${ID} exit ${g.status}): run it by hand.${g.stderr ? ` ${g.stderr.trim()}` : ''}`;
+  } else if (!sweepJson.dependents.length) {
+    sweep = '\nSweep: no entry still owes it a sweep.';
+  } else {
+    const list = sweepJson.dependents.map((d) => `${d.id} (${d.status})`).join(', ');
+    sweep = `\nSweep: ${list} depend${sweepJson.dependents.length === 1 ? 's' : ''} on it.${verdict === 'refuted' ? ' It was refuted: they may now be void, which is the case worth stopping over.' : ''}\n  → ${sweepJson.advice}`;
+  }
+}
+done(0, plan.action, `${plan.said} on ${BASE} (${git('rev-parse', '--short', 'HEAD')}).${written.length > 1 ? ` Also wrote ${written.slice(1).join(', ')}.` : ''}${cleared ? ` The land lock: ${cleared.slice(1, -1)}.` : ''}${sweep}`,
+  { commit: git('rev-parse', 'HEAD'), files: written, ...(SETTLES ? { sweep: sweepJson ? { dependents: sweepJson.dependents, advice: sweepJson.advice } : null } : {}) });
