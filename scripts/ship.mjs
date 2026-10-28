@@ -46,8 +46,8 @@
 // also changes other entries. After a resolution or a decision, the sweep
 // (groom.mjs --for) prints the entries that depend on it.
 //
-// The terminal commands land beside the old /ship, as claim did: callers switch to
-// them after 2 clean real uses.
+// /ship and /implement call claim, the terminal flips, reject and file (P64). resolve
+// and decide still sit beside /ship's hand edits until their own clean real uses.
 //
 // Each command, in order:
 //   - runs in the main checkout, on the trunk, with a clean tree. A write made on a

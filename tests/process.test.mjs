@@ -995,3 +995,18 @@ describe('the single-writer map agrees with the skills', () => {
     assert.ok(claims.size > 0, 'no single-writer contract parsed — the check found nothing to check');
   });
 });
+
+describe('the skills write the tracked docs through ship.mjs (P64)', () => {
+  // A skill that drops a command goes back to a hand edit, which can half-land.
+  const usage = readFileSync(join(REPO, 'scripts', 'ship.mjs'), 'utf8');
+  const PEN = { ship: ['claim', 'shipped', 'fixed', 'reject', 'file'] };
+  for (const [skill, cmds] of Object.entries(PEN)) {
+    test(`/${skill} names the ship.mjs command for each flip it makes`, () => {
+      const text = readFileSync(join(REPO, '.claude', 'skills', skill, 'SKILL.md'), 'utf8');
+      for (const cmd of cmds) {
+        assert.ok(usage.includes(`node scripts/ship.mjs ${cmd} `), `ship.mjs has no \`${cmd}\` command to name`);
+        assert.ok(text.includes(`ship.mjs ${cmd} `), `/${skill} no longer names \`ship.mjs ${cmd}\``);
+      }
+    });
+  }
+});
