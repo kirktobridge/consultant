@@ -289,7 +289,21 @@ function afterRebase(rec, result) {
     rec.rebasedTip = git('rev-parse', 'HEAD');
     writeRecord(rec);
     const n = rec.conflicts.length;
-    die(0, `${rec.branch} is rebased onto ${BASE} (${rec.newBase})${n ? `, with ${n} conflict region(s) resolved — run the suite, then re-verify (see /implement)` : ', no conflicts'}.`);
+    // The rebase must not lose a commit without a word (B15). A conflict resolved to
+    // main's text still empties one, and git drops it whatever --empty says. When the
+    // user said yes to keeping main's side there, that yes covers the drop.
+    const commits = (range) => (git('log', '--no-merges', '--format=%H %s', range) || '').split('\n').filter(Boolean)
+      .map((l) => ({ sha: l.slice(0, 40), subject: l.slice(41) }));
+    const now = commits(`${BASE}..HEAD`).map((c) => c.subject);
+    const dropped = commits(`${rec.oldBase}..${rec.oldTip}`).filter((c) => { const i = now.indexOf(c.subject); if (i < 0) return true; now.splice(i, 1); return false; });
+    const approved = (c) => rec.conflicts.some((x) => x.owner && x.kept === 'main' && c.sha.startsWith(x.commit));
+    const lost = dropped.filter((c) => !approved(c));
+    if (lost.length) {
+      die(4, `${rec.branch} is rebased onto ${BASE} (${rec.newBase}), but the rebase dropped ${lost.length} of its commit(s):\n${lost.map((c) => `  ${c.sha.slice(0, 7)} ${c.subject}`).join('\n')}\n` +
+        `Stop and ask the user. Dropping is right only if main already does what each one did. Yes → go on and land. No → \`git reset --hard ${rec.oldTip}\` puts the branch back as it was; then rebase and resolve again.`);
+    }
+    const gone = dropped.length ? `; dropped, emptied by the user's yes to main's side: ${dropped.map((c) => `${c.sha.slice(0, 7)} ${c.subject}`).join(', ')}` : '';
+    die(0, `${rec.branch} is rebased onto ${BASE} (${rec.newBase})${n ? `, with ${n} conflict region(s) resolved — run the suite, then re-verify (see /implement)` : ', no conflicts'}${gone}.`);
   }
   if (existsSync(join(gitDir, 'rebase-merge')) || existsSync(join(gitDir, 'rebase-apply'))) stopAtConflicts(rec);
   die(1, `rebase failed: ${git.firstError()}`);
@@ -303,9 +317,13 @@ function rebaseCmd() {
   if (git('status', '--porcelain')) die(1, 'the worktree has uncommitted changes; commit them first.');
   // A rebase again after a failed landing keeps the earlier resolutions: close-report
   // --clears must still see that a conflict was resolved since the report (D-7).
-  const rec = { branch, oldBase: git('merge-base', 'HEAD', BASE), newBase: null, conflicts: readRecord(branch)?.conflicts ?? [], pending: null };
+  const rec = { branch, oldBase: git('merge-base', 'HEAD', BASE), oldTip: git('rev-parse', 'HEAD'), newBase: null, conflicts: readRecord(branch)?.conflicts ?? [], pending: null };
   writeRecord(rec);
-  afterRebase(rec, git('-c', 'merge.conflictStyle=diff3', 'rebase', BASE));
+  // Every branch commit is replayed (B15): git would skip one whose patch-id matches a
+  // commit on main, and patch-id ignores whitespace, so a re-indent vanished with "no
+  // conflicts". One that applies cleanly but changes nothing is kept, empty; one emptied
+  // by a conflict resolution is dropped by git, and afterRebase stops on that.
+  afterRebase(rec, git('-c', 'merge.conflictStyle=diff3', 'rebase', '--reapply-cherry-picks', '--empty=keep', BASE));
 }
 
 /**
