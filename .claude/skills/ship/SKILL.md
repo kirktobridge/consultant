@@ -62,6 +62,17 @@ visible to other sessions — and the terminal flip + queue refresh happen at la
 time, with /ship running as **/land**'s last step after the merge passes tests. Only
 work that never leaves main (docs-only, tiny fixes) gets its /ship pass directly.
 
+**The pen is `scripts/ship.mjs`** for a claim, a terminal flip, a rejection and
+intake. Each command is one checked commit on main under the land lock: it edits the
+entry, takes a terminal ID off `MANUAL-ORDER.md`, regenerates the queue, runs the
+schema check, and commits, or puts every file back. A claim is
+`node scripts/ship.mjs claim <ID> [R#] --trailer "<your commit attribution line>"`;
+every command takes that `--trailer`. **Exit 0** → committed. **Exit 1** → refused:
+report its message and never hand-edit around it. When it names a dependent it would
+leave stale, re-read that entry against the code, bump its `drafted:` in its own
+commit, then run the command again. **Exit 2** → it could not run: report it. What the
+table below leaves as a hand edit stays one.
+
 *Main* in this skill is the **trunk**: the integration branch `node scripts/trunk.mjs`
 names, which is `main` only when the clone has one. Get it from that command; never
 write a branch name into a git command.
@@ -73,10 +84,11 @@ write a branch name into a git command.
 
 | What shipped | Doc | Edit |
 |---|---|---|
-| Product feature / UX / UI | `docs/backlog/P#.md` | header `status: partial` + a note in the body on which milestone landed; or `status: shipped` plus `shipped: YYYY-MM-DD` — **only on the user's word** (below). |
-| A bug fix landed | `docs/bugs/B#.md` | it stays `in-progress` (a bug has no milestones); `status: fixed` on the user's word, or from /land when its report clears it (D-7, below). A bug never enters `QUEUE.md`: every open bug is picked up before it (`scripts/next.mjs`). |
-| The user rejected a landing | `docs/backlog/P#.md` / `docs/bugs/B#.md` | stays `in-progress`; append today's date to `rejected:` (add the key if absent) and a one-line note on what failed (below). |
-| The user reopened a bug /land marked fixed | `docs/bugs/B#.md` | back to `in-progress`; append today's date to `rejected:` and a one-line note on what is still broken, as for a rejection (below). |
+| A milestone landed, more remain | `docs/backlog/P#.md` | by hand (no command yet): header `status: partial` + a note in the body on which milestone landed. |
+| The user accepted a feature | `docs/backlog/P#.md` | `node scripts/ship.mjs shipped <P#> --owner "<their words>"` — **only on the user's word** (below). |
+| A bug fix landed | `docs/bugs/B#.md` | it stays `in-progress` (a bug has no milestones) until `node scripts/ship.mjs fixed <B#> --owner "<their words>"`, or `--clears --branch <branch>` from /land (D-7, below). A bug never enters `QUEUE.md`: every open bug is picked up before it (`scripts/next.mjs`). |
+| The user rejected a landing | `docs/backlog/P#.md` / `docs/bugs/B#.md` | `node scripts/ship.mjs reject <ID> --owner "<what failed>"`: it stays `in-progress` (below). |
+| The user reopened a bug /land marked fixed | `docs/bugs/B#.md` | `node scripts/ship.mjs reject <B#> --owner "<what is still broken>"`: back to `in-progress`, as for a rejection (below). |
 | A spike landed (`resolves: A-n`) | `docs/assumptions/A-n.md` | write the assumption's `## Resolution` — what was found, how — add `resolved: YYYY-MM-DD` to its header, and flip its `status:` to `verified` / `refuted` / `moot`. The spike entry's own `shipped` flip follows the same rule as any other. |
 | An assumption was misfiled (a choice, our own code's behavior, a quantity) | `docs/assumptions/A-n.md` | `status: moved`, add `resolved:` and `moved_to:` (its new home, filed first), and a one-line `## Resolution` saying why it moved. Repoint the `depends_on:` of every open entry that named it. |
 | The user took a decision | `docs/decisions/D-n.md` | `status: decided`, add `decided: YYYY-MM-DD` and `leads_to:` (the `P#` that carries it, or `—`) to the header, and add `## Decided` (the choice), `## Why` and `## Reopen if`; drop `waiting_on:`. **Only on the user's word**, as with `shipped`: recording a choice they didn't make is the one edit here that invents product direction. |
@@ -97,7 +109,8 @@ write a branch name into a git command.
    terminal flip, check the obligation against the **diff that actually landed** —
    scope-listed follow-ups whose premise the build voided get dropped with a one-line
    why, not copied forward.
-5. **Refresh the queue:** on any product status flip or intake, run `npm run queue`,
+5. **Refresh the queue:** a ship.mjs command does this step itself. After a hand edit
+   that flips a product status, run `npm run queue`,
    and commit what it writes in the same commit as the flip. It rewrites
    `docs/backlog/QUEUE.md` by the rule in
    [docs/backlog/README.md](../../../docs/backlog/README.md#the-queue) and names each
@@ -123,14 +136,13 @@ the hand-off and leave the entry as it is.
 
 When they do say so, name any criterion that was **not observed** or **not exercised**
 before writing the flip — they may be accepting a gap knowingly, and that's theirs to
-do, but not unknowingly. The flip's one-line note records which criteria were accepted
-on what.
+do, but not unknowingly. Then run `ship.mjs shipped <P#> --owner "<their words>"`:
+the `--owner` note is the flip's one-line record of which criteria were accepted on
+what, so put their words in it. The script refuses the flip without it.
 
 When they **reject** it instead ("no, that's not it"), the entry stays `in-progress`
-and you record the rejection: append today's date to `rejected:` in its header
-(`rejected: 2026-10-20, 2026-10-21`; add the key if absent) and add a one-line note on
-what failed, in one commit on main. Append, never replace: a second rejection the same
-day must still change the value. That commit is what tells
+and you record the rejection with `ship.mjs reject <ID> --owner "<what failed>"`. It
+appends today to the entry's `rejected:`; that commit is what tells
 `scripts/landing.mjs` the earlier landing no longer counts, so `next.mjs` and
 `status.mjs` read the entry as being built again rather than awaiting acceptance.
 
@@ -138,18 +150,17 @@ day must still change the value. That commit is what tells
 
 A bug's contract is its `Repro` and `Expected`, which a report settles without
 judgment, so the user decided (D-7) that their word is not the only way to `fixed`.
-/land may hand you the flip, and you write it only when **code** says the report
-clears the bug, never on /land's say-so: run `node scripts/close-report.mjs --clears
-<B#> --branch <branch>` yourself, before /land's `finish` removes the branch. Exit 0
-→ flip it to `fixed`, with the note `Fixed YYYY-MM-DD by /land under D-7: the report
-clears it (Repro not observed to still break, Expected observed); merge <sha>.` Exit 1
-or 2 → leave it `in-progress`, awaiting the user, and report /land's request as a
-fault in the hand-off. A feature never takes this path: `shipped` stays the user's.
+/land may hand you the flip, and it is written only when **code** says the report
+clears the bug, never on /land's say-so: run `node scripts/ship.mjs fixed <B#>
+--clears --branch <branch>`, before /land's `finish` removes the branch. It runs
+`close-report.mjs --clears` itself and flips only when that exits 0. Refused → the bug
+stays `in-progress`, awaiting the user; report /land's request as a fault in the
+hand-off. A feature never takes this path: `shipped` stays the user's.
 
-On the user's word, `fixed` follows the `shipped` rule above. When they say a bug
-/land marked fixed is not fixed, reopen it: back to `in-progress`, with today's date
-appended to `rejected:` and what is still broken, as for a rejection. That is D-7's
-reopen condition, so tell them it was met.
+On the user's word, `fixed` follows the `shipped` rule above (`fixed <B#> --owner
+"<their words>"`). When they say a bug /land marked fixed is not fixed, reopen it with
+`ship.mjs reject <B#> --owner "<what is still broken>"`. That is D-7's reopen
+condition, so tell them it was met.
 
 ## When the schema check goes red
 
@@ -173,29 +184,29 @@ Two legitimate causes, and one illegitimate response.
 - Don't document a feature the spec / architecture docs already cover generically.
 
 ## Intake (from /triage)
-When /triage hands over an approved **product** draft, write it as a new
-`docs/backlog/P#.md` (the next free number) in the shape
-[docs/backlog/README.md](../../../docs/backlog/README.md) documents: a header with
-`status: proposed`, the right `epic:`, and today's `drafted:` date; the body's
-sections below it.
+When /triage hands over an approved draft, file it with
+`node scripts/ship.mjs file <P|B|A|D> --owner "<their approval>" --from <draft>`, one
+draft per call. The draft is a scratch file outside the checkout (the script refuses
+one git can see): a `---` header with the keys its drafter chose (the register's
+`drafts` in `scripts/entries.mjs`; the script names any other), then its sections. The script takes the next free ID,
+writes `id:`, the opening status and today's date, and copies the body as it stands.
+A draft that names another new entry waits for that one's real ID. An experiment is
+/research's.
 
-**Copy `Accept:` verbatim.** It is the one field in the shape whose author is the
+**Copy `Accept:` verbatim** into the draft file. It is the one field in the shape whose author is the
 product owner rather than an agent, and the loop closes by reporting against those exact
 words — so tightening the wording, merging two criteria, or "clarifying" one is not an
 improvement, it is quietly editing the definition of done. Same standing as the spec:
 if a criterion looks wrong, say so and let the user rewrite it. The schema check holds
 the count (2–4 bullets), never the meaning.
 
-An approved **bug** draft becomes a new `docs/bugs/B#.md` (the next free number) with
-`status: open`, its `severity:` and today's `reported:` date, in the shape
-[docs/bugs/README.md](../../../docs/bugs/README.md) documents. **Copy `## Repro`
+A **bug** draft's shape is in
+[docs/bugs/README.md](../../../docs/bugs/README.md). **Copy `## Repro`
 verbatim**, for the same reason as `Accept:`: the reporter's steps are the evidence,
 and a tidied repro is one nobody actually ran. No `Value` — don't add one.
 
-An approved **assumption** draft becomes a new `docs/assumptions/A-n.md` with `status: open` and
-today's `raised:` date. An approved **decision** draft becomes a new
-`docs/decisions/D-n.md` with `status: open`, today's `raised:` date and its
-`waiting_on:` — or `decided`, if the user answered on the spot. No other changes —
+If the user answered a **decision** on the spot, file its draft open, then record the
+decision (the table's decision row). No other changes —
 /triage classifies and drafts; this skill is just the pen.
 
 A drafted entry whose `depends_on:` names an open assumption or decision goes **into
