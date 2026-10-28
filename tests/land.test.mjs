@@ -77,6 +77,21 @@ const replaceConflict = (replacement) => (lines) => {
   return [...lines.slice(0, s), ...replacement, ...lines.slice(e + 1)];
 };
 
+/** A rebase stopped at a line-5 conflict that the session resolved to `kept` (P39). */
+function oneSidedRepo(kept) {
+  const r = repo();
+  editLine(r.wts['p1-one'], 5, 'five, by this branch');
+  otherLands(r, 'p2-two', 5, 'five, by the other entry');
+  land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
+  land(r.wts['p1-one'], 'rebase');
+  resolveTo(r.wts['p1-one'], replaceConflict([kept]));
+  return r;
+}
+const oneSided = (kept) => oneSidedRepo(kept).wts['p1-one'];
+const rebasing = (wt) => existsSync(join(git1(wt, 'rev-parse --path-format=absolute --git-dir'), 'rebase-merge'));
+/** The session's --why file, outside the repo. */
+const whyFile = (text) => { const p = join(tempDir(), 'why.md'); writeFileSync(p, text); return p; };
+
 // ── The lock ─────────────────────────────────────────────────────────────────
 
 describe('the land lock: one landing or claim at a time (P15 R2)', () => {
@@ -242,29 +257,19 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
     assert.equal(JSON.parse(land(r.main, 'report', 'feat/p1-one', '--json').stdout).conflicts.length, 1);
   });
 
-  test('a resolution identical to the main side is flagged (exit 4) and the rebase is left for the user', () => {
-    const r = repo();
-    editLine(r.wts['p1-one'], 5, 'five, by this branch');
-    otherLands(r, 'p2-two', 5, 'five, by the other entry');
-    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
-    land(r.wts['p1-one'], 'rebase');
-    resolveTo(r.wts['p1-one'], replaceConflict(['five, by the other entry']));
-    const c = land(r.wts['p1-one'], 'continue');
-    assert.equal(c.code, 4, out(c));
-    assert.match(c.stderr, /kept only the main side/);
-    assert.ok(existsSync(join(git1(r.wts['p1-one'], 'rev-parse --path-format=absolute --git-dir'), 'rebase-merge')));
+  test('a resolution identical to the main side is refused until the session writes its case, naming the region (P39)', () => {
+    const wt = oneSided('five, by the other entry');
+    const c = land(wt, 'continue');
+    assert.equal(c.code, 1, out(c));
+    assert.match(c.stderr, /f\.txt region 1: kept only the main side/);
+    assert.match(c.stderr, /continue --why <file>/);
+    assert.ok(rebasing(wt), 'the rebase is left in progress');
   });
 
-  test('a resolution identical to this branch\'s side is flagged too', () => {
-    const r = repo();
-    editLine(r.wts['p1-one'], 5, 'five, by this branch');
-    otherLands(r, 'p2-two', 5, 'five, by the other entry');
-    land(r.wts['p1-one'], 'lock', 'take', 'feat/p1-one');
-    land(r.wts['p1-one'], 'rebase');
-    resolveTo(r.wts['p1-one'], replaceConflict(['five, by this branch']));
-    const c = land(r.wts['p1-one'], 'continue');
-    assert.equal(c.code, 4, out(c));
-    assert.match(c.stderr, /kept only this branch's side/);
+  test('a resolution identical to this branch\'s side is refused the same way', () => {
+    const c = land(oneSided('five, by this branch'), 'continue');
+    assert.equal(c.code, 1, out(c));
+    assert.match(c.stderr, /f\.txt region 1: kept only this branch's side/);
   });
 
   test('conflict markers left in the file are refused, not committed', () => {
@@ -309,6 +314,136 @@ describe('rebase onto the new main, in the worktree, under the lock (P15 R2)', (
     const x = land(r.wts['p1-one'], 'rebase');
     assert.equal(x.code, 4, out(x));
     assert.match(x.stderr, /f\.txt/);
+  });
+});
+
+// ── A one-sided resolution is a yes/no question (P39, D-4) ───────────────────
+
+const CASE = '## f.txt region 1\n\nWhy: both entries made the same fix;\nthe other entry\'s wording is the newer one.\nSuggest: yes, keep main\'s line.\n';
+
+describe('a one-sided resolution stops with the builder\'s case, for a yes or a no (P39)', () => {
+  test('with the case, it stops (exit 4) showing both sides, the side kept, why and the suggestion', () => {
+    const wt = oneSided('five, by the other entry');
+    const c = land(wt, 'continue', '--why', whyFile(CASE));
+    assert.equal(c.code, 4, out(c));
+    for (const s of [/f\.txt region 1 \(replaying \w+; other side: P2\)/, /main \(the other entry\) has:\n\s+five, by the other entry/,
+      /this branch has:\n\s+five, by this branch/, /kept: the main side; this branch's change there is dropped/,
+      /why:\n\s+both entries made the same fix;\n\s+the other entry's wording is the newer one\./, /suggested answer:\n\s+yes, keep main's line\./,
+      /Yes → node scripts\/land\.mjs continue --owner/, /No  → resolve the regions they named again/]) assert.match(c.stderr, s);
+    assert.ok(rebasing(wt));
+  });
+
+  test('yes: --owner lands it, and the report carries the case and their words', () => {
+    const r = oneSidedRepo('five, by the other entry');
+    const wt = r.wts['p1-one'];
+    assert.equal(land(wt, 'continue', '--why', whyFile(CASE)).code, 4);
+    const c = land(wt, 'continue', '--owner', 'yes, same fix');
+    assert.equal(c.code, 0, out(c));
+    r.sh('git merge-base --is-ancestor main feat/p1-one');
+    const [rec] = JSON.parse(land(r.main, 'report', 'feat/p1-one', '--json').stdout).conflicts;
+    assert.equal(rec.kept, 'main');
+    assert.equal(rec.owner, 'yes, same fix');
+    assert.equal(rec.why, 'both entries made the same fix;\nthe other entry\'s wording is the newer one.');
+    assert.equal(rec.suggest, 'yes, keep main\'s line.');
+    const text = land(r.main, 'report', 'feat/p1-one').stdout;
+    assert.match(text, /kept only main's side, on the user's yes: yes, same fix/);
+    assert.match(text, /why: {6}both entries made the same fix; \/ the other entry's wording is the newer one\./);
+  });
+
+  test('no: the session resolves again, and a blend goes on without the user', () => {
+    const r = oneSidedRepo('five, by the other entry');
+    const wt = r.wts['p1-one'];
+    assert.equal(land(wt, 'continue', '--why', whyFile(CASE)).code, 4);
+    resolveTo(wt, (lines) => lines.map((l) => (l === 'five, by the other entry' ? 'five, by both' : l)));
+    const c = land(wt, 'continue');
+    assert.equal(c.code, 0, out(c));
+    assert.equal(JSON.parse(land(r.main, 'report', 'feat/p1-one', '--json').stdout).conflicts[0].kept, undefined);
+  });
+
+  test('a yes never covers a resolution the user was not shown', () => {
+    const wt = oneSided('five, by the other entry');
+    const never = land(wt, 'continue', '--owner', 'yes');
+    assert.equal(never.code, 1, out(never));
+    assert.match(never.stderr, /never shown this resolution/);
+    assert.equal(land(wt, 'continue', '--why', whyFile(CASE)).code, 4);
+    resolveTo(wt, (lines) => lines.map((l) => (l === 'five, by the other entry' ? 'five, by this branch' : l)));
+    const moved = land(wt, 'continue', '--owner', 'yes');
+    assert.equal(moved.code, 1, out(moved));
+    assert.match(moved.stderr, /not what the user was shown \(f\.txt region 1\)/);
+    assert.ok(rebasing(wt));
+  });
+
+  test('a case missing its suggestion, or one for a region not one-sided, is refused, naming it', () => {
+    const wt = oneSided('five, by the other entry');
+    const half = land(wt, 'continue', '--why', whyFile('## f.txt region 1\n\nWhy: same fix.\n'));
+    assert.equal(half.code, 1, out(half));
+    assert.match(half.stderr, /f\.txt region 1: kept only the main side/);
+    const stray = land(wt, 'continue', '--why', whyFile(`${CASE}\n## g.txt region 2\n\nWhy: x\nSuggest: y\n`));
+    assert.equal(stray.code, 1, out(stray));
+    assert.match(stray.stderr, /a case for g\.txt region 2, which is not a region resolved to one side/);
+  });
+
+  test('a region shown at the stop, then blended, is named when a yes no longer fits', () => {
+    // Lines 2 and 8 changed by both sides in one commit each: one rebase step, two regions.
+    const both = (dir, who) => {
+      const p = join(dir, 'f.txt');
+      const lines = readFileSync(p, 'utf8').split('\n');
+      lines[1] = `two, by ${who}`;
+      lines[7] = `eight, by ${who}`;
+      writeFileSync(p, lines.join('\n'));
+      execSync(`git commit -qam "${who} edits lines 2 and 8"`, { cwd: dir, stdio: 'ignore' });
+    };
+    const r = repo();
+    const wt = r.wts['p1-one'];
+    both(wt, 'this branch');
+    const o = join(r.main, '.claude', 'worktrees', 'p2-two');
+    r.sh(`git worktree add -q -b feat/p2-two "${o}" main`);
+    both(o, 'the other entry');
+    landed(r.main, o, 'feat/p2-two');
+    land(wt, 'lock', 'take', 'feat/p1-one');
+    assert.equal(land(wt, 'rebase').code, 3);
+    // Both regions kept to main's side, and the user is shown both.
+    resolveTo(wt, (ls) => {
+      const out = [];
+      let side = null;
+      for (const l of ls) {
+        if (l.startsWith('<<<<<<<')) side = 'main';
+        else if (l.startsWith('|||||||') || l.startsWith('=======')) side = 'skip';
+        else if (l.startsWith('>>>>>>>')) side = null;
+        else if (side !== 'skip') out.push(l);
+      }
+      return out;
+    });
+    const cases = '## f.txt region 1\n\nWhy: same fix.\nSuggest: yes.\n\n## f.txt region 2\n\nWhy: same fix.\nSuggest: yes.\n';
+    assert.equal(land(wt, 'continue', '--why', whyFile(cases)).code, 4);
+    // The user said no to region 1; the session blends it, and region 2 is unchanged.
+    resolveTo(wt, (ls) => ls.map((l) => (l === 'two, by the other entry' ? 'two, by both' : l)));
+    const c = land(wt, 'continue', '--owner', 'yes');
+    assert.equal(c.code, 1, out(c));
+    assert.match(c.stderr, /not what the user was shown \(f\.txt region 1\)/);
+    // A fresh, shorter stop for what is still one-sided.
+    const again = land(wt, 'continue', '--why', whyFile('## f.txt region 2\n\nWhy: same fix.\nSuggest: yes.\n'));
+    assert.equal(again.code, 4, out(again));
+    assert.equal(land(wt, 'continue', '--owner', 'yes to region 2').code, 0);
+  });
+
+  test('a fenced `## ` line in a case is text, and a multi-line yes cannot run', () => {
+    const wt = oneSided('five, by the other entry');
+    const fenced = '## f.txt region 1\n\nWhy: it quotes the file:\n```\n## Scope\nWhy: not a field\n```\nSuggest: yes.\n';
+    const c = land(wt, 'continue', '--why', whyFile(fenced));
+    assert.equal(c.code, 4, out(c));
+    assert.match(c.stderr, /why:\n\s+it quotes the file:\n\s+```\n\s+## Scope\n\s+Why: not a field\n\s+```/);
+    assert.equal(land(wt, 'continue', '--owner', 'yes\n\nRelates: P5').code, 2);
+    assert.ok(rebasing(wt));
+  });
+
+  test('--why and --owner together, or either on a blend, cannot go on', () => {
+    const wt = oneSided('five, by the other entry');
+    assert.equal(land(wt, 'continue', '--why', whyFile(CASE), '--owner', 'yes').code, 2);
+    resolveTo(wt, (lines) => lines.map((l) => (l === 'five, by the other entry' ? 'five, by both' : l)));
+    const c = land(wt, 'continue', '--owner', 'yes');
+    assert.equal(c.code, 1, out(c));
+    assert.match(c.stderr, /nothing for a yes to cover/);
   });
 });
 

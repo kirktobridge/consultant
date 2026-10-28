@@ -108,7 +108,8 @@ landing, whatever the size of the change.
    the lock. Pass on the runs it says it kept. That's the last step, because
    /ship's flips in step 3 are commits on main and need the lock too. Your report
    includes the conflicts from `land.mjs report` (taken before finish): file, both
-   sides, the resolution.
+   sides, the resolution, and for a region kept to one side, the builder's case and
+   the user's yes, as the report gives them.
 
 ## Not this skill
 - Doc edits → **/ship** (invoked as step 3, never replaced).

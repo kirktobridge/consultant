@@ -75,6 +75,9 @@ A subagent's hand-back that starts `QUESTION <ID>:` is waiting on the owner.
 - Ask the user, **naming the entry**: what it needs, the options, and your
   recommendation if you have one. Ask one entry's question at a time, unless they
   are independent and short.
+- A `land.mjs` exit 4 after `--why` is a **yes or no**: relay each region, both
+  sides, the side kept, and the subagent's case and suggested answer as it gave
+  them. Don't make the user read the raw conflict to answer.
 - **The land lock goes first.** If the asker holds the land lock, ask that question
   before any other and say why: every other landing waits on it.
 - Resume that subagent with the user's answer: SendMessage to its agent ID, the

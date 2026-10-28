@@ -223,9 +223,16 @@ run all of them.
        side. Read that entry's merge commit and backlog file, resolve each region
        with Edit so **both** entries' intent survives, then run
        `node scripts/land.mjs continue`. Repeat until it exits 0.
-     - **Exit 4 = stop and ask the user.** Either your resolution kept only one
-       side, or the conflict has nothing to resolve line by line (a delete, a
-       rename, a binary file). Keep the lock and show them the regions.
+     - **A region you resolved to only one side** makes `continue` refuse until you
+       make the case for it (D-4). Write a scratch file with one
+       `## <file> region <n>` section per region it names, each with `Why:` (why
+       dropping that side is right) and `Suggest:` (the answer you recommend), and
+       run `node scripts/land.mjs continue --why <file>`. It stops with exit 4.
+     - **Exit 4 = stop and ask the user.** Keep the lock. After `--why`, ask yes or
+       no for what it printed: each region, both sides, the side kept, your case.
+       **Yes** → `node scripts/land.mjs continue --owner "<their words>"`. **No** →
+       resolve the regions they named again and run `continue`. Any other exit 4
+       has no case to say yes to: show them what it printed and ask what to do.
   3. If anything was resolved, run the full suite in the worktree. If it's red,
      `lock release <branch>` and stop for the user. If it's green, the close report
      now describes code from before the resolution: re-run /verify and commit its
