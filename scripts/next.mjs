@@ -83,7 +83,7 @@ const loaded = new Map(REGISTERS.map((r) => [r, entriesOf(r)]));
 const { landedAt } = landings(git, BASE, { branches });
 const claimed = (id) => {
   const at = landedAt(id);
-  return at ? { short: `${id} (landed ${at.slice(0, 10)}, awaiting acceptance)`, why: `landed ${at.slice(0, 10)}, awaiting the owner's acceptance`, landed: at }
+  return at ? { short: `${id} (landed ${at.slice(0, 10)}, awaiting the owner's acceptance)`, why: `landed ${at.slice(0, 10)}, awaiting the owner's acceptance`, landed: at }
     : { short: `claimed ${id}`, why: 'claimed (in-progress): another session is building it' };
 };
 
@@ -142,8 +142,9 @@ const walk = (n) => {
     if (on.length) { skipped.push({ id, kind: 'held', why: `waits on ${on.join(', ')}` }); continue; }
     picked.push(id);
   }
-  // A claim is named in the pick's own line; a held or entry-less one gets a line of its own.
-  return { picked, skipped: skipped.map(({ short, ...s }) => s), shorts: skipped.filter((s) => s.short).map((s) => s.short) };
+  // A claim is named in the pick's own line (`short`, kept in the JSON so session-audit's
+  // banner words it the same, B16); a held or entry-less one gets a line of its own.
+  return { picked, skipped, shorts: skipped.filter((s) => s.short).map((s) => s.short) };
 };
 
 // ── A batch (--count) ────────────────────────────────────────────────────────
@@ -164,16 +165,15 @@ if (COUNT !== null) {
 }
 
 const { picked: [head = null], skipped, shorts } = walk(1);
-let pick = null;
-if (bug) {
-  pick = { id: bug.id, from: 'bugs', severity: bug.header.severity ?? null, why: `${bug.header.severity} bug, reported ${bug.header.reported} — every open bug is picked up before the queue, most severe first` };
-} else if (head) {
-  pick = { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${shorts.length ? ` (skipping ${shorts.join(', ')})` : ''}` };
-}
+const queuePick = head ? { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${shorts.length ? ` (skipping ${shorts.join(', ')})` : ''}` } : null;
+const pick = bug
+  ? { id: bug.id, from: 'bugs', severity: bug.header.severity ?? null, why: `${bug.header.severity} bug, reported ${bug.header.reported} — every open bug is picked up before the queue, most severe first` }
+  : queuePick;
 
 if (asJson) {
-  // `skipped` is the queue walk's, up to the queue pick, and is given even when a bug is picked.
-  console.log(JSON.stringify({ base: BASE, next: pick, skipped, held, claimedBugs, openBugs: open.length, queued }));
+  // `skipped` is the queue walk's, up to the queue pick, and is given even when a bug is picked;
+  // so is `queuePick`, what the queue offers after the bug (session-audit's banner, B16).
+  console.log(JSON.stringify({ base: BASE, next: pick, queuePick, skipped, held, claimedBugs, openBugs: open.length, queued }));
 } else {
   if (pick) console.log(`next: ${pick.id}\n  ${pick.why}`);
   else console.log(`next: nothing ready — ${open.length} open bug(s), ${queued.length} queued ID(s) on ${BASE}, none buildable now.`);

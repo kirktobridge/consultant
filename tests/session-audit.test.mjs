@@ -553,16 +553,55 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     g.checkout('feat/p1-thing', true);
     g.commitAll('work');
     g.checkout('main');
-    assert.match(audit(dir).stdout, /next up: P2 — P2 example \(after claimed P1\)\n/);
+    assert.match(audit(dir).stdout, /next up: P2 — P2 example \(skipping claimed P1\)\n/);
   });
 
-  test('a head queued below its own unshipped dependency says what it waits on', () => {
-    // The schema check allows it (user decision, 2026-10-16), so the head can be held.
+  test('a claim that has landed is named as awaiting the owner, in next.mjs\'s words (B16)', () => {
+    const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2')], nextUp: ['P1', 'P2'] });
+    g.checkout('feat/p1-thing', true);
+    writeFileSync(join(dir, 'x.txt'), 'built');
+    g.commitAll('feat: thing (P1)');
+    g.checkout('main');
+    g.merge('feat/p1-thing');
+    assert.match(audit(dir).stdout, /next up: P2 — P2 example \(skipping P1 \(landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance\)\)\n/);
+  });
+
+  test('an entry queued below its own unshipped dependency is skipped, saying what it waits on (B16)', () => {
+    // The schema check allows it (user decision, 2026-10-16), so a queued entry can be held.
     const { dir, g } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] })], nextUp: ['P1', 'P2'] });
     g.checkout('feat/p1-thing', true);
     g.commitAll('work');
     g.checkout('main');
-    assert.match(audit(dir).stdout, /next up: P2 — P2 example \(after claimed P1\) — waits on P1\n/);
+    assert.match(audit(dir).stdout, /next up: nothing ready in docs\/backlog\/QUEUE\.md \(skipping claimed P1; skipping P2 — waits on P1 \(in-progress\)\)\n/);
+  });
+
+  test('the banner names the entry next.mjs proposes, past a held one (B16 repro)', () => {
+    const { dir, g } = repo({
+      backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] }), P('P3')],
+      nextUp: ['P1', 'P2', 'P3'],
+    });
+    g.checkout('feat/p1-thing', true);
+    g.commitAll('work');
+    g.checkout('main');
+    assert.equal(JSON.parse(run('next.mjs', ['--json'], { cwd: dir }).stdout).next.id, 'P3');
+    assert.match(audit(dir).stdout, /next up: P3 — P3 example \(skipping claimed P1; skipping P2 — waits on P1 \(in-progress\)\)\n/);
+    assert.equal(ahead(dir).nextUp.id, 'P3');
+  });
+
+  test('behind a ready bug, the queue line is still next.mjs\'s queue pick, past a held one (B16)', () => {
+    const { dir, g } = repo({
+      backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] }), P('P3')],
+      bugs: [B('B1')],
+      nextUp: ['P1', 'P2', 'P3'],
+    });
+    g.checkout('feat/p1-thing', true);
+    g.commitAll('work');
+    g.checkout('main');
+    const j = JSON.parse(run('next.mjs', ['--json'], { cwd: dir }).stdout);
+    assert.deepEqual([j.next.id, j.queuePick.id], ['B1', 'P3']);
+    const text = audit(dir).stdout;
+    assert.doesNotMatch(text, /backlog-schema/, "the fixture must be schema-legal, or the graph the banner reads may be wrong");
+    assert.match(text, /then the queue: P3 — P3 example \(skipping claimed P1; skipping P2 — waits on P1 \(in-progress\)\)\n/);
   });
 
   test('a ready bug takes "next up", and it is the bug next.mjs picks', () => {
@@ -605,12 +644,12 @@ describe('what is ahead, read from the graph on the trunk (P19)', () => {
     assert.match(audit(dir).stdout, /Ahead: unreadable — .*docs\/backlog\/P2\.md/);
   });
 
-  test('an entry whose dependency has no entry is not ready, and a held head names it (B9)', () => {
+  test('an entry whose dependency has no entry is not ready, and a held queued one names it (B9)', () => {
     const { dir } = repo({ backlog: [P('P1', { dependsOn: ['P99'] }), P('P2', { dependsOn: ['P98'] }), P('P3')], nextUp: ['P2'] });
     const a = ahead(dir);
     assert.deepEqual(a.readyUnqueued, ['P3']);
-    assert.deepEqual(a.nextUp.waitsOn, ['P98']);
-    assert.match(audit(dir).stdout, /next up: P2 — P2 example — waits on P98 \(no entry\)\n {2}ready, not queued: P3\n/);
+    assert.equal(a.nextUp, null);
+    assert.match(audit(dir).stdout, /next up: nothing ready in docs\/backlog\/QUEUE\.md \(skipping P2 — waits on P98 \(no entry\)\)\n {2}ready, not queued: P3\n/);
   });
 
   // B10: neither outcome settled anything; the dependent must re-point first.

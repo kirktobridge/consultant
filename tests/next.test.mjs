@@ -124,7 +124,7 @@ describe('next.mjs takes every open bug before the queue (P5 R1)', () => {
     const { dir } = landedP1();
     const r = next(dir);
     assert.equal(pick(r), 'P2', out(r));
-    assert.match(r.stdout, /skipping P1 \(landed \d{4}-\d{2}-\d{2}, awaiting acceptance\)/);
+    assert.match(r.stdout, /skipping P1 \(landed \d{4}-\d{2}-\d{2}, awaiting the owner's acceptance\)/);
     assert.doesNotMatch(r.stdout, /claimed P1/);
   });
 
