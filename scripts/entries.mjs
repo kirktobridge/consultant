@@ -520,7 +520,8 @@ export function parseManualOrder(text) {
  * entry (what that one waits on is waited on too) and stops at a met one: a shipped
  * dependency is met, whatever it once rested on. Only `shipped` is met — a `partial`
  * one may have shipped the milestone a dependent needs, but `depends_on` cannot say
- * which. `cycles` lists each cycle once, as the IDs around it with the first repeated
+ * which. `starts` walks from those IDs instead of `id`'s own dependencies, for an entry
+ * that is not in the graph (a bug naming features). `cycles` lists each cycle once, as the IDs around it with the first repeated
  * at the end.
  */
 export function dependencyGraph(entries) {
@@ -530,18 +531,18 @@ export function dependencyGraph(entries) {
   );
   const met = (id) => byId.get(id)?.status === 'shipped';
 
-  const unmet = (id) => {
+  const unmet = (id, starts = deps.get(id) ?? []) => {
     const found = [];
     const seen = new Set([id]);
-    const walk = (from, path) => {
-      for (const d of deps.get(from) ?? []) {
+    const walk = (next, path) => {
+      for (const d of next) {
         if (seen.has(d) || !byId.has(d) || met(d)) continue;
         seen.add(d);
         found.push({ id: d, status: byId.get(d).status, path: [...path, d] });
-        walk(d, [...path, d]);
+        walk(deps.get(d) ?? [], [...path, d]);
       }
     };
-    walk(id, [id]);
+    walk(starts, [id]);
     return found;
   };
 
@@ -563,4 +564,22 @@ export function dependencyGraph(entries) {
   for (const id of byId.keys()) if (!state.has(id)) visit(id);
 
   return { deps, unmet, cycles };
+}
+
+/**
+ * What holds an entry back from a build, so next.mjs's single pick and --count judge it
+ * the same way (P37). Feature dependencies with an entry go through `graph`
+ * (dependencyGraph over the backlog), direct or through another entry, and the graph
+ * judges whether they are met. Every other direct dependency is a leaf — a bug, an
+ * assumption, a decision, an experiment — and so is an ID with no entry, which is unmet;
+ * `statusOf(id)` gives a leaf's status, or null for no entry. Each hold is
+ * `{ id, status, path }`, `path` running from the entry to the hold.
+ */
+export function holdsOf(entry, graph, statusOf) {
+  const inGraph = (id) => BACKLOG.idPattern.test(id) && graph.deps.has(id);
+  const direct = idsOf(entry, 'depends_on');
+  const features = graph.unmet(entry.id, graph.deps.get(entry.id) ?? direct.filter(inGraph));
+  const leaves = direct.filter((id) => !inGraph(id) && !dependencyMet(id, statusOf(id)))
+    .map((id) => ({ id, status: statusOf(id), path: [entry.id, id] }));
+  return [...features, ...leaves];
 }
