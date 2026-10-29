@@ -128,6 +128,46 @@ describe('next.mjs takes every open bug before the queue (P5 R1)', () => {
     assert.doesNotMatch(r.stdout, /claimed P1/);
   });
 
+  test('a queued entry its claimed dependency holds is skipped, naming what holds it (P37)', () => {
+    const { dir } = repo({
+      backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] }), P('P3')], nextUp: ['P1', 'P2', 'P3'],
+    });
+    const r = next(dir);
+    assert.equal(r.code, 0, out(r));
+    assert.equal(pick(r), 'P3');
+    assert.match(r.stdout, /skipped: P2 — waits on P1 \(in-progress\)/);
+  });
+
+  test('a single pick and --count 1 propose the same entry (P37)', () => {
+    const states = [
+      { backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] }), P('P3')], nextUp: ['P1', 'P2', 'P3'], expect: 'P3' },
+      { backlog: [P('P1'), P('P2', { dependsOn: ['P1'] }), P('P3', { dependsOn: ['P2'] }), P('P4')], nextUp: ['P3', 'P4'], expect: 'P4' },
+      { backlog: [P('P2', { dependsOn: ['A-1'] }), P('P3', { dependsOn: ['P9'] }), P('P4')], nextUp: ['P2', 'P3', 'P4'], assumptions: [A('A-1')], expect: 'P4' },
+    ];
+    for (const { expect, ...state } of states) {
+      const { dir } = repo(state);
+      const single = next(dir);
+      const batch = next(dir, '--count', '1');
+      assert.equal(pick(single), (batch.stdout.match(/^ {2}picked: (\S+)$/m) || [])[1], `${out(single)}\n${out(batch)}`);
+      assert.equal(pick(single), expect, out(single));
+    }
+  });
+
+  test('a queued ID with no entry is skipped; with every queued entry held, nothing is ready (P37)', () => {
+    const { dir } = repo({ backlog: [P('P1', { status: 'in-progress' }), P('P2', { dependsOn: ['P1'] })], nextUp: ['P9', 'P1', 'P2'] });
+    const r = next(dir);
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /skipped: P9 — queued but has no entry/);
+    assert.match(r.stdout, /skipped: P2 — waits on P1 \(in-progress\)/);
+    assert.doesNotMatch(r.stdout, /skipped: P1/);
+  });
+
+  test('a bug is held by a feature its feature dependency waits on (P37)', () => {
+    const { dir } = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] })], bugs: [B('B1', { dependsOn: ['P2'] })] });
+    const r = next(dir);
+    assert.match(r.stdout, /held: B1 \(\S+ bug\) waits on P2 \(proposed\), P1 \(proposed\) via P2/, out(r));
+  });
+
   test('the registers are read from main, never the checked-out copy', () => {
     const { dir, sh } = repo({ backlog: [P('P1')], nextUp: ['P1'] });
     sh('git checkout -qb elsewhere');
@@ -236,7 +276,7 @@ describe('next.mjs --count picks a batch for parallel subagents (P17)', () => {
     const { dir } = repo({ backlog: [P('P1'), P('P2', { dependsOn: ['P1'] })], nextUp: ['P1', 'P2'] });
     const j = JSON.parse(next(dir, '--count', '2', '--json').stdout);
     assert.deepEqual(j.picked, ['P1']);
-    assert.deepEqual(j.skipped, [{ id: 'P2', why: 'waits on P1 (picked in this batch)' }]);
+    assert.deepEqual(j.skipped, [{ id: 'P2', kind: 'held', why: 'waits on P1 (picked in this batch)' }]);
   });
 
   test('a transitive dependency picked in this batch keeps its path; a dangling one holds', () => {

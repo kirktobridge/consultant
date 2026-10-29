@@ -7,8 +7,10 @@
 // ready does the queue's head come up.
 //
 // "Ready" is /implement's DEPENDS GATE, applied before the proposal rather than after
-// it: a dependency that is an unshipped `P#`, an unfixed `B#`, or an `open` `A-n` /
-// `D-n` holds the bug back, and this prints it as held with what holds it. A claimed
+// it, and judged by one function (holdsOf) in both modes (P37): a dependency that is an
+// unshipped `P#` (directly or through another entry), an unfixed `B#`, an `open` `A-n` /
+// `D-n`, or an ID with no entry holds the entry back. A held bug is printed with what
+// holds it; a held queue entry is skipped for the next one, naming what holds it. A claimed
 // entry (`in-progress`) is skipped too: someone else's build, or one that has landed and
 // waits on the owner's acceptance — the reason says which (landing.mjs). Every claimed
 // bug gets a `claimed:` line saying which, so a bug the owner reopened reads as being
@@ -31,7 +33,7 @@
 // Usage: node scripts/next.mjs [--base <branch>] [--count <N>] [--json]
 
 import { execFileSync } from 'node:child_process';
-import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, idsOf, dependencyMet, dependencyGraph } from './entries.mjs';
+import { REGISTERS, BACKLOG, BUGS, parseEntry, parseQueue, dependencyGraph, holdsOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
 import { landings } from './landing.mjs';
 
@@ -85,8 +87,13 @@ const claimed = (id) => {
     : { short: `claimed ${id}`, why: 'claimed (in-progress): another session is building it' };
 };
 
-const holding = (e) => idsOf(e, 'depends_on').filter((id) => !dependencyMet(id, byId.get(id)?.status))
-  .map((id) => `${id} (${byId.get(id)?.status ?? 'no entry'})`);
+// What holds an entry is entries.mjs's holdsOf, for bugs, a single pick and a batch alike,
+// so the two modes can't disagree about readiness (P37). `picked` names a hold picked
+// earlier in the same batch: not shipped yet, so it holds, but it is no open question.
+const graph = dependencyGraph(loaded.get(BACKLOG));
+const holding = (e, picked = []) => holdsOf(e, graph, (id) => byId.get(id)?.status ?? null)
+  .map((h) => `${h.id} (${picked.includes(h.id) ? 'picked in this batch' : h.status ?? 'no entry'})`
+    + (h.path.length > 2 ? ` via ${h.path.slice(1, -1).join(' → ')}` : ''));
 
 // ── Bugs first ───────────────────────────────────────────────────────────────
 
@@ -114,33 +121,35 @@ const claimedBugs = loaded.get(BUGS).filter((b) => b.status === 'in-progress').m
 
 const queueText = git('show', `${BASE}:${BACKLOG.queue}`);
 const queued = queueText === null ? [] : parseQueue(queueText).ids;
-const head = queued.find((id) => byId.get(id)?.status !== 'in-progress') ?? null;
+
+// Up to `n` entries from the queue, in its order, each dependency-ready, and why each
+// one passed over was. A single pick is this walk with n = 1, so it skips what a batch
+// skips, for the same reason.
+const walk = (n) => {
+  const picked = [];
+  const skipped = [];
+  for (const id of queued) {
+    if (picked.length >= n) break;
+    const e = byId.get(id);
+    if (!e) { skipped.push({ id, kind: 'no entry', why: 'queued but has no entry' }); continue; }
+    if (e.status === 'in-progress') {
+      // `landed` lets a JSON reader tell "waits on the owner" from "being built" without the prose.
+      const { short, why, landed } = claimed(id);
+      skipped.push({ id, kind: 'claimed', why, short, ...(landed && { landed }) });
+      continue;
+    }
+    const on = holding(e, picked);
+    if (on.length) { skipped.push({ id, kind: 'held', why: `waits on ${on.join(', ')}` }); continue; }
+    picked.push(id);
+  }
+  // A claim is named in the pick's own line; a held or entry-less one gets a line of its own.
+  return { picked, skipped: skipped.map(({ short, ...s }) => s), shorts: skipped.filter((s) => s.short).map((s) => s.short) };
+};
 
 // ── A batch (--count) ────────────────────────────────────────────────────────
 
 if (COUNT !== null) {
-  const graph = dependencyGraph(loaded.get(BACKLOG));
-  const picked = [];
-  const skipped = [];
-  for (const id of queued) {
-    if (picked.length >= COUNT) break;
-    const e = byId.get(id);
-    if (!e) { skipped.push({ id, why: 'queued but has no entry' }); continue; }
-    if (e.status === 'in-progress') {
-      // `landed` lets a JSON reader tell "waits on the owner" from "being built" without the prose.
-      const { why, landed } = claimed(id);
-      skipped.push({ id, why, ...(landed && { landed }) });
-      continue;
-    }
-    // The graph walks feature dependencies through each other; every other direct one
-    // (a bug, an assumption, a decision, a feature with no entry) is a leaf.
-    const features = graph.unmet(id).map((u) => `${u.id} (${picked.includes(u.id) ? 'picked in this batch' : u.status})`
-      + (u.path.length > 2 ? ` via ${u.path.slice(1, -1).join(' → ')}` : ''));
-    const leaves = holding(e).filter((h) => !(BACKLOG.idPattern.test(h.split(' ')[0]) && byId.has(h.split(' ')[0])));
-    const on = [...features, ...leaves];
-    if (on.length) { skipped.push({ id, why: `waits on ${on.join(', ')}` }); continue; }
-    picked.push(id);
-  }
+  const { picked, skipped } = walk(COUNT);
   if (asJson) {
     console.log(JSON.stringify({ base: BASE, asked: COUNT, picked, skipped, readyBug: bug?.id ?? null, held, claimedBugs, queued }));
   } else {
@@ -154,18 +163,21 @@ if (COUNT !== null) {
   process.exit(picked.length ? 0 : 1);
 }
 
+const { picked: [head = null], skipped, shorts } = walk(1);
 let pick = null;
 if (bug) {
   pick = { id: bug.id, from: 'bugs', severity: bug.header.severity ?? null, why: `${bug.header.severity} bug, reported ${bug.header.reported} — every open bug is picked up before the queue, most severe first` };
 } else if (head) {
-  pick = { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${head !== queued[0] ? ` (skipping ${queued.slice(0, queued.indexOf(head)).map((id) => claimed(id).short).join(', ')})` : ''}` };
+  pick = { id: head, from: 'queue', why: `head of ${BACKLOG.queue}${shorts.length ? ` (skipping ${shorts.join(', ')})` : ''}` };
 }
 
 if (asJson) {
-  console.log(JSON.stringify({ base: BASE, next: pick, held, claimedBugs, openBugs: open.length, queued }));
+  // `skipped` is the queue walk's, up to the queue pick, and is given even when a bug is picked.
+  console.log(JSON.stringify({ base: BASE, next: pick, skipped, held, claimedBugs, openBugs: open.length, queued }));
 } else {
   if (pick) console.log(`next: ${pick.id}\n  ${pick.why}`);
   else console.log(`next: nothing ready — ${open.length} open bug(s), ${queued.length} queued ID(s) on ${BASE}, none buildable now.`);
+  if (pick?.from !== 'bugs') for (const s of skipped.filter((s) => s.kind !== 'claimed')) console.log(`  skipped: ${s.id} — ${s.why}`);
   for (const h of held) console.log(`  held: ${h.id} (${h.severity} bug) waits on ${h.on.join(', ')}`);
   for (const c of claimedBugs) console.log(`  claimed: ${c.id} (bug) — ${c.why}`);
 }

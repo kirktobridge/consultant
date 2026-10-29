@@ -25,7 +25,8 @@ run all of them.
 - **No ID given?** Run `node scripts/next.mjs` and propose what it prints. Every open,
   dependency-ready bug comes before the queue, most severe first; a bug is never
   ranked into [QUEUE.md](../../../docs/backlog/QUEUE.md). With no bug ready, it gives the
-  queue's head. It reads the trunk and skips claimed entries. Exit 1 means nothing is ready:
+  first queued entry that is ready. It reads the trunk and skips claimed entries and ones
+  a dependency holds, naming what holds each. Exit 1 means nothing is ready:
   say so, with the bugs it lists as held.
 - Find the entry: `cat docs/backlog/<ID>.md` (a bug: `cat docs/bugs/<ID>.md`) — the whole file, never a fixed line
   count: entries run long, and a truncated read drops `Accept`, the half of the
