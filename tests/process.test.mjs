@@ -999,7 +999,7 @@ describe('the single-writer map agrees with the skills', () => {
 describe('the skills write the tracked docs through ship.mjs (P64)', () => {
   // A skill that drops a command goes back to a hand edit, which can half-land.
   const usage = readFileSync(join(REPO, 'scripts', 'ship.mjs'), 'utf8');
-  const PEN = { ship: ['claim', 'shipped', 'fixed', 'reject', 'file'] };
+  const PEN = { ship: ['claim', 'shipped', 'fixed', 'reject', 'file'], land: ['fixed'] };
   for (const [skill, cmds] of Object.entries(PEN)) {
     test(`/${skill} names the ship.mjs command for each flip it makes`, () => {
       const text = readFileSync(join(REPO, '.claude', 'skills', skill, 'SKILL.md'), 'utf8');
