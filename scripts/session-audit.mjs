@@ -256,7 +256,8 @@ const waitingBlock = waitingOnUser.length
 // Not findings either: the forward view, so a session opens knowing what to pick up
 // and what is about to block, not only what was left dangling. Rendered from P11's
 // graph on the trunk, the one dependency source, walked with trunk-graph's graphIndex;
-// the queue file, which the graph does not carry, is the only other input. It lands in
+// the queue file, which the graph does not carry, is the other input, and what comes next
+// is next.mjs's answer (B16). It lands in
 // every session's context, so it stays a few lines: IDs, not paragraphs. And it is
 // optional: a forward view that fails must never cost the findings above.
 
@@ -269,22 +270,20 @@ const ahead = (() => {
     const queued = queueText === null ? [] : parseQueue(queueText).ids;
     const features = graph.entries.filter((e) => e.open && BACKLOG.idPattern.test(e.id));
 
-    // A ready bug goes before the queue. Which one is next.mjs's answer, asked rather
-    // than re-derived, so this line can never disagree with what /implement picks.
-    // Optional like the rest: if next.mjs can't answer, the queue lines still stand.
-    let bugFirst = null;
+    // What comes next — a ready bug, then the queue's pick and what it skipped — is
+    // next.mjs's answer, asked rather than re-derived, so these lines can never disagree
+    // with what /implement picks (B16). If next.mjs can't answer, they say so; the rest stands.
+    let picks = null;
+    // A timeout, because a hung next.mjs would hang the session start and cost the findings too.
     const nr = spawnSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'next.mjs'), '--json', '--base', BASE], {
-      cwd: ROOT, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT },
+      cwd: ROOT, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT }, timeout: 20000,
     });
     try {
-      const pick = JSON.parse(nr.stdout).next;
-      if (pick?.from === 'bugs') bugFirst = { id: pick.id, title: meta.get(pick.id)?.title ?? '', severity: pick.severity ?? null };
-    } catch { /* no answer: name the queue only */ }
+      const { next, queuePick, skipped } = JSON.parse(nr.stdout);
+      const titled = (p) => p && { ...p, title: meta.get(p.id)?.title ?? '' };
+      picks = { bugFirst: next?.from === 'bugs' ? titled(next) : null, nextUp: titled(queuePick ?? null), skipped: skipped ?? [] };
+    } catch { /* no answer: the queue lines say so */ }
 
-    // The queue's head as next.mjs reads it: the first queued entry nobody has claimed.
-    // The queue may hold an entry below its own unshipped dependency, so a held head says so.
-    const head = queued.find((id) => meta.get(id)?.status !== 'in-progress') ?? null;
-    const claimedAhead = head ? queued.slice(0, queued.indexOf(head)) : queued;
     const readyUnqueued = features
       .filter((e) => e.status !== 'in-progress' && !queued.includes(e.id) && !blockersOf(e.id).length)
       .map((e) => e.id);
@@ -307,12 +306,8 @@ const ahead = (() => {
       .sort((a, b) => b.holds.length - a.holds.length || byOrder(a.id, b.id));
 
     return {
-      bugFirst,
-      nextUp: head ? {
-        id: head, title: meta.get(head)?.title ?? '', waitsOn: blockersOf(head),
-        noEntry: blockersOf(head).filter((id) => !meta.has(id)),
-      } : null,
-      claimedAhead, readyUnqueued, assumptions: assumptionsAhead, ...(warning && { warning }),
+      ...(picks ?? { unanswered: `next.mjs gave no answer: ${nr.error?.message ?? (nr.stderr?.trim().split('\n')[0] || `exit ${nr.status}`)}` }),
+      readyUnqueued, assumptions: assumptionsAhead, ...(warning && { warning }),
     };
   } catch (e) {
     return { failed: `could not read what is ahead: ${e.message}` };
@@ -324,18 +319,21 @@ const aheadLines = (() => {
   if (ahead.failed) return [`Ahead: unreadable — ${ahead.failed}`];
   const out = [`Ahead (from the dependency graph on ${BASE}):`];
   if (ahead.warning) out.push(`  (${ahead.warning})`);
-  const skip = ahead.claimedAhead.length ? ` (after claimed ${ahead.claimedAhead.join(', ')})` : '';
-  // A ready bug is what comes next, so it takes the "next up" label and the queue head
+  // A ready bug is what comes next, so it takes the "next up" label and the queue's pick
   // follows it: a session skimming for "next up" must land on the bug.
   const bug = ahead.bugFirst;
   if (bug) out.push(`  next up: ${bug.id} — ${bug.title} (${bug.severity ?? 'unrated'} bug; every ready bug goes before the queue)`);
   const label = bug ? 'then the queue' : 'next up';
-  // A blocker with no entry is a header to fix, not something to build first: say so.
-  const named = (id) => (ahead.nextUp.noEntry.includes(id) ? `${id} (no entry)` : id);
-  const held = ahead.nextUp?.waitsOn.length ? ` — waits on ${ahead.nextUp.waitsOn.map(named).join(', ')}` : '';
-  out.push(ahead.nextUp
-    ? `  ${label}: ${ahead.nextUp.id} — ${ahead.nextUp.title}${skip}${held}`
-    : `  ${label}: nothing unclaimed in ${BACKLOG.queue}${skip}`);
+  if (ahead.unanswered) {
+    out.push(`  ${label}: unknown — ${ahead.unanswered}`);
+  } else {
+    // What the queue walk passed over, in next.mjs's words: a claim by its `short`, anything else with its reason.
+    const notes = ahead.skipped.map((s) => `skipping ${s.short ?? `${s.id} — ${s.why}`}`);
+    const skip = notes.length ? ` (${notes.join('; ')})` : '';
+    out.push(ahead.nextUp
+      ? `  ${label}: ${ahead.nextUp.id} — ${ahead.nextUp.title}${skip}`
+      : `  ${label}: nothing ready in ${BACKLOG.queue}${skip}`);
+  }
   out.push(`  ready, not queued: ${ahead.readyUnqueued.join(', ') || 'none'}`);
   if (!ahead.assumptions.length) out.push('  open assumptions holding near-queue work: none');
   for (const a of ahead.assumptions.slice(0, SHOWN)) out.push(`  ${a.id} holds ${a.holds.join(', ')} — ${a.title}`);
