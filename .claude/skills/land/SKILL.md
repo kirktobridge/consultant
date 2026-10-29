@@ -7,7 +7,8 @@ context: fork
 # Land — merge a finished branch into main
 
 One branch per invocation. This is the **only skill that merges**. It writes no docs
-itself — /ship, invoked as the last step, is the pen.
+by hand — /ship, invoked as the last step, is the pen, and a bug's `fixed` goes
+through /ship's script (step 3).
 
 Runs **forked** (`context: fork`) so the merge/test churn never lands in the main
 session's context. Consequences: everything needed must come from git (it does —
@@ -90,13 +91,14 @@ landing, whatever the size of the change.
    the entry's last milestone, it stays `in-progress`: whether it shipped is the
    product owner's call, made against the report below, and a forked skill cannot
    ask them. Tests green and every criterion observed are evidence for that call,
-   not the call. A bug (`B#`, branch `feat/b<#>-…`) has no milestones and no
+   not the call. `partial` is the one flip /ship still makes by hand (no ship.mjs
+   command writes it), so hand it to /ship; don't edit the entry yourself. A bug (`B#`, branch `feat/b<#>-…`) has no milestones and no
    `partial`. Its `fixed` is code's call when the report settles it (D-7): run
-   `node scripts/close-report.mjs --clears <ID> --branch <branch>` (after the merge it
-   reads what the merge brought in, and refuses when a conflict was resolved and no
-   report was committed after the rebase). Hand /ship a `fixed` flip only when it exits
-   0; step 1's merge already refused a red suite. Any other result: the bug stays
-   `in-progress` and the handshake asks the user, as for a feature. If the branch was a **spike** (`resolves: A-n`), /ship also
+   `node scripts/ship.mjs fixed <ID> --clears --branch <branch>` yourself, not through
+   /ship. It runs `close-report.mjs --clears` and commits the flip only when the
+   report clears the bug. Exit 0: the bug is `fixed`, and your report says so. Exit 1
+   or 2: the bug stays `in-progress` and the handshake asks the user, as for a
+   feature; pass on what it printed. If the branch was a **spike** (`resolves: A-n`), /ship also
    writes the assumption's `Resolution:` and flips its status — the answer landing in the code
    without landing in the register is the exact failure the pairing check exists for.
    Name the resolution in your final report, and say if it was a **refutation**: that
