@@ -8,4 +8,5 @@
    recorded order. Unblocks no open entry.
 4. **P67** — A build rebases onto main before it waits for the land lock. In your
    recorded order. Unblocks no open entry.
-5. **P29** — Suite prose cites no instance IDs. Unblocks no open entry.
+5. **P70** — Each orchestrated build runs as its own sandboxed process in its worktree.
+   In your recorded order. Unblocks no open entry.
