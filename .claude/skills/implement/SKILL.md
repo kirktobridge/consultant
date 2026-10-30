@@ -48,7 +48,14 @@ run all of them.
   trunk was found — so it has not passed: name the trunk with `--base <branch>`.
   Target entry already `in-progress` → stop; it's claimed by another session/branch
   (stale claims are cleared via /ship — the session-start audit surfaces them — not
-  overridden here). Another entry
+  overridden here). **The one exception: the owner hands the claim back to you** ("resume
+  P#"). Their word is the permission; nothing checks whose claim it is. Run preflight
+  with `--resume`: its claim gate passes on the entry's own `feat/` branch, and still
+  fails if that branch holds the land lock, since it is landing. Then, before the other
+  gates: enter its worktree (`worktree.mjs start <ID>` resumes it; skip the claim in
+  step 2, it is already yours), commit any uncommitted work there, and rebase onto the
+  trunk (`land.mjs lock take <branch> --wait 600`, `land.mjs rebase`,
+  `land.mjs lock release <branch>`). The gates then read the code as it is now. Another entry
   in-progress whose flagged shared assets overlap this one's Scope → stop too; the
   first claimant builds the shared piece.
 - **DEPENDS GATE:** read its header's `depends_on:`. A dependency that is an unshipped

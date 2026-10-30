@@ -12,6 +12,10 @@
 //
 //   claim      fails when the entry is `in-progress` on the trunk. The other claims are
 //              listed: whether their shared assets overlap this Scope is judgement.
+//              With --resume (P52) the owner has handed the claim back, so it passes
+//              when the entry has exactly one `feat/` branch and that branch does not
+//              hold the land lock (it would be landing). The owner's word is trusted,
+//              not checked: nothing here can tell whose claim it is.
 //   depends    fails on anything still holding the entry, direct or through another
 //              entry, named down to its root, by graphIndex's DEPENDS GATE.
 //   status     fails on an entry whose status is closed: nothing is left to build.
@@ -30,11 +34,11 @@
 // Exit: 0 every gate passed | 1 a gate failed (it is named, with what blocks it)
 //       | 2 could not run (not a repo, no trunk, no such ID, the graph failed)
 //
-// Usage: node scripts/preflight.mjs <P#|B#> [R#] [--base <branch>] [--json]
+// Usage: node scripts/preflight.mjs <P#|B#> [R#] [--resume] [--base <branch>] [--json]
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildableRegister, loadRegister, idsOf } from './entries.mjs';
 import { trunkFromArgv } from './trunk.mjs';
@@ -44,9 +48,10 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const asJson = argv.includes('--json');
+const resume = argv.includes('--resume');
 const pos = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--base');
 const [ID, MILESTONE = null] = pos;
-const usage = 'usage: node scripts/preflight.mjs <P#|B#> [R#] [--base <branch>] [--json]';
+const usage = 'usage: node scripts/preflight.mjs <P#|B#> [R#] [--resume] [--base <branch>] [--json]';
 
 // Same git invocation as status and claims, for the reasons given in session-audit.
 const WIN = process.platform === 'win32' ? ['-c', 'core.filemode=false'] : [];
@@ -110,9 +115,25 @@ const gate = (g, ok, say) => gates.push({ gate: g, ok, say });
 const others = graph.entries
   .filter((e) => e.id !== ID && e.status === 'in-progress' && buildableRegister(e.id))
   .map((e) => e.id);
-gate('claim', me.status !== 'in-progress', me.status === 'in-progress'
-  ? `${ID} is already in-progress on ${BASE}: another session or branch holds it`
-  : `${ID} is not claimed${others.length ? `; claimed elsewhere: ${others.join(', ')} (check their shared assets against this Scope)` : ''}`);
+/** The branch a handed-back claim resumes on, or why it can't be resumed. */
+function resumable() {
+  // The same prefix worktree.mjs cuts and resumes: the `-` keeps P1 off P15's branch.
+  const prefix = `feat/${ID.toLowerCase()}-`;
+  const mine = branches.filter((b) => b.startsWith(prefix));
+  if (!mine.length) return { why: `--resume, but ${ID} has no ${prefix}… branch: nothing to resume` };
+  if (mine.length > 1) return { why: `--resume, but ${ID} has ${mine.length} branches (${mine.join(', ')}): which one is live is a judgement` };
+  // land.mjs's lock file, in the git common dir every worktree shares.
+  const common = git('rev-parse', '--git-common-dir');
+  let lock = null;
+  try { lock = JSON.parse(readFileSync(join(resolve(ROOT, common ?? '.git'), 'loop-land.lock'), 'utf8')); } catch { /* not held */ }
+  if (lock?.owner === mine[0]) return { why: `--resume, but ${mine[0]} holds the land lock: that build is landing` };
+  return { branch: mine[0] };
+}
+const resumed = me.status === 'in-progress' && resume ? resumable() : null;
+gate('claim', me.status !== 'in-progress' || Boolean(resumed?.branch), me.status !== 'in-progress'
+  ? `${ID} is not claimed${others.length ? `; claimed elsewhere: ${others.join(', ')} (check their shared assets against this Scope)` : ''}`
+  : resumed?.branch ? `${ID} resumed on ${resumed.branch}: the owner handed the claim back (--resume)`
+    : `${ID} is already in-progress on ${BASE}: another session or branch holds it${resumed ? `; ${resumed.why}` : ''}`);
 
 const direct = blockersOf(ID);
 const roots = rootsOf(ID).filter((r) => !direct.includes(r));
@@ -191,7 +212,7 @@ for (const [, span] of text.matchAll(/`([^`\n]+)`/g)) {
 const failedGates = gates.filter((g) => !g.ok).map((g) => g.gate);
 const commit = git('rev-parse', '--short', BASE);
 const report = {
-  id: ID, base: BASE, commit, head, milestone: MILESTONE,
+  id: ID, base: BASE, commit, head, milestone: MILESTONE, resumed: resumed?.branch ?? null,
   gates, milestones, resolves, premises,
   verdict: failedGates.length ? `blocked (${failedGates.join(', ')})` : 'ready',
 };

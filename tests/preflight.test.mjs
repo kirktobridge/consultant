@@ -114,6 +114,58 @@ describe('a ready entry exits 0', () => {
   });
 });
 
+describe('--resume passes a claim the owner handed back, only while its build is not landing (P52)', () => {
+  /** P1 claimed on main, with the branches given. */
+  function claimed(...names) {
+    const dir = project({ nextUp: [], backlog: [P('P1', { status: 'in-progress' })] });
+    const g = gitInit(dir);
+    for (const n of names) g.branch(n);
+    return dir;
+  }
+  const lockedBy = (dir, owner) => writeFileSync(join(dir, '.git', 'loop-land.lock'),
+    JSON.stringify({ owner, worktree: dir, at: new Date().toISOString() }));
+
+  test('the entry\'s own branch, not holding the lock, resumes the claim and names the branch', () => {
+    const dir = claimed('feat/p1-the-build');
+    const r = preflight(dir, 'P1', '--resume');
+    assert.equal(r.code, 0, out(r));
+    assert.match(r.stdout, /claim {5}ok — P1 resumed on feat\/p1-the-build/);
+    assert.equal(report(dir, 'P1', '--resume').resumed, 'feat/p1-the-build');
+  });
+
+  test('another build holding the lock does not stop the resume', () => {
+    const dir = claimed('feat/p1-the-build', 'feat/p2-other');
+    lockedBy(dir, 'feat/p2-other');
+    assert.equal(preflight(dir, 'P1', '--resume').code, 0);
+  });
+
+  test('without --resume the claim fails as it does now', () => {
+    const r = preflight(claimed('feat/p1-the-build'), 'P1');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /claim {5}FAIL — P1 is already in-progress on main: another session or branch holds it$/m);
+  });
+
+  test('with no branch for the entry it fails; P15\'s branch is not P1\'s', () => {
+    const r = preflight(claimed('feat/p15-other'), 'P1', '--resume');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /claim {5}FAIL — .*has no feat\/p1-… branch: nothing to resume/);
+  });
+
+  test('with its branch holding the land lock it fails: that build is landing', () => {
+    const dir = claimed('feat/p1-the-build');
+    lockedBy(dir, 'feat/p1-the-build');
+    const r = preflight(dir, 'P1', '--resume');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /claim {5}FAIL — .*feat\/p1-the-build holds the land lock: that build is landing/);
+  });
+
+  test('with two branches for the entry it fails: which is live is a judgement', () => {
+    const r = preflight(claimed('feat/p1-one', 'feat/p1-two'), 'P1', '--resume');
+    assert.equal(r.code, 1, out(r));
+    assert.match(r.stdout, /claim {5}FAIL — .*has 2 branches \(feat\/p1-one, feat\/p1-two\)/);
+  });
+});
+
 describe('the premise table never reads a check that could not run as absent', () => {
   const code = { 'scripts/real.mjs': "import fs from 'node:fs';\nexport const presentName = 1;\n" };
 
